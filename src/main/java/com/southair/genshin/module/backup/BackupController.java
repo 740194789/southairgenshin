@@ -1,0 +1,67 @@
+package com.southair.genshin.module.backup;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.southair.genshin.common.BusinessException;
+import com.southair.genshin.common.GameType;
+import com.southair.genshin.common.R;
+import com.southair.genshin.security.UserContext;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+
+/**
+ * 数据备份接口：导出 JSON 文件 / 导入 JSON 备份。
+ */
+@RestController
+@RequestMapping("/api/backup")
+public class BackupController {
+
+    private static final DateTimeFormatter FILE_TIME = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
+
+    private final BackupService backupService;
+    private final ObjectMapper objectMapper;
+
+    public BackupController(BackupService backupService, ObjectMapper objectMapper) {
+        this.backupService = backupService;
+        this.objectMapper = objectMapper;
+    }
+
+    @GetMapping("/export")
+    public ResponseEntity<byte[]> export(@RequestParam(defaultValue = "genshin") String game) {
+        BackupVO backup = backupService.export(UserContext.require(), game);
+        byte[] content;
+        try {
+            content = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(backup);
+        } catch (JsonProcessingException e) {
+            throw new BusinessException(500, "导出失败：" + e.getOriginalMessage());
+        }
+
+        String filename = "southair-" + GameType.normalize(game) + "-backup-"
+                + LocalDateTime.now().format(FILE_TIME) + ".json";
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .contentType(new MediaType(MediaType.APPLICATION_JSON, StandardCharsets.UTF_8))
+                .body(content);
+    }
+
+    /**
+     * @param mode merge（默认，保留现有数据并跳过重复） / replace（清空后全量导入）
+     */
+    @PostMapping("/import")
+    public R<ImportResultVO> importData(@RequestBody BackupVO backup,
+                                        @RequestParam(defaultValue = "genshin") String game,
+                                        @RequestParam(defaultValue = "merge") String mode) {
+        return R.ok(backupService.importData(UserContext.require(), game, backup, mode));
+    }
+}

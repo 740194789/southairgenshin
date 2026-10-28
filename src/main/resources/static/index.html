@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+    <meta name="theme-color" content="#0b0d16"/>
+    <meta name="description" content="SouthAir Genshin - 原神角色、武器与抽卡数据记录，Web 与手机端自适应"/>
+    <title>SouthAir Genshin · 原神数据记录</title>
+    <link rel="stylesheet" href="/css/app.css?v=20261029-3"/>
+</head>
+<body>
+<div id="toast" class="toast" aria-live="polite"></div>
+
+<!-- 登录 / 注册 -->
+<section id="auth-view" class="auth-view">
+    <div class="auth-glow"></div>
+    <div class="auth-card">
+        <div class="brand">
+            <span class="brand-mark">SA</span>
+            <div>
+                <h1>SouthAir Genshin</h1>
+                <p id="app-subtitle">提瓦特数据记录 · Web / Mobile</p>
+            </div>
+        </div>
+
+        <form id="auth-form" class="auth-form" autocomplete="off" novalidate>
+            <label class="field">
+                <span>账号</span>
+                <input id="auth-username" type="text" placeholder="请输入账号" required minlength="3"/>
+            </label>
+            <label class="field">
+                <span>密码</span>
+                <input id="auth-password" type="password" placeholder="至少 6 位" required minlength="6"/>
+            </label>
+            <label class="field" id="auth-nickname-field" hidden>
+                <span>昵称</span>
+                <input id="auth-nickname" type="text" placeholder="游戏内昵称（可留空）" maxlength="32"/>
+            </label>
+            <button id="auth-submit" class="btn btn-primary" type="submit">登 录</button>
+            <button id="auth-toggle" class="btn btn-text" type="button">没有账号？立即注册</button>
+        </form>
+
+        <p class="auth-tip">数据默认保存在本地 H2 数据库，可通过 mysql profile 切换 MySQL</p>
+    </div>
+</section>
+
+<!-- 主应用 -->
+<div id="app-view" class="app-view" hidden>
+    <header class="topbar">
+        <div class="topbar-inner">
+            <div class="brand brand-sm">
+                <span class="brand-mark">SA</span>
+                <strong>SouthAir Genshin</strong>
+            </div>
+
+            <div class="game-switch" id="game-switch" role="group" aria-label="切换游戏">
+                <button class="game-btn active" type="button" data-game="genshin"
+                        aria-pressed="true">原神</button>
+                <button class="game-btn" type="button" data-game="starrail" title="崩坏：星穹铁道"
+                        aria-pressed="false">星穹铁道</button>
+            </div>
+
+            <nav class="nav" id="nav">
+                <button class="nav-btn active" data-view="dashboard">资源</button>
+                <button class="nav-btn" data-view="stats">统计</button>
+                <button class="nav-btn" data-view="wishes">抽卡</button>
+            </nav>
+
+            <div class="user-area">
+                <span id="user-name" class="user-name"></span>
+                <button id="logout-btn" class="btn btn-text btn-sm" type="button">退出</button>
+            </div>
+        </div>
+    </header>
+
+    <main class="main">
+        <section class="view" id="view-dashboard"></section>
+        <section class="view" id="view-stats" hidden></section>
+        <section class="view" id="view-wishes" hidden></section>
+    </main>
+
+    <nav class="tabbar" id="tabbar">
+        <button class="tab-btn active" data-view="dashboard"><span>◈</span>资源</button>
+        <button class="tab-btn" data-view="stats"><span>◎</span>统计</button>
+        <button class="tab-btn" data-view="wishes"><span>✧</span>抽卡</button>
+    </nav>
+</div>
+
+<script src="/js/app.js?v=20261029-3"></script>
+</body>
+</html>
