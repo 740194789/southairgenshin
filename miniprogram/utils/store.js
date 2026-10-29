@@ -1,11 +1,31 @@
-/* 离线数据层：所有数据存放在小程序本地缓存（wx storage），按游戏隔离 */
+/* 数据层：本地缓存 + 多账号隔离 + 待同步删除墓碑
+ *
+ * 所有数据按「账号 + 游戏」存放，未登录时使用 anon 命名空间（离线可用）。
+ * 抽卡记录用客户端生成的 clientUid 作为稳定标识，便于多端合并。
+ */
 
 var gameLib = require('./game');
 
 var PER_PULL = 160;
-var WISH_KEY = 'sg_wishes_';
-var RES_KEY = 'sg_resource_';
-var SEQ_KEY = 'sg_seq_';
+var currentUserId = null;
+
+/* ---------------- 账号 ---------------- */
+
+function setUser(userId) {
+  currentUserId = userId === null || userId === undefined || userId === '' ? null : String(userId);
+}
+
+function getUserKey() {
+  return currentUserId || 'anon';
+}
+
+function key(prefix, game) {
+  return 'sg_' + prefix + '_' + getUserKey() + '_' + game;
+}
+
+function newUid() {
+  return 'u' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+}
 
 /* ---------------- 基础工具 ---------------- */
 
@@ -73,10 +93,10 @@ function normalizeItemName(name, rarity) {
   return '三星物品';
 }
 
-function normalizeRecord(source, game, id) {
+function normalizeRecord(source, game, uid, editedAt) {
   var rarity = clamp(source.rarity, 1, 5, 3);
   return {
-    id: id,
+    clientUid: uid || source.clientUid || newUid(),
     game: game,
     itemName: normalizeItemName(source.itemName, rarity),
     itemType: truncate(source.itemType, 16),
@@ -85,23 +105,59 @@ function normalizeRecord(source, game, id) {
     isUp: source.isUp === true,
     pityCount: clamp(source.pityCount, 1, 180, 1),
     wishTime: source.wishTime || nowStr(),
-    note: truncate(source.note, 255)
+    note: truncate(source.note, 255),
+    editedAt: editedAt || toInt(source.editedAt) || Date.now()
   };
 }
 
 /* ---------------- 缓存读写 ---------------- */
 
 function getWishes(game) {
-  var list = wx.getStorageSync(WISH_KEY + game);
+  var list = wx.getStorageSync(key('wishes', game));
   return Array.isArray(list) ? list : [];
 }
 
 function saveWishes(game, list) {
-  wx.setStorageSync(WISH_KEY + game, list);
+  wx.setStorageSync(key('wishes', game), list);
+}
+
+function getTombstones(game) {
+  var list = wx.getStorageSync(key('tomb', game));
+  return Array.isArray(list) ? list : [];
+}
+
+function saveTombstones(game, list) {
+  wx.setStorageSync(key('tomb', game), list);
+}
+
+function addTombstones(game, items) {
+  var list = getTombstones(game);
+  var byUid = {};
+  list.forEach(function (item) {
+    byUid[item.clientUid] = item;
+  });
+  (items || []).forEach(function (item) {
+    var existing = byUid[item.clientUid];
+    if (!existing || (item.editedAt || 0) >= (existing.editedAt || 0)) {
+      byUid[item.clientUid] = {
+        clientUid: item.clientUid,
+        editedAt: item.editedAt || Date.now()
+      };
+    }
+  });
+  var next = Object.keys(byUid).map(function (uid) {
+    return byUid[uid];
+  });
+  saveTombstones(game, next);
+  return next;
+}
+
+function clearTombstones(game) {
+  saveTombstones(game, []);
 }
 
 function getResource(game) {
-  var res = wx.getStorageSync(RES_KEY + game);
+  var res = wx.getStorageSync(key('resource', game));
   if (!res || typeof res !== 'object') {
     res = {};
   }
@@ -109,45 +165,46 @@ function getResource(game) {
     primogems: Math.max(0, toInt(res.primogems)),
     mora: Math.max(0, toInt(res.mora)),
     intertwinedFates: Math.max(0, toInt(res.intertwinedFates)),
-    acquaintedFates: Math.max(0, toInt(res.acquaintedFates))
+    acquaintedFates: Math.max(0, toInt(res.acquaintedFates)),
+    editedAt: toInt(res.editedAt)
   };
 }
 
-function saveResource(game, res) {
-  wx.setStorageSync(RES_KEY + game, {
+function saveResource(game, res, editedAt) {
+  wx.setStorageSync(key('resource', game), {
     primogems: Math.max(0, toInt(res.primogems)),
     mora: Math.max(0, toInt(res.mora)),
     intertwinedFates: Math.max(0, toInt(res.intertwinedFates)),
-    acquaintedFates: Math.max(0, toInt(res.acquaintedFates))
+    acquaintedFates: Math.max(0, toInt(res.acquaintedFates)),
+    editedAt: editedAt === undefined ? toInt(res.editedAt) : editedAt
   });
 }
 
 function updateResource(game, patch) {
   var next = getResource(game);
-  ['primogems', 'mora', 'intertwinedFates', 'acquaintedFates'].forEach(function (key) {
-    if (patch[key] !== undefined) {
-      next[key] = Math.max(0, toInt(patch[key]));
+  ['primogems', 'mora', 'intertwinedFates', 'acquaintedFates'].forEach(function (item) {
+    if (patch[item] !== undefined) {
+      next[item] = Math.max(0, toInt(patch[item]));
     }
   });
-  saveResource(game, next);
+  next.editedAt = Date.now();
+  saveResource(game, next, next.editedAt);
   return next;
 }
 
-function allocIds(game, count) {
-  var base = toInt(wx.getStorageSync(SEQ_KEY + game));
-  var ids = [];
-  for (var i = 1; i <= count; i++) {
-    ids.push(base + i);
-  }
-  wx.setStorageSync(SEQ_KEY + game, base + count);
-  return ids;
+function getLastSync(game) {
+  return wx.getStorageSync(key('synced', game)) || 0;
+}
+
+function setLastSync(game, time) {
+  wx.setStorageSync(key('synced', game), time || Date.now());
 }
 
 /* ---------------- 抽卡记录 CRUD ---------------- */
 
 function addWish(game, data) {
   var list = getWishes(game);
-  var record = normalizeRecord(data, game, allocIds(game, 1)[0]);
+  var record = normalizeRecord(data, game, newUid(), Date.now());
   list.push(record);
   saveWishes(game, list);
   return record;
@@ -155,19 +212,22 @@ function addWish(game, data) {
 
 function addWishes(game, records) {
   var list = getWishes(game);
-  var ids = allocIds(game, records.length);
-  var saved = records.map(function (item, index) {
-    return normalizeRecord(item, game, ids[index]);
+  var saved = [];
+  var now = Date.now();
+  (records || []).forEach(function (item) {
+    var record = normalizeRecord(item, game, newUid(), now);
+    list.push(record);
+    saved.push(record);
   });
-  saveWishes(game, list.concat(saved));
+  saveWishes(game, list);
   return saved;
 }
 
-function updateWish(game, id, data) {
+function updateWish(game, uid, data) {
   var list = getWishes(game);
   var index = -1;
   for (var i = 0; i < list.length; i++) {
-    if (list[i].id === id) {
+    if (list[i].clientUid === uid) {
       index = i;
       break;
     }
@@ -184,22 +244,26 @@ function updateWish(game, id, data) {
     pityCount: data.pityCount,
     wishTime: data.wishTime || list[index].wishTime,
     note: data.note
-  }, game, id);
+  }, game, uid, Date.now());
   list[index] = merged;
   saveWishes(game, list);
   return merged;
 }
 
-function deleteWishes(game, ids) {
+function deleteWishes(game, uids) {
   var targets = {};
-  (ids || []).forEach(function (id) {
-    targets[id] = true;
+  var now = Date.now();
+  var tombstones = [];
+  (uids || []).forEach(function (uid) {
+    targets[uid] = true;
+    tombstones.push({ clientUid: uid, editedAt: now });
   });
   var list = getWishes(game);
   var kept = list.filter(function (record) {
-    return !targets[record.id];
+    return !targets[record.clientUid];
   });
   saveWishes(game, kept);
+  addTombstones(game, tombstones);
   return list.length - kept.length;
 }
 
@@ -207,14 +271,14 @@ function descCompare(a, b) {
   if (a.wishTime !== b.wishTime) {
     return a.wishTime < b.wishTime ? 1 : -1;
   }
-  return b.id - a.id;
+  return a.clientUid < b.clientUid ? 1 : -1;
 }
 
 function ascCompare(a, b) {
   if (a.wishTime !== b.wishTime) {
     return a.wishTime < b.wishTime ? -1 : 1;
   }
-  return a.id - b.id;
+  return a.clientUid < b.clientUid ? -1 : 1;
 }
 
 function pageWishes(game, pool, page, size) {
@@ -240,6 +304,212 @@ function pageWishes(game, pool, page, size) {
 
 function exportRecords(game) {
   return getWishes(game).slice().sort(ascCompare);
+}
+
+/* ---------------- 同步 ---------------- */
+
+function syncPayload(game) {
+  var resource = getResource(game);
+  var records = getWishes(game).map(function (record) {
+    return {
+      clientUid: record.clientUid,
+      itemName: record.itemName,
+      itemType: record.itemType,
+      pool: record.pool,
+      rarity: record.rarity,
+      isUp: record.isUp,
+      pityCount: record.pityCount,
+      wishTime: record.wishTime,
+      note: record.note,
+      editedAt: record.editedAt || 0
+    };
+  });
+  var tombstones = getTombstones(game).map(function (item) {
+    return {
+      clientUid: item.clientUid,
+      deleted: true,
+      editedAt: item.editedAt || 0
+    };
+  });
+  return {
+    resource: resource,
+    records: records.concat(tombstones)
+  };
+}
+
+/**
+ * 用服务端快照更新本地。
+ *
+ * <p>不是简单覆盖：同步请求发出后本地可能又产生了修改（编辑、删除），
+ * 这里按 editedAt 取新，并保留「未参与本次上传」的本地记录与墓碑，等下一轮补传。</p>
+ *
+ * @param {Array<string>} sentRecords 本次上传的非删除记录 clientUid
+ * @param {Array<string>} sentTombstones 本次上传的墓碑 clientUid
+ */
+function applySnapshot(game, snapshot, sentRecords, sentTombstones) {
+  var source = snapshot || {};
+  var sentRecordSet = {};
+  (sentRecords || []).forEach(function (uid) {
+    sentRecordSet[uid] = true;
+  });
+  var sentTombstoneSet = {};
+  (sentTombstones || []).forEach(function (uid) {
+    sentTombstoneSet[uid] = true;
+  });
+  var tombstoneSet = {};
+  var tombstones = getTombstones(game);
+  tombstones.forEach(function (item) {
+    tombstoneSet[item.clientUid] = true;
+  });
+
+  var localByUid = {};
+  getWishes(game).forEach(function (record) {
+    localByUid[record.clientUid] = record;
+  });
+
+  var serverSet = {};
+  var records = [];
+  (source.records || []).forEach(function (item) {
+    var uid = item.clientUid;
+    if (!uid) {
+      return;
+    }
+    serverSet[uid] = true;
+    // 同步期间本地删除了这条记录：先移除，等待下一轮上传墓碑
+    if (tombstoneSet[uid]) {
+      return;
+    }
+    var local = localByUid[uid];
+    if (local && (local.editedAt || 0) > (item.editedAt || 0)) {
+      records.push(local);
+    } else {
+      records.push(normalizeRecord(item, game, uid, item.editedAt));
+    }
+  });
+
+  // 本次上传后才创建的本地记录：服务端还没收到，保留在本地等补传
+  Object.keys(localByUid).forEach(function (uid) {
+    if (serverSet[uid] || sentRecordSet[uid] || tombstoneSet[uid]) {
+      return;
+    }
+    records.push(localByUid[uid]);
+  });
+  saveWishes(game, records);
+
+  if (source.resource && typeof source.resource === 'object') {
+    var localRes = getResource(game);
+    var incoming = source.resource;
+    if ((localRes.editedAt || 0) > toInt(incoming.editedAt)) {
+      saveResource(game, localRes, localRes.editedAt);
+    } else {
+      saveResource(game, incoming, toInt(incoming.editedAt));
+    }
+  }
+
+  saveTombstones(game, tombstones.filter(function (item) {
+    return !sentTombstoneSet[item.clientUid];
+  }));
+  setLastSync(game, source.serverTime || Date.now());
+  return records.length;
+}
+
+/* ---------------- 旧版离线数据迁移 ---------------- */
+
+var LEGACY_GAMES = ['genshin', 'starrail'];
+
+function hasLegacyData() {
+  for (var i = 0; i < LEGACY_GAMES.length; i++) {
+    var game = LEGACY_GAMES[i];
+    var oldWishes = wx.getStorageSync('sg_wishes_' + game);
+    if (Array.isArray(oldWishes) && oldWishes.length) {
+      return true;
+    }
+    var oldRes = wx.getStorageSync('sg_resource_' + game);
+    if (oldRes && typeof oldRes === 'object') {
+      return true;
+    }
+  }
+  return false;
+}
+
+function hasOfflineData() {
+  for (var i = 0; i < LEGACY_GAMES.length; i++) {
+    var game = LEGACY_GAMES[i];
+    var list = wx.getStorageSync('sg_wishes_anon_' + game);
+    if (Array.isArray(list) && list.length) {
+      return true;
+    }
+    var res = wx.getStorageSync('sg_resource_anon_' + game);
+    if (res && typeof res === 'object'
+        && (toInt(res.primogems) || toInt(res.mora)
+          || toInt(res.intertwinedFates) || toInt(res.acquaintedFates))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * 把「未登录离线」命名空间下的数据并入当前账号。
+ */
+function migrateOfflineData() {
+  var savedUser = currentUserId;
+  currentUserId = null;
+  var snapshots = LEGACY_GAMES.map(function (game) {
+    return {
+      game: game,
+      wishes: getWishes(game),
+      resource: getResource(game)
+    };
+  });
+  LEGACY_GAMES.forEach(function (game) {
+    wx.removeStorageSync(key('wishes', game));
+    wx.removeStorageSync(key('resource', game));
+    wx.removeStorageSync(key('tomb', game));
+    wx.removeStorageSync(key('synced', game));
+  });
+  currentUserId = savedUser;
+
+  var total = 0;
+  snapshots.forEach(function (item) {
+    if (item.wishes.length) {
+      total += importRecords(item.game, item.wishes, 'merge').imported;
+    }
+    var current = getResource(item.game);
+    var hasValue = current.primogems || current.mora
+      || current.intertwinedFates || current.acquaintedFates;
+    var res = item.resource;
+    if (!hasValue && res && (res.primogems || res.mora || res.intertwinedFates || res.acquaintedFates)) {
+      updateResource(item.game, res);
+    }
+  });
+  return total;
+}
+
+/**
+ * 把旧版（无账号）离线数据并入当前账号，返回导入条数。
+ */
+function migrateLegacy() {
+  var total = 0;
+  LEGACY_GAMES.forEach(function (game) {
+    var oldWishes = wx.getStorageSync('sg_wishes_' + game);
+    if (Array.isArray(oldWishes) && oldWishes.length) {
+      var result = importRecords(game, oldWishes, 'merge');
+      total += result.imported;
+    }
+    var oldRes = wx.getStorageSync('sg_resource_' + game);
+    if (oldRes && typeof oldRes === 'object') {
+      var current = getResource(game);
+      if (current.primogems === 0 && current.mora === 0
+          && current.intertwinedFates === 0 && current.acquaintedFates === 0) {
+        saveResource(game, oldRes, Date.now());
+      }
+    }
+    wx.removeStorageSync('sg_wishes_' + game);
+    wx.removeStorageSync('sg_resource_' + game);
+    wx.removeStorageSync('sg_seq_' + game);
+  });
+  return total;
 }
 
 /* ---------------- 资源换算 ---------------- */
@@ -421,15 +691,21 @@ function captureInfo(asc) {
  */
 function importRecords(game, records, mode) {
   var replace = mode === 'replace';
-  var list = replace ? [] : getWishes(game);
-  var existing = replace ? [] : list.slice();
+  var existing = getWishes(game);
+  var list = replace ? [] : existing.slice();
   var seen = {};
   var imported = 0;
   var skipped = 0;
-  var ids = allocIds(game, records.length);
-  var idIndex = 0;
+  var now = Date.now();
 
-  records.forEach(function (source) {
+  if (replace) {
+    // 覆盖导入前的删除也要同步到其他端，避免旧数据复活
+    addTombstones(game, existing.map(function (record) {
+      return { clientUid: record.clientUid, editedAt: now };
+    }));
+  }
+
+  (records || []).forEach(function (source) {
     if (source === null || source === undefined) {
       return;
     }
@@ -437,8 +713,8 @@ function importRecords(game, records, mode) {
     var itemName = normalizeItemName(source.itemName, rarity);
     var pool = truncate(source.pool, 16);
     var wishTime = source.wishTime || nowStr();
-    var key = itemName + '\u0001' + pool + '\u0001' + wishTime;
-    var seenCount = seen[key] || 0;
+    var mark = itemName + '\u0001' + pool + '\u0001' + wishTime;
+    var seenCount = seen[mark] || 0;
 
     if (!replace) {
       var sameCount = 0;
@@ -449,7 +725,7 @@ function importRecords(game, records, mode) {
       });
       if (sameCount > seenCount) {
         skipped++;
-        seen[key] = seenCount + 1;
+        seen[mark] = seenCount + 1;
         return;
       }
     }
@@ -463,9 +739,9 @@ function importRecords(game, records, mode) {
       pityCount: source.pityCount,
       wishTime: wishTime,
       note: source.note
-    }, game, ids[idIndex++]));
+    }, game, source.clientUid || newUid(), source.editedAt || now));
     imported++;
-    seen[key] = seenCount + 1;
+    seen[mark] = seenCount + 1;
   });
 
   saveWishes(game, list);
@@ -491,7 +767,12 @@ function importBackup(game, payload, mode) {
     return { imported: 0, skipped: 0, mode: mode };
   }
   if (payload.resource && typeof payload.resource === 'object') {
-    saveResource(game, payload.resource);
+    var current = getResource(game);
+    var hasValue = current.primogems || current.mora
+      || current.intertwinedFates || current.acquaintedFates;
+    if (!hasValue) {
+      updateResource(game, payload.resource);
+    }
   }
   var wishes = Array.isArray(payload.wishes) ? payload.wishes : [];
   return importRecords(game, wishes, mode || 'merge');
@@ -499,6 +780,8 @@ function importBackup(game, payload, mode) {
 
 module.exports = {
   PER_PULL: PER_PULL,
+  setUser: setUser,
+  getUserKey: getUserKey,
   getWishes: getWishes,
   addWish: addWish,
   addWishes: addWishes,
@@ -515,5 +798,15 @@ module.exports = {
   importBackup: importBackup,
   normalizeItemName: normalizeItemName,
   nowStr: nowStr,
-  fmt: fmt
+  fmt: fmt,
+  syncPayload: syncPayload,
+  applySnapshot: applySnapshot,
+  getTombstones: getTombstones,
+  addTombstones: addTombstones,
+  getLastSync: getLastSync,
+  setLastSync: setLastSync,
+  hasLegacyData: hasLegacyData,
+  migrateLegacy: migrateLegacy,
+  hasOfflineData: hasOfflineData,
+  migrateOfflineData: migrateOfflineData
 };

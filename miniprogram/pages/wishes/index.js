@@ -3,6 +3,7 @@ var store = require('../../utils/store');
 var gameLib = require('../../utils/game');
 var csv = require('../../utils/csv');
 var file = require('../../utils/file');
+var sync = require('../../utils/sync');
 
 var RARITY_VALUES = [3, 4, 5];
 var RARITY_LABELS = ['3 星', '4 星', '5 星'];
@@ -73,7 +74,25 @@ Page({
   },
 
   onShow: function () {
+    if (!app.globalData.user && !app.isOfflineMode()) {
+      wx.reLaunch({ url: '/pages/login/index' });
+      return;
+    }
     this.load(app.globalData.game);
+    this.syncNow(false);
+  },
+
+  /** 联网时自动合并，成功后重新加载列表 */
+  syncNow: function (force) {
+    var that = this;
+    if (!sync.enabled()) {
+      return;
+    }
+    sync.sync(this.data.game, force).then(function (result) {
+      if (result.ok && !result.skipped) {
+        that.load();
+      }
+    });
   },
 
   onSwitchGame: function (event) {
@@ -93,6 +112,7 @@ Page({
       batchVisible: false
     });
     this.load();
+    this.syncNow(false);
   },
 
   /* ---------------- 列表 ---------------- */
@@ -104,7 +124,8 @@ Page({
     var selected = this.data.selected;
     var rows = result.records.map(function (record) {
       return {
-        id: record.id,
+        id: record.clientUid,
+        shortId: (record.clientUid || '').slice(-6),
         displayName: record.itemName || '三星物品',
         stars: starText(record.rarity),
         rarity: record.rarity,
@@ -113,7 +134,7 @@ Page({
         isUp: record.isUp === true,
         pityCount: record.pityCount || 1,
         time: (record.wishTime || '').slice(0, 16),
-        checked: selected.indexOf(record.id) >= 0
+        checked: selected.indexOf(record.clientUid) >= 0
       };
     });
 
@@ -160,7 +181,7 @@ Page({
   },
 
   toggleSelect: function (event) {
-    var id = Number(event.currentTarget.dataset.id);
+    var id = String(event.currentTarget.dataset.id);
     var selected = this.data.selected.slice();
     var index = selected.indexOf(id);
     if (index >= 0) {
@@ -198,6 +219,7 @@ Page({
         store.deleteWishes(that.data.game, that.data.selected);
         that.setData({ selected: [], selectedCount: 0, page: 1 });
         that.load();
+        that.syncNow(true);
         wx.showToast({ title: '已删除 ' + count + ' 条', icon: 'none' });
       }
     });
@@ -205,7 +227,7 @@ Page({
 
   removeRow: function (event) {
     var that = this;
-    var id = Number(event.currentTarget.dataset.id);
+    var id = String(event.currentTarget.dataset.id);
     var row = this.data.rows.filter(function (item) {
       return item.id === id;
     })[0];
@@ -226,6 +248,7 @@ Page({
         });
         that.setData({ selected: selected, selectedCount: selected.length });
         that.load();
+        that.syncNow(true);
         wx.showToast({ title: '已删除', icon: 'success' });
       }
     });
@@ -243,7 +266,7 @@ Page({
   },
 
   editRow: function (event) {
-    var id = Number(event.currentTarget.dataset.id);
+    var id = String(event.currentTarget.dataset.id);
     var row = this.data.rows.filter(function (item) {
       return item.id === id;
     })[0];
@@ -251,7 +274,7 @@ Page({
       return;
     }
     var record = store.getWishes(this.data.game).filter(function (item) {
-      return item.id === id;
+      return item.clientUid === id;
     })[0];
     if (!record) {
       return;
@@ -347,6 +370,7 @@ Page({
     }
     this.setData({ editorVisible: false });
     this.load();
+    this.syncNow(true);
     wx.showToast({ title: editing ? '修改已保存' : '新增成功', icon: 'success' });
   },
 
@@ -446,6 +470,7 @@ Page({
     store.addWishes(this.data.game, records);
     this.setData({ batchVisible: false, page: 1, selected: [], selectedCount: 0 });
     this.load();
+    this.syncNow(true);
     wx.showToast({ title: '已保存 10 抽', icon: 'success' });
   },
 
@@ -520,6 +545,7 @@ Page({
     var result = store.importRecords(this.data.game, records, mode);
     this.setData({ page: 1, selected: [], selectedCount: 0 });
     this.load();
+    this.syncNow(true);
     wx.showToast({
       title: '导入 ' + result.imported + ' 条' + (result.skipped ? '，跳过 ' + result.skipped + ' 条' : ''),
       icon: 'none'

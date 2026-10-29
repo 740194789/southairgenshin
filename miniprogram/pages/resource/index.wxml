@@ -39,6 +39,24 @@
   </view>
 
   <view class="panel">
+    <view class="panel-title">账号与同步</view>
+    <block wx:if="{{user}}">
+      <view class="panel-desc">已登录：{{user.nickname}}（{{user.username}}）· {{syncText}}</view>
+      <view class="btn-row">
+        <view class="btn btn-outline btn-sm {{syncing ? 'disabled' : ''}}" bindtap="onSyncTap">{{syncing ? '同步中…' : '立即同步'}}</view>
+        <view class="btn btn-outline btn-sm" bindtap="goLogin">切换账号</view>
+        <view class="btn btn-danger btn-sm" bindtap="logout">退出登录</view>
+      </view>
+    </block>
+    <block wx:else>
+      <view class="panel-desc">当前为离线模式，数据只保存在本机。登录后可并入账号并多端同步。</view>
+      <view class="btn-row">
+        <view class="btn btn-primary btn-sm" bindtap="goLogin">登录并同步</view>
+      </view>
+    </block>
+  </view>
+
+  <view class="panel">
     <view class="panel-title">抽数换算</view>
     <view class="panel-desc">常驻池抽数（{{g.fateStandard}}）不计入货币折算与合计可抽。</view>
 
@@ -69,10 +87,11 @@
 
   <view class="panel">
     <view class="panel-title">数据存在哪</view>
-    <view class="panel-desc">离线版不连接服务器，所有记录与资源都保存在本机小程序缓存中（按原神 / 星穹铁道分开存放）。</view>
-    <view class="foot-tip">1. 卸载小程序、清理微信缓存或更换手机，数据不会自动同步，建议定期在「统计」页导出备份。</view>
-    <view class="foot-tip">2. 网页版数据存在电脑服务端的 H2 数据库，与小程序缓存互不相通，可导出 JSON 备份后在小程序里导入。</view>
-    <view class="foot-tip">3. 离线版暂不支持截图识别，需要手动录入或在抽卡页导入 CSV / JSON。</view>
+    <view class="panel-desc">已登录时数据同时保存在本机缓存和你的账号云端（H2 / MySQL），网页版与小程序使用同一账号即可互通；离线模式下只写本机。</view>
+    <view class="foot-tip">1. 断网时照常记录，联网后进入本页或下拉重试会自动同步，以最新编辑时间为准合并。</view>
+    <view class="foot-tip">2. 删除会写入墓碑并同步到其他设备，旧设备不会把已删除的记录带回来。</view>
+    <view class="foot-tip">3. 卸载小程序或清理缓存会清空本机数据，建议定期在「统计」页导出备份。</view>
+    <view class="foot-tip">4. 小程序暂不支持截图识别，需要手动录入或在抽卡页导入 CSV / JSON。</view>
   </view>
 </view>
 

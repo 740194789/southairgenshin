@@ -8,10 +8,13 @@ import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 public interface WishRecordRepository extends JpaRepository<WishRecord, Long> {
 
     Page<WishRecord> findByUserIdAndGame(Long userId, String game, Pageable pageable);
+
+    Optional<WishRecord> findFirstByUserIdAndGameAndClientUid(Long userId, String game, String clientUid);
 
     Page<WishRecord> findByUserIdAndGameAndPool(Long userId, String game, String pool, Pageable pageable);
 

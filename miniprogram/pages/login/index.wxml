@@ -1,0 +1,46 @@
+<view class="page login-page">
+  <view class="login-hero" style="padding-top: {{statusBarHeight + 40}}px">
+    <view class="brand-mark login-mark">SA</view>
+    <view class="login-title">SouthAir Genshin</view>
+    <view class="login-sub">多端同步 · 原神 / 崩坏：星穹铁道</view>
+  </view>
+
+  <view wx:if="{{user}}" class="panel">
+    <view class="panel-title">当前账号</view>
+    <view class="panel-desc">{{user.nickname}}（{{user.username}}）· 继续使用将使用该账号的本地数据</view>
+    <view class="login-actions">
+      <view class="btn btn-primary login-btn" bindtap="continueCurrent">继续使用</view>
+      <view class="btn btn-danger login-btn" bindtap="logout">退出登录</view>
+    </view>
+  </view>
+
+  <view wx:if="{{!configured}}" class="panel">
+    <view class="panel-title">同步服务器尚未配置</view>
+    <view class="panel-desc">部署后端后，在 utils/config.js 填入已备案的 HTTPS 域名，并在小程序后台把它加入 request 合法域名。未配置时可先离线使用。</view>
+  </view>
+
+  <view class="panel">
+    <view class="panel-title">账号登录</view>
+    <view class="panel-desc">同一个账号登录网页版与小程序，数据自动合并；断网时继续使用本机缓存，联网后自动同步。</view>
+    <view class="form-row">
+      <text class="form-label">账号</text>
+      <input class="form-input" value="{{username}}" bindinput="onUsername" placeholder="用户名"/>
+    </view>
+    <view class="form-row">
+      <text class="form-label">密码</text>
+      <input class="form-input" password value="{{password}}" bindinput="onPassword" placeholder="至少 6 位"/>
+    </view>
+    <view class="login-actions">
+      <view class="btn btn-primary login-btn {{loading || !configured ? 'disabled' : ''}}" bindtap="doLogin">{{loading ? '登录中…' : '登录并同步'}}</view>
+      <view class="btn btn-outline login-btn {{loading || !configured ? 'disabled' : ''}}" bindtap="doRegister">注册新账号</view>
+    </view>
+  </view>
+
+  <view wx:if="{{!user}}" class="panel">
+    <view class="panel-title">没有账号 / 暂不联网</view>
+    <view class="panel-desc">离线模式下所有数据只保存在本机；之后登录可把离线数据并入账号。</view>
+    <view class="btn btn-outline" bindtap="useOffline">离线使用（数据仅存本机）</view>
+  </view>
+
+  <view class="foot-tip">登录后本机数据与云端按编辑时间合并：同一条记录以最新修改为准，删除会通过墓碑同步到其他设备，不会被旧数据复活。</view>
+</view>

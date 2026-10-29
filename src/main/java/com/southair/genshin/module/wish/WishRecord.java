@@ -19,7 +19,8 @@ import java.time.LocalDateTime;
  */
 @Entity
 @Table(name = "t_wish_record", indexes = {
-        @Index(name = "idx_wish_user", columnList = "user_id")
+        @Index(name = "idx_wish_user", columnList = "user_id"),
+        @Index(name = "idx_wish_client", columnList = "user_id,game,client_uid")
 })
 public class WishRecord extends BaseEntity {
 
@@ -67,6 +68,14 @@ public class WishRecord extends BaseEntity {
 
     @Column(length = 255)
     private String note;
+
+    /** 客户端生成的稳定标识，多端同步时用于识别同一条记录 */
+    @Column(name = "client_uid", length = 64)
+    private String clientUid;
+
+    /** 客户端编辑时间（epoch 毫秒），用于多端合并时判定新旧 */
+    @Column(name = "edited_at")
+    private Long editedAt;
 
     public Long getId() {
         return id;
@@ -154,5 +163,21 @@ public class WishRecord extends BaseEntity {
 
     public void setNote(String note) {
         this.note = note;
+    }
+
+    public String getClientUid() {
+        return clientUid;
+    }
+
+    public void setClientUid(String clientUid) {
+        this.clientUid = clientUid;
+    }
+
+    public Long getEditedAt() {
+        return editedAt;
+    }
+
+    public void setEditedAt(Long editedAt) {
+        this.editedAt = editedAt;
     }
 }

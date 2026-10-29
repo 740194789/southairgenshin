@@ -2,6 +2,7 @@ var app = getApp();
 var store = require('../../utils/store');
 var gameLib = require('../../utils/game');
 var file = require('../../utils/file');
+var sync = require('../../utils/sync');
 
 function starText(rarity) {
   var count = Math.max(0, Math.min(5, Number(rarity) || 0));
@@ -40,7 +41,24 @@ Page({
   },
 
   onShow: function () {
+    if (!app.globalData.user && !app.isOfflineMode()) {
+      wx.reLaunch({ url: '/pages/login/index' });
+      return;
+    }
     this.load(app.globalData.game);
+    this.syncNow(false);
+  },
+
+  syncNow: function (force) {
+    var that = this;
+    if (!sync.enabled()) {
+      return;
+    }
+    sync.sync(this.data.game, force).then(function (result) {
+      if (result.ok && !result.skipped) {
+        that.load(that.data.game);
+      }
+    });
   },
 
   load: function (game) {
@@ -86,7 +104,7 @@ Page({
 
     var recent = data.recentWishes.map(function (item) {
       return {
-        id: item.id,
+        id: item.clientUid,
         stars: starText(item.rarity),
         name: item.itemName || '三星物品',
         time: (item.wishTime || '').slice(5, 16)
@@ -127,6 +145,7 @@ Page({
     var game = event.detail.game;
     app.setGame(game);
     this.load(game);
+    this.syncNow(false);
   },
 
   exportBackup: function () {
@@ -153,6 +172,7 @@ Page({
           var payloadForImport = Array.isArray(payload) ? { wishes: payload } : payload;
           var result = store.importBackup(that.data.game, payloadForImport, mode);
           that.load(that.data.game);
+          that.syncNow(true);
           wx.showToast({ title: '导入 ' + result.imported + ' 条', icon: 'none' });
         }
       });

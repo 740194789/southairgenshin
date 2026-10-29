@@ -2,7 +2,8 @@
   "pages": [
     "pages/resource/index",
     "pages/stats/index",
-    "pages/wishes/index"
+    "pages/wishes/index",
+    "pages/login/index"
   ],
   "window": {
     "navigationStyle": "custom",

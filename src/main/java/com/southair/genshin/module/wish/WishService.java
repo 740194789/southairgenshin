@@ -6,6 +6,8 @@ import com.southair.genshin.common.PageResult;
 import com.southair.genshin.module.wish.dto.WishBatchRequest;
 import com.southair.genshin.module.wish.dto.WishImportResult;
 import com.southair.genshin.module.wish.dto.WishRequest;
+import com.southair.genshin.module.sync.SyncTombstone;
+import com.southair.genshin.module.sync.SyncTombstoneRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -19,6 +21,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @Service
 public class WishService {
@@ -27,9 +30,11 @@ public class WishService {
     private static final int MAX_IMPORT_RECORDS = 2000;
 
     private final WishRecordRepository repository;
+    private final SyncTombstoneRepository tombstoneRepository;
 
-    public WishService(WishRecordRepository repository) {
+    public WishService(WishRecordRepository repository, SyncTombstoneRepository tombstoneRepository) {
         this.repository = repository;
+        this.tombstoneRepository = tombstoneRepository;
     }
 
     @Transactional(readOnly = true)
@@ -58,6 +63,8 @@ public class WishService {
         if (record.getWishTime() == null) {
             record.setWishTime(LocalDateTime.now());
         }
+        record.setClientUid(newClientUid());
+        record.setEditedAt(System.currentTimeMillis());
         return repository.save(record);
     }
 
@@ -77,6 +84,8 @@ public class WishService {
             if (record.getWishTime() == null) {
                 record.setWishTime(fallbackTime);
             }
+            record.setClientUid(newClientUid());
+            record.setEditedAt(System.currentTimeMillis());
             saved.add(repository.save(record));
         }
         return saved;
@@ -104,12 +113,15 @@ public class WishService {
         if (record.getWishTime() == null) {
             record.setWishTime(LocalDateTime.now());
         }
+        record.setEditedAt(System.currentTimeMillis());
         return repository.save(record);
     }
 
     @Transactional
     public void delete(Long userId, Long id) {
-        repository.delete(findOwned(userId, id));
+        WishRecord record = findOwned(userId, id);
+        writeTombstone(userId, record);
+        repository.delete(record);
     }
 
     /** 批量删除：逐条校验归属，任一不属于当前用户则整体回滚。 */
@@ -119,8 +131,28 @@ public class WishService {
             throw new BusinessException("未选择要删除的记录");
         }
         for (Long id : ids) {
-            repository.delete(findOwned(userId, id));
+            WishRecord record = findOwned(userId, id);
+            writeTombstone(userId, record);
+            repository.delete(record);
         }
+    }
+
+    /**
+     * 为删除的记录写入墓碑，避免其他端用旧数据把它同步回来。
+     */
+    public void writeTombstone(Long userId, WishRecord record) {
+        String clientUid = record.getClientUid();
+        if (!StringUtils.hasText(clientUid)) {
+            return;
+        }
+        SyncTombstone tombstone = tombstoneRepository
+                .findFirstByUserIdAndGameAndClientUid(userId, record.getGame(), clientUid)
+                .orElseGet(SyncTombstone::new);
+        tombstone.setUserId(userId);
+        tombstone.setGame(record.getGame());
+        tombstone.setClientUid(clientUid);
+        tombstone.setEditedAt(System.currentTimeMillis());
+        tombstoneRepository.save(tombstone);
     }
 
     @Transactional(readOnly = true)
@@ -146,7 +178,11 @@ public class WishService {
         String gameKey = GameType.normalize(game);
         boolean replace = "replace".equalsIgnoreCase(mode);
         if (replace) {
-            repository.deleteAll(repository.findByUserIdAndGameOrderByWishTimeAsc(userId, gameKey));
+            List<WishRecord> existing = repository.findByUserIdAndGameOrderByWishTimeAsc(userId, gameKey);
+            for (WishRecord record : existing) {
+                writeTombstone(userId, record);
+            }
+            repository.deleteAll(existing);
         }
 
         WishImportResult result = new WishImportResult();
@@ -167,7 +203,11 @@ public class WishService {
                 continue;
             }
 
-            repository.save(toRecord(userId, gameKey, source, itemName, pool, rarity, wishTime));
+            WishRecord saved = repository.save(
+                    toRecord(userId, gameKey, source, itemName, pool, rarity, wishTime));
+            // 导入的记录重新出现时，清除同 clientUid 的旧墓碑
+            tombstoneRepository.deleteByUserIdAndGameAndClientUid(
+                    userId, gameKey, saved.getClientUid());
             result.setImported(result.getImported() + 1);
             seen.put(key, seenCount + 1);
         }
@@ -205,7 +245,15 @@ public class WishService {
         target.setPityCount(clamp(source.getPityCount(), 1, 180, 1));
         target.setWishTime(wishTime);
         target.setNote(truncate(trim(source.getNote()), 255));
+        target.setClientUid(StringUtils.hasText(source.getClientUid())
+                ? truncate(source.getClientUid().trim(), 64)
+                : newClientUid());
+        target.setEditedAt(source.getEditedAt() != null ? source.getEditedAt() : System.currentTimeMillis());
         return target;
+    }
+
+    private String newClientUid() {
+        return UUID.randomUUID().toString();
     }
 
     private WishRecord findOwned(Long userId, Long id) {

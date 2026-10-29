@@ -52,6 +52,10 @@ public class AccountResource extends BaseEntity {
     @Column(name = "acquainted_fates", nullable = false)
     private Long acquaintedFates = 0L;
 
+    /** 客户端编辑时间（epoch 毫秒），用于多端合并时判定新旧 */
+    @Column(name = "edited_at")
+    private Long editedAt;
+
     public Long getId() {
         return id;
     }
@@ -106,5 +110,13 @@ public class AccountResource extends BaseEntity {
 
     public void setAcquaintedFates(Long acquaintedFates) {
         this.acquaintedFates = acquaintedFates;
+    }
+
+    public Long getEditedAt() {
+        return editedAt;
+    }
+
+    public void setEditedAt(Long editedAt) {
+        this.editedAt = editedAt;
     }
 }
