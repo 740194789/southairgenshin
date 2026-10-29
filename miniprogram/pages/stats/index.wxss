@@ -1,0 +1,162 @@
+.hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 30rpx 28rpx;
+  border-radius: 24rpx;
+  margin-bottom: 24rpx;
+  background:
+    radial-gradient(520rpx 260rpx at 8% -20%, rgba(211, 188, 142, 0.22), transparent 62%),
+    #171b2b;
+  border: 1rpx solid rgba(211, 188, 142, 0.32);
+}
+
+.hero-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.hero-sub {
+  font-size: 22rpx;
+  letter-spacing: 2rpx;
+  color: #8b90a6;
+  text-transform: uppercase;
+}
+
+.hero-title {
+  font-size: 36rpx;
+  font-weight: 700;
+  color: #f2e2bd;
+  margin: 4rpx 0 8rpx;
+}
+
+.hero-desc {
+  font-size: 24rpx;
+  color: #a9adc0;
+}
+
+.strong {
+  color: #ffd479;
+  font-weight: 600;
+}
+
+.hero-badge {
+  flex-shrink: 0;
+  margin-left: 16rpx;
+  text-align: center;
+  padding: 16rpx 20rpx;
+  border-radius: 16rpx;
+  border: 1rpx solid rgba(211, 188, 142, 0.32);
+  background: rgba(211, 188, 142, 0.08);
+}
+
+.hero-badge-label {
+  font-size: 22rpx;
+  color: #8b90a6;
+}
+
+.hero-badge-value {
+  font-size: 36rpx;
+  font-weight: 700;
+  color: #f2e2bd;
+}
+
+.inline {
+  margin-left: 12rpx;
+  font-size: 22rpx;
+}
+
+.pity-line {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  font-size: 24rpx;
+  color: #c8ccdb;
+  margin-bottom: 10rpx;
+}
+
+.pity-note {
+  font-size: 22rpx;
+  color: #8b90a6;
+  line-height: 1.65;
+  margin-top: 6rpx;
+}
+
+.pool-stat {
+  padding: 18rpx 0;
+  border-bottom: 1rpx solid rgba(255, 255, 255, 0.06);
+}
+
+.pool-stat:last-child {
+  border-bottom: 0;
+  padding-bottom: 4rpx;
+}
+
+.pool-stat-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.pool-pity {
+  font-size: 24rpx;
+  color: #c8ccdb;
+}
+
+.pool-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  font-size: 22rpx;
+  color: #8b90a6;
+}
+
+.pool-meta text {
+  margin-right: 20rpx;
+}
+
+.bar-row {
+  display: flex;
+  align-items: center;
+  padding: 14rpx 0;
+}
+
+.bar-name {
+  width: 150rpx;
+  font-size: 24rpx;
+  color: #c8ccdb;
+  flex-shrink: 0;
+}
+
+.bar-track {
+  flex: 1;
+  height: 14rpx;
+  border-radius: 999rpx;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  margin: 0 16rpx;
+}
+
+.bar-fill {
+  height: 100%;
+  border-radius: 999rpx;
+  background: linear-gradient(90deg, #9f8b5f, #f2e2bd);
+}
+
+.bar-count {
+  width: 70rpx;
+  text-align: right;
+  font-size: 24rpx;
+  color: #f2e2bd;
+  flex-shrink: 0;
+}
+
+.recent-name {
+  font-size: 26rpx;
+  color: #ecebe7;
+}
+
+.recent-time {
+  font-size: 22rpx;
+  color: #8b90a6;
+}

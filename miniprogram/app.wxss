@@ -1,0 +1,404 @@
+/* SouthAir Genshin · 离线小程序全局样式（暗色 + 金色） */
+
+page {
+  background: #0b0d16;
+  color: #ecebe7;
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 28rpx;
+  line-height: 1.5;
+}
+
+.page {
+  padding: 24rpx;
+  padding-bottom: 40rpx;
+}
+
+/* 顶部品牌 + 游戏切换 */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8rpx 4rpx 28rpx;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+}
+
+.brand-mark {
+  width: 56rpx;
+  height: 56rpx;
+  line-height: 56rpx;
+  text-align: center;
+  border-radius: 12rpx;
+  background: linear-gradient(135deg, #f2e2bd, #d3bc8e);
+  color: #1b1a16;
+  font-size: 24rpx;
+  font-weight: 700;
+  margin-right: 16rpx;
+}
+
+.brand-name {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #f2e2bd;
+}
+
+/* 区块标题 */
+.section-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin: 8rpx 4rpx 20rpx;
+}
+
+.section-title {
+  font-size: 34rpx;
+  font-weight: 600;
+}
+
+.section-sub {
+  font-size: 24rpx;
+  color: #8b90a6;
+  margin-top: 4rpx;
+}
+
+/* 按钮 */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16rpx 28rpx;
+  border-radius: 12rpx;
+  font-size: 26rpx;
+  border: 1rpx solid transparent;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #f2e2bd, #d3bc8e);
+  color: #1b1a16;
+  font-weight: 600;
+}
+
+.btn-outline {
+  border-color: rgba(211, 188, 142, 0.42);
+  color: #d3bc8e;
+  background: rgba(211, 188, 142, 0.06);
+}
+
+.btn-text {
+  color: #8b90a6;
+  background: transparent;
+}
+
+.btn-danger {
+  color: #ff6b6b;
+  border-color: rgba(255, 107, 107, 0.4);
+}
+
+.btn-sm {
+  padding: 10rpx 20rpx;
+  font-size: 24rpx;
+}
+
+.btn:active {
+  opacity: 0.75;
+}
+
+.btn.disabled {
+  opacity: 0.4;
+}
+
+/* 卡片 */
+.panel {
+  background: #171b2b;
+  border: 1rpx solid rgba(211, 188, 142, 0.16);
+  border-radius: 20rpx;
+  padding: 28rpx;
+  margin-bottom: 24rpx;
+}
+
+.panel-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  margin-bottom: 10rpx;
+}
+
+.panel-desc {
+  font-size: 24rpx;
+  color: #8b90a6;
+  margin-bottom: 20rpx;
+}
+
+.pool-tag {
+  display: inline-block;
+  padding: 4rpx 14rpx;
+  border-radius: 999rpx;
+  font-size: 22rpx;
+  color: #d3bc8e;
+  border: 1rpx solid rgba(211, 188, 142, 0.32);
+  background: rgba(211, 188, 142, 0.08);
+}
+
+.pool-tag.up {
+  color: #ffd479;
+  border-color: rgba(255, 212, 121, 0.45);
+  background: rgba(255, 212, 121, 0.12);
+}
+
+.stars {
+  color: #ffcf5c;
+  font-size: 24rpx;
+  margin-right: 6rpx;
+}
+
+.muted {
+  color: #8b90a6;
+}
+
+.mono {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 统计卡片 2 列 */
+.stat-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  margin-bottom: 24rpx;
+}
+
+.stat-card {
+  width: 48.5%;
+  box-sizing: border-box;
+  background: #171b2b;
+  border: 1rpx solid rgba(211, 188, 142, 0.16);
+  border-radius: 20rpx;
+  padding: 26rpx 24rpx;
+  margin-bottom: 16rpx;
+}
+
+.stat-label {
+  font-size: 24rpx;
+  color: #8b90a6;
+}
+
+.stat-value {
+  font-size: 42rpx;
+  font-weight: 700;
+  color: #f2e2bd;
+  margin: 6rpx 0;
+  word-break: break-all;
+}
+
+.stat-extra {
+  font-size: 22rpx;
+  color: #8b90a6;
+}
+
+/* 换算行 */
+.convert-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 18rpx 0;
+  border-bottom: 1rpx solid rgba(255, 255, 255, 0.06);
+}
+
+.convert-item:last-child {
+  border-bottom: 0;
+}
+
+.convert-item.highlight .convert-value {
+  color: #ffd479;
+}
+
+.convert-label {
+  font-size: 26rpx;
+  color: #c8ccdb;
+}
+
+.convert-value {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #f2e2bd;
+  margin-left: auto;
+  margin-right: 16rpx;
+}
+
+.convert-note {
+  font-size: 22rpx;
+  color: #8b90a6;
+  text-align: right;
+  max-width: 46%;
+}
+
+/* 进度条 */
+.pity-bar {
+  height: 12rpx;
+  border-radius: 999rpx;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  margin: 16rpx 0 14rpx;
+}
+
+.pity-bar-fill {
+  height: 100%;
+  border-radius: 999rpx;
+  background: linear-gradient(90deg, #9f8b5f, #f2e2bd);
+}
+
+/* 空状态 */
+.empty {
+  text-align: center;
+  color: #8b90a6;
+  font-size: 26rpx;
+  padding: 40rpx 0;
+}
+
+/* 弹窗 */
+.mask {
+  position: fixed;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.62);
+  z-index: 100;
+  display: flex;
+  align-items: flex-end;
+}
+
+.modal {
+  width: 100%;
+  background: #10141f;
+  border-radius: 28rpx 28rpx 0 0;
+  border-top: 1rpx solid rgba(211, 188, 142, 0.32);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 28rpx 28rpx 16rpx;
+}
+
+.modal-title {
+  font-size: 32rpx;
+  font-weight: 600;
+}
+
+.modal-close {
+  width: 56rpx;
+  height: 56rpx;
+  line-height: 52rpx;
+  text-align: center;
+  font-size: 40rpx;
+  color: #8b90a6;
+}
+
+.modal-body {
+  height: 58vh;
+  box-sizing: border-box;
+  padding: 0 28rpx;
+}
+
+.modal-foot {
+  display: flex;
+  justify-content: flex-end;
+  padding: 20rpx 28rpx 28rpx;
+  border-top: 1rpx solid rgba(255, 255, 255, 0.06);
+}
+
+.modal-foot .btn {
+  margin-left: 16rpx;
+}
+
+/* 表单 */
+.form-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20rpx 0;
+  border-bottom: 1rpx solid rgba(255, 255, 255, 0.06);
+}
+
+.form-label {
+  font-size: 26rpx;
+  color: #c8ccdb;
+  flex-shrink: 0;
+  margin-right: 20rpx;
+}
+
+.form-control {
+  flex: 1;
+  text-align: right;
+  font-size: 26rpx;
+  color: #ecebe7;
+  min-width: 0;
+}
+
+.form-input {
+  flex: 1;
+  text-align: right;
+  font-size: 26rpx;
+  color: #ecebe7;
+  min-width: 0;
+}
+
+.picker-box {
+  color: #f2e2bd;
+  font-size: 26rpx;
+}
+
+.picker-box::after {
+  content: " ›";
+  color: #8b90a6;
+}
+
+.switch {
+  transform: scale(0.8);
+  transform-origin: right center;
+}
+
+/* 列表行 */
+.list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18rpx 0;
+  border-bottom: 1rpx solid rgba(255, 255, 255, 0.06);
+}
+
+.list-row:last-child {
+  border-bottom: 0;
+}
+
+/* 工具条 */
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 20rpx;
+}
+
+.toolbar .btn {
+  margin: 0 12rpx 12rpx 0;
+}
+
+.toolbar-title {
+  flex: 1;
+  font-size: 26rpx;
+  color: #8b90a6;
+  margin-bottom: 12rpx;
+}
+
+/* 页脚提示 */
+.foot-tip {
+  font-size: 22rpx;
+  color: #6f7488;
+  line-height: 1.7;
+  padding: 8rpx 4rpx 0;
+}

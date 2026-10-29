@@ -1,0 +1,18 @@
+{
+  "description": "SouthAir Genshin 离线版小程序",
+  "packOptions": {
+    "ignore": []
+  },
+  "setting": {
+    "urlCheck": false,
+    "es6": true,
+    "postcss": true,
+    "minified": true,
+    "enhance": true
+  },
+  "compileType": "miniprogram",
+  "libVersion": "2.32.3",
+  "appid": "touristappid",
+  "projectname": "southair-genshin-offline",
+  "miniprogramRoot": "./"
+}

@@ -1,0 +1,5 @@
+{
+  "usingComponents": {
+    "game-switch": "/components/game-switch/index"
+  }
+}

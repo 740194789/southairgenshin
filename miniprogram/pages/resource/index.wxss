@@ -1,0 +1,25 @@
+.convert-item {
+  display: block;
+  padding: 20rpx 0;
+}
+
+.convert-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.convert-item .convert-value {
+  margin-right: 0;
+}
+
+.convert-note {
+  max-width: 100%;
+  text-align: left;
+  margin-top: 4rpx;
+}
+
+.section-head .btn {
+  flex-shrink: 0;
+  margin-left: 16rpx;
+}

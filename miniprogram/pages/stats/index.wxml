@@ -1,0 +1,112 @@
+<view class="page">
+  <view class="topbar" style="padding-top: {{statusBarHeight + 36}}px">
+    <view class="brand">
+      <view class="brand-mark">SA</view>
+      <view class="brand-name">SouthAir Genshin</view>
+    </view>
+    <game-switch game="{{game}}" bind:change="onSwitchGame" />
+  </view>
+
+  <view class="hero">
+    <view class="hero-main">
+      <view class="hero-sub">{{g.heroSub}}</view>
+      <view class="hero-title">{{g.fullName}}</view>
+      <view class="hero-desc">当前合计可抽 <text class="strong">{{stats.totalPullsText}}</text> 抽 · 总资产 {{stats.totalPrimogemsText}} {{g.currency}}</view>
+    </view>
+    <view class="hero-badge">
+      <view class="hero-badge-label">五星出货率</view>
+      <view class="hero-badge-value">{{stats.fiveStarRate}}%</view>
+    </view>
+  </view>
+
+  <view wx:if="{{capture}}" class="panel">
+    <view class="panel-title">捕获明光<text class="pool-tag inline">角色活动 · 原神</text></view>
+    <view class="pity-bar">
+      <view class="pity-bar-fill" style="width:{{capture.percent}}%"></view>
+    </view>
+    <view class="pity-line">
+      <text>连歪次数 <text class="strong">{{capture.losses}} / 3</text></text>
+      <text>距必定捕获还差 <text class="strong">{{capture.remaining}} 次</text></text>
+    </view>
+    <view class="pity-note">{{capture.status}}</view>
+    <view class="pity-note">角色池五星 {{capture.characterFive}} 次，UP {{capture.characterUp}} 次（UP 率 {{capture.characterRate}}%）</view>
+    <view class="pity-note">规则：小保底基础 50%，含捕获明光综合 55%；连续 3 次歪后，下次五星必定 UP（连歪 1 / 2 次按 55% / 75% 估算）。</view>
+  </view>
+
+  <view class="panel">
+    <view class="panel-title">卡池保底统计<text class="pool-tag inline">保底 · 出货</text></view>
+    <view class="pool-stat" wx:for="{{pools}}" wx:key="pool">
+      <view class="pool-stat-head">
+        <text class="pool-tag">{{item.pool}}</text>
+        <text class="pool-pity">当前 {{item.currentPity}} / {{item.cap}} 抽</text>
+      </view>
+      <view class="pity-bar">
+        <view class="pity-bar-fill" style="width:{{item.percent}}%"></view>
+      </view>
+      <view class="pool-meta">
+        <text>五星 {{item.fiveStarCount}} 次</text>
+        <text>平均 {{item.avgFiveStarPity}} 抽</text>
+        <text>距保底 {{item.pullsToPity}} 抽</text>
+        <text wx:if="{{item.upGuaranteed}}" class="pool-tag up">{{item.guaranteeText}}</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="stat-grid">
+    <view class="stat-card">
+      <view class="stat-label">出货记录</view>
+      <view class="stat-value">{{stats.wishCount}}</view>
+      <view class="stat-extra">四星 {{stats.fourStarWishes}} 次</view>
+    </view>
+    <view class="stat-card">
+      <view class="stat-label">五星出货</view>
+      <view class="stat-value">{{stats.fiveStarWishes}}</view>
+      <view class="stat-extra">出货率 {{stats.fiveStarRate}}%</view>
+    </view>
+    <view class="stat-card">
+      <view class="stat-label">四星出货</view>
+      <view class="stat-value">{{stats.fourStarWishes}}</view>
+      <view class="stat-extra">占总记录 {{stats.fourStarPercent}}%</view>
+    </view>
+    <view class="stat-card">
+      <view class="stat-label">五星平均抽数</view>
+      <view class="stat-value">{{stats.avgFiveStarPity}}</view>
+      <view class="stat-extra">按记录中的保底进度</view>
+    </view>
+  </view>
+
+  <view class="panel">
+    <view class="panel-title">卡池分布</view>
+    <block wx:if="{{dist.length}}">
+      <view class="bar-row" wx:for="{{dist}}" wx:key="name">
+        <text class="bar-name">{{item.name}}</text>
+        <view class="bar-track">
+          <view class="bar-fill" style="width:{{item.percent}}%"></view>
+        </view>
+        <text class="bar-count">{{item.value}}</text>
+      </view>
+    </block>
+    <view wx:else class="empty">还没有抽卡记录</view>
+  </view>
+
+  <view class="panel">
+    <view class="panel-title">最近出货</view>
+    <block wx:if="{{recent.length}}">
+      <view class="list-row" wx:for="{{recent}}" wx:key="id">
+        <view class="recent-name"><text class="stars">{{item.stars}}</text>{{item.name}}</view>
+        <text class="recent-time">{{item.time}}</text>
+      </view>
+    </block>
+    <view wx:else class="empty">还没有抽卡记录</view>
+  </view>
+
+  <view class="panel">
+    <view class="panel-title">数据备份 · {{g.fullName}}</view>
+    <view class="panel-desc">导出当前游戏的抽卡记录与账号资源为 JSON 文件，或从备份文件恢复数据。备份文件可发送到微信好友或「文件传输助手」再保存到电脑。</view>
+    <view class="toolbar">
+      <view class="btn btn-primary" bindtap="exportBackup">导出备份</view>
+      <view class="btn btn-outline" bindtap="importBackup">导入备份</view>
+    </view>
+    <view class="foot-tip">离线版数据只存在本机缓存；卸载、清理缓存或换机会丢失，建议每次抽卡后导出一次备份。</view>
+  </view>
+</view>

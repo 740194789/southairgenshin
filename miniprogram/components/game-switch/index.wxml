@@ -1,0 +1,4 @@
+<view class="game-switch">
+  <view class="game-btn {{game === 'genshin' ? 'active' : ''}}" data-game="genshin" bindtap="onTap">原神</view>
+  <view class="game-btn {{game === 'starrail' ? 'active' : ''}}" data-game="starrail" bindtap="onTap">星穹铁道</view>
+</view>

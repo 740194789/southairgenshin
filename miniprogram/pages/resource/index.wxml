@@ -1,0 +1,109 @@
+<view class="page">
+  <view class="topbar" style="padding-top: {{statusBarHeight + 36}}px">
+    <view class="brand">
+      <view class="brand-mark">SA</view>
+      <view class="brand-name">SouthAir Genshin</view>
+    </view>
+    <game-switch game="{{game}}" bind:change="onSwitchGame" />
+  </view>
+
+  <view class="section-head">
+    <view>
+      <view class="section-title">账号资源</view>
+      <view class="section-sub">{{g.fullName}} · 资源与抽数换算</view>
+    </view>
+    <view class="btn btn-outline btn-sm" bindtap="openEdit">编辑资源</view>
+  </view>
+
+  <view class="stat-grid">
+    <view class="stat-card">
+      <view class="stat-label">{{g.currency}}</view>
+      <view class="stat-value">{{res.primogemsText}}</view>
+      <view class="stat-extra">≈ {{res.pullsFromPrimogems}} 抽</view>
+    </view>
+    <view class="stat-card">
+      <view class="stat-label">{{g.credit}}</view>
+      <view class="stat-value">{{res.moraText}}</view>
+      <view class="stat-extra">游戏内货币</view>
+    </view>
+    <view class="stat-card">
+      <view class="stat-label">{{g.fateLimited}}</view>
+      <view class="stat-value">{{res.intertwinedFatesText}}</view>
+      <view class="stat-extra">限定池抽数</view>
+    </view>
+    <view class="stat-card">
+      <view class="stat-label">{{g.fateStandard}}</view>
+      <view class="stat-value">{{res.acquaintedFatesText}}</view>
+      <view class="stat-extra">常驻池抽数 · 不计入可抽数</view>
+    </view>
+  </view>
+
+  <view class="panel">
+    <view class="panel-title">抽数换算</view>
+    <view class="panel-desc">常驻池抽数（{{g.fateStandard}}）不计入货币折算与合计可抽。</view>
+
+    <view class="convert-item">
+      <view class="convert-line">
+        <text class="convert-label">{{g.currency}}可兑换</text>
+        <text class="convert-value">{{res.pullsFromPrimogemsText}} 抽</text>
+      </view>
+      <view class="convert-note">余 {{res.primogemsRemainderText}} {{g.currency}} · 1 抽 = {{res.primogemsPerPull}} {{g.currency}}</view>
+    </view>
+
+    <view class="convert-item">
+      <view class="convert-line">
+        <text class="convert-label">限定抽数折算</text>
+        <text class="convert-value">{{res.primogemsFromFatesText}} {{g.currency}}</text>
+      </view>
+      <view class="convert-note">{{g.fateLimited}} × {{res.primogemsPerPull}}</view>
+    </view>
+
+    <view class="convert-item highlight">
+      <view class="convert-line">
+        <text class="convert-label">合计可抽</text>
+        <text class="convert-value">{{res.totalPullsText}} 抽</text>
+      </view>
+      <view class="convert-note">货币 + 限定抽数折算 {{res.totalPrimogemsText}} {{g.currency}}</view>
+    </view>
+  </view>
+
+  <view class="panel">
+    <view class="panel-title">数据存在哪</view>
+    <view class="panel-desc">离线版不连接服务器，所有记录与资源都保存在本机小程序缓存中（按原神 / 星穹铁道分开存放）。</view>
+    <view class="foot-tip">1. 卸载小程序、清理微信缓存或更换手机，数据不会自动同步，建议定期在「统计」页导出备份。</view>
+    <view class="foot-tip">2. 网页版数据存在电脑服务端的 H2 数据库，与小程序缓存互不相通，可导出 JSON 备份后在小程序里导入。</view>
+    <view class="foot-tip">3. 离线版暂不支持截图识别，需要手动录入或在抽卡页导入 CSV / JSON。</view>
+  </view>
+</view>
+
+<view wx:if="{{editing}}" class="mask" bindtap="closeEdit">
+  <view class="modal" catchtap="noop">
+    <view class="modal-head">
+      <text class="modal-title">编辑资源 · {{g.fullName}}</text>
+      <view class="modal-close" bindtap="closeEdit">×</view>
+    </view>
+    <view class="modal-body" style="height:auto; padding-bottom:16rpx;">
+      <view class="form-row">
+        <text class="form-label">{{g.currency}}</text>
+        <input class="form-input" type="number" value="{{form.primogems}}" data-key="primogems" bindinput="onInput" placeholder="0"/>
+      </view>
+      <view class="form-row">
+        <text class="form-label">{{g.credit}}</text>
+        <input class="form-input" type="number" value="{{form.mora}}" data-key="mora" bindinput="onInput" placeholder="0"/>
+      </view>
+      <view class="form-row">
+        <text class="form-label">{{g.fateLimited}}</text>
+        <input class="form-input" type="number" value="{{form.intertwinedFates}}" data-key="intertwinedFates" bindinput="onInput" placeholder="0"/>
+      </view>
+      <view class="form-row">
+        <text class="form-label">{{g.fateStandard}}</text>
+        <input class="form-input" type="number" value="{{form.acquaintedFates}}" data-key="acquaintedFates" bindinput="onInput" placeholder="0"/>
+      </view>
+      <view class="foot-tip">留空按 0 处理；只填写数量，不需要单位。</view>
+    </view>
+    <view class="modal-foot">
+      <view class="btn btn-text" bindtap="closeEdit">取消</view>
+      <view class="btn btn-primary" bindtap="saveEdit">保存</view>
+    </view>
+  </view>
+</view>
