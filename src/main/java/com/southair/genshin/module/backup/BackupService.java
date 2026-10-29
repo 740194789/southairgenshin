@@ -92,7 +92,12 @@ public class BackupService {
         Map<String, Integer> seen = new HashMap<>();
         for (WishRecord source : wishes) {
             int rarity = clamp(source.getRarity(), 1, 5, 3);
-            // 三星（蓝色）可以不填写具体名称，统一记为「三星物品」
+            // 只记录四星角色与五星物品，三星物品、四星武器 / 光锥直接忽略
+            if (!WishService.isRecordable(rarity, trim(source.getItemType()))) {
+                skipped++;
+                continue;
+            }
+            // 缺名称时按星级给出默认名称
             String itemName = WishService.normalizeItemName(source.getItemName(), rarity);
             LocalDateTime wishTime = source.getWishTime() == null ? LocalDateTime.now() : source.getWishTime();
             String pool = trim(source.getPool());

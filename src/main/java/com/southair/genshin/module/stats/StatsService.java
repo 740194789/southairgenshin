@@ -36,10 +36,13 @@ public class StatsService {
         long fiveStarWishes = wishRepository.countByUserIdAndGameAndRarity(userId, gameKey, 5);
         long fourStarWishes = wishRepository.countByUserIdAndGameAndRarity(userId, gameKey, 4);
 
+        // 记录只保留四星角色与五星物品，总抽数按五星记录消耗的抽数累加
+        Long fiveStarPulls = wishRepository.sumFiveStarPity(userId, gameKey);
+        long totalPulls = fiveStarPulls == null ? 0L : fiveStarPulls;
         vo.setWishCount(wishCount);
         vo.setFiveStarWishes(fiveStarWishes);
         vo.setFourStarWishes(fourStarWishes);
-        vo.setFiveStarRate(wishCount == 0 ? 0D : round(fiveStarWishes * 100D / wishCount));
+        vo.setFiveStarRate(totalPulls == 0 ? 0D : round(fiveStarWishes * 100D / totalPulls));
 
         Double avgPity = wishRepository.avgFiveStarPity(userId, gameKey);
         vo.setAvgFiveStarPity(avgPity == null ? 0D : round(avgPity));

@@ -33,6 +33,11 @@ public interface WishRecordRepository extends JpaRepository<WishRecord, Long> {
             + " where w.userId = :userId and w.game = :game and w.rarity = 5")
     Double avgFiveStarPity(@Param("userId") Long userId, @Param("game") String game);
 
+    /** 五星记录消耗的抽数之和，用于估算总抽数与五星出货率。 */
+    @Query("select sum(w.pityCount) from WishRecord w"
+            + " where w.userId = :userId and w.game = :game and w.rarity = 5")
+    Long sumFiveStarPity(@Param("userId") Long userId, @Param("game") String game);
+
     @Query("select w.pool, count(w) from WishRecord w"
             + " where w.userId = :userId and w.game = :game group by w.pool order by count(w) desc")
     List<Object[]> countGroupByPool(@Param("userId") Long userId, @Param("game") String game);

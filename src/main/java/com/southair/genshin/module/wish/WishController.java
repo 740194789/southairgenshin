@@ -84,13 +84,6 @@ public class WishController {
         return R.ok();
     }
 
-    /** 十连批量新增。 */
-    @PostMapping("/batch")
-    public R<List<WishRecord>> createBatch(@Valid @RequestBody WishBatchRequest request,
-                                           @RequestParam(defaultValue = "genshin") String game) {
-        return R.ok(wishService.createBatch(UserContext.require(), game, request));
-    }
-
     /** 批量编辑已有记录。 */
     @PutMapping("/batch")
     public R<List<WishRecord>> updateBatch(@Valid @RequestBody WishBatchRequest request) {

@@ -4,9 +4,8 @@ var gameLib = require('../../utils/game');
 var csv = require('../../utils/csv');
 var file = require('../../utils/file');
 
-var RARITY_VALUES = [3, 4, 5];
-var RARITY_LABELS = ['3 星', '4 星', '5 星'];
 var PAGE_SIZE = 10;
+var FIVE_STAR = 5;
 
 function starText(rarity) {
   var count = Math.max(0, Math.min(5, Number(rarity) || 0));
@@ -29,7 +28,7 @@ function editorDefaults(g, poolIndex) {
   var parts = nowParts();
   return {
     itemName: '',
-    rarityIndex: 2,
+    rarity: FIVE_STAR,
     typeIndex: 0,
     poolIndex: poolIndex || 0,
     isUp: true,
@@ -53,18 +52,10 @@ Page({
     total: 0,
     selected: [],
     selectedCount: 0,
-    rarityLabels: RARITY_LABELS,
     typeOptions: gameLib.config('genshin').itemTypes,
     editorVisible: false,
     editorId: null,
-    editor: editorDefaults(gameLib.config('genshin'), 0),
-    batchVisible: false,
-    batch: {
-      poolIndex: 0,
-      date: '',
-      time: '',
-      rows: []
-    }
+    editor: editorDefaults(gameLib.config('genshin'), 0)
   },
 
   onLoad: function () {
@@ -89,8 +80,7 @@ Page({
       selected: [],
       selectedCount: 0,
       typeOptions: g.itemTypes,
-      editorVisible: false,
-      batchVisible: false
+      editorVisible: false
     });
     this.load();
   },
@@ -105,7 +95,7 @@ Page({
     var rows = result.records.map(function (record) {
       return {
         id: record.id,
-        displayName: record.itemName || '三星物品',
+        displayName: record.itemName || '未命名',
         stars: starText(record.rarity),
         rarity: record.rarity,
         itemType: record.itemType || '—',
@@ -264,8 +254,8 @@ Page({
       editorVisible: true,
       editorId: id,
       editor: {
-        itemName: record.rarity === 3 && record.itemName === '三星物品' ? '' : (record.itemName || ''),
-        rarityIndex: Math.max(0, Math.min(2, (record.rarity || 3) - 3)),
+        itemName: record.itemName || '',
+        rarity: record.rarity || FIVE_STAR,
         typeIndex: typeIndex < 0 ? 0 : typeIndex,
         poolIndex: poolIndex < 0 ? 0 : poolIndex,
         isUp: record.isUp === true,
@@ -286,10 +276,6 @@ Page({
 
   onEditorName: function (event) {
     this.setData({ 'editor.itemName': event.detail.value });
-  },
-
-  onEditorRarity: function (event) {
-    this.setData({ 'editor.rarityIndex': Number(event.detail.value) });
   },
 
   onEditorType: function (event) {
@@ -324,19 +310,20 @@ Page({
     var editor = this.data.editor;
     var g = this.data.g;
     var editing = !!this.data.editorId;
-    var rarity = RARITY_VALUES[editor.rarityIndex] || 3;
+    var rarity = Number(editor.rarity) || FIVE_STAR;
     var name = (editor.itemName || '').trim();
-    if (rarity > 3 && !name) {
-      wx.showToast({ title: '四星 / 五星请填写名称（三星可留空）', icon: 'none' });
+    if (!name) {
+      wx.showToast({ title: '请填写五星名称', icon: 'none' });
       return;
     }
+    var pity = Math.max(1, Math.min(180, Number(editor.pity) || 1));
     var data = {
       itemName: name,
       rarity: rarity,
       itemType: g.itemTypes[editor.typeIndex] || g.itemTypes[0],
       pool: g.pools[editor.poolIndex] || g.pools[0],
       isUp: editor.isUp,
-      pityCount: Number(editor.pity) || 1,
+      pityCount: pity,
       wishTime: editor.date + ' ' + editor.time + ':00',
       note: editor.note
     };
@@ -348,105 +335,6 @@ Page({
     this.setData({ editorVisible: false });
     this.load();
     wx.showToast({ title: editing ? '修改已保存' : '新增成功', icon: 'success' });
-  },
-
-  /* ---------------- 十连录入 ---------------- */
-
-  openBatch: function () {
-    var parts = nowParts();
-    var rows = [];
-    for (var i = 0; i < 10; i++) {
-      rows.push({
-        key: i,
-        rarityIndex: 0,
-        name: '',
-        up: false,
-        pity: '1'
-      });
-    }
-    this.setData({
-      batchVisible: true,
-      batch: {
-        poolIndex: this.data.poolIndex > 0 ? this.data.poolIndex - 1 : 0,
-        date: parts.date,
-        time: parts.time,
-        rows: rows
-      }
-    });
-  },
-
-  closeBatch: function () {
-    this.setData({ batchVisible: false });
-  },
-
-  onBatchPool: function (event) {
-    this.setData({ 'batch.poolIndex': Number(event.detail.value) });
-  },
-
-  onBatchDate: function (event) {
-    this.setData({ 'batch.date': event.detail.value });
-  },
-
-  onBatchTime: function (event) {
-    this.setData({ 'batch.time': event.detail.value });
-  },
-
-  onBatchRarity: function (event) {
-    var index = Number(event.currentTarget.dataset.index);
-    this.setData(this.nested('batch.rows[' + index + '].rarityIndex', Number(event.detail.value)));
-  },
-
-  onBatchName: function (event) {
-    var index = Number(event.currentTarget.dataset.index);
-    this.setData(this.nested('batch.rows[' + index + '].name', event.detail.value));
-  },
-
-  onBatchUp: function (event) {
-    var index = Number(event.currentTarget.dataset.index);
-    var row = this.data.batch.rows[index];
-    if (!row) {
-      return;
-    }
-    this.setData(this.nested('batch.rows[' + index + '].up', !row.up));
-  },
-
-  onBatchPity: function (event) {
-    var index = Number(event.currentTarget.dataset.index);
-    this.setData(this.nested('batch.rows[' + index + '].pity', event.detail.value));
-  },
-
-  nested: function (path, value) {
-    var patch = {};
-    patch[path] = value;
-    return patch;
-  },
-
-  saveBatch: function () {
-    var batch = this.data.batch;
-    var g = this.data.g;
-    var records = [];
-    for (var i = 0; i < batch.rows.length; i++) {
-      var row = batch.rows[i];
-      var rarity = RARITY_VALUES[row.rarityIndex] || 3;
-      var name = (row.name || '').trim();
-      if (rarity > 3 && !name) {
-        wx.showToast({ title: '第 ' + (i + 1) + ' 行是 ' + rarity + ' 星，请填写名称', icon: 'none' });
-        return;
-      }
-      records.push({
-        itemName: name,
-        rarity: rarity,
-        itemType: rarity === 3 ? g.threeStarType : g.itemTypes[0],
-        pool: g.pools[batch.poolIndex] || g.pools[0],
-        isUp: row.up,
-        pityCount: Number(row.pity) || 1,
-        wishTime: batch.date + ' ' + batch.time + ':00'
-      });
-    }
-    store.addWishes(this.data.game, records);
-    this.setData({ batchVisible: false, page: 1, selected: [], selectedCount: 0 });
-    this.load();
-    wx.showToast({ title: '已保存 10 抽', icon: 'success' });
   },
 
   /* ---------------- 导入 / 导出 ---------------- */
@@ -521,7 +409,9 @@ Page({
     this.setData({ page: 1, selected: [], selectedCount: 0 });
     this.load();
     wx.showToast({
-      title: '导入 ' + result.imported + ' 条' + (result.skipped ? '，跳过 ' + result.skipped + ' 条' : ''),
+      title: '导入 ' + result.imported + ' 条'
+        + (result.skipped ? '，跳过 ' + result.skipped + ' 条' : '')
+        + (result.filtered ? '，忽略 ' + result.filtered + ' 条' : ''),
       icon: 'none'
     });
   }

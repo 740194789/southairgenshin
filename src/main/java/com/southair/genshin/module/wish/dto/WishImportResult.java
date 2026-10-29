@@ -15,6 +15,8 @@ public class WishImportResult implements Serializable {
     private int imported;
     /** 因重复或无效被跳过的条数 */
     private int skipped;
+    /** 按记录规则被忽略的条数（三星物品、四星武器 / 光锥） */
+    private int filtered;
 
     public String getMode() {
         return mode;
@@ -38,5 +40,13 @@ public class WishImportResult implements Serializable {
 
     public void setSkipped(int skipped) {
         this.skipped = skipped;
+    }
+
+    public int getFiltered() {
+        return filtered;
+    }
+
+    public void setFiltered(int filtered) {
+        this.filtered = filtered;
     }
 }

@@ -855,7 +855,8 @@
     /* ---------------- 抽卡记录 ---------------- */
 
     function wishRow(item) {
-        var name = item.itemName || '三星物品';
+        var name = item.itemName || '未命名';
+        var fiveStar = Number(item.rarity) >= 5;
         return '<div class="record-row" data-id="' + item.id + '">'
             + '<input type="checkbox" class="record-check" data-check'
             + (state.wishSelected.has(item.id) ? ' checked' : '') + ' aria-label="选择"/>'
@@ -864,8 +865,8 @@
             + '<div>' + esc(item.itemType || '—') + '</div>'
             + '<div><span class="pool-tag' + (item.isUp ? ' up' : '') + '">'
             + esc(item.pool || '未知卡池') + '</span></div>'
-            + '<div>' + (item.isUp ? 'UP 内' : '未中 UP') + '</div>'
-            + '<div>保底 ' + (item.pityCount || 1) + '</div>'
+            + '<div>' + (fiveStar ? (item.isUp ? 'UP 内' : '未中 UP') : '—') + '</div>'
+            + '<div>' + (fiveStar ? '用了 ' + (item.pityCount || 1) + ' 抽' : '—') + '</div>'
             + '<div class="record-time">' + esc(item.wishTime || '') + '</div>'
             + '<div class="record-actions">'
             + '<button class="icon-btn" type="button" data-act="edit">编辑</button>'
@@ -884,10 +885,9 @@
 
         el.innerHTML =
             '<div class="page-head">'
-            + '<div><h2>抽卡记录</h2><p class="sub">出金记录、卡池与保底进度 · 支持十连与导入导出</p></div>'
+            + '<div><h2>抽卡记录</h2><p class="sub">五星出货记录 · 记录抽到五星用了多少抽 · 支持导入导出</p></div>'
             + '<div class="head-actions">'
-            + '<button class="btn btn-primary" id="wish-batch-add" type="button">十连录入</button>'
-            + '<button class="btn btn-outline" id="wish-add" type="button">+ 记录一抽</button>'
+            + '<button class="btn btn-primary" id="wish-add" type="button">+ 录入五星</button>'
             + '</div>'
             + '</div>'
             + '<div class="toolbar">'
@@ -971,7 +971,7 @@
             cache.wishes = data.records || [];
             box.innerHTML = cache.wishes.length
                 ? cache.wishes.map(wishRow).join('')
-                : emptyHtml('暂无抽卡记录，点击右上角“记录一抽”开始记录');
+                : emptyHtml('暂无抽卡记录，点击右上角“录入五星”开始记录');
             pager.innerHTML = pagerHtml(data);
             pager.onclick = function (event) {
                 var btn = event.target.closest('[data-page]');
@@ -1034,14 +1034,14 @@
             endpoint: '/api/wishes',
             fields: [
                 {
-                    key: 'itemName', label: '抽到的东西', type: 'text',
-                    placeholder: g.itemTypes[0] + ' / ' + g.itemTypes[1] + '名称（三星可留空）'
+                    key: 'itemName', label: '抽到的五星', type: 'text',
+                    placeholder: g.itemTypes[0] + ' / ' + g.itemTypes[1] + '名称'
                 },
-                { key: 'rarity', label: '星级', type: 'select', options: [3, 4, 5], default: 5 },
+                { key: 'rarity', type: 'hidden', default: 5 },
                 { key: 'itemType', label: '类型', type: 'select', options: g.itemTypes, default: g.itemTypes[0] },
                 { key: 'pool', label: '卡池', type: 'select', options: g.pools, default: g.pools[0] },
+                { key: 'pityCount', label: '抽到五星用了多少抽', type: 'number', min: 1, max: 180, default: 1 },
                 { key: 'isUp', label: '是否 UP', type: 'select', options: [{ value: true, label: 'UP 内' }, { value: false, label: '未中 UP' }], default: true },
-                { key: 'pityCount', label: '保底计数（第几抽）', type: 'number', min: 1, max: 180, default: 1 },
                 { key: 'wishTime', label: '抽卡时间', type: 'datetime', full: true, default: nowLocal() },
                 { key: 'note', label: '备注', type: 'textarea', full: true }
             ]
@@ -1052,6 +1052,10 @@
         var current = value === undefined || value === null ? (field.default === undefined ? '' : field.default) : value;
         var wrapClass = 'field' + (field.full ? ' field-full' : '');
         var required = field.required ? ' required' : '';
+
+        if (field.type === 'hidden') {
+            return '<input type="hidden" name="' + field.key + '" value="' + esc(current) + '"/>';
+        }
 
         if (field.type === 'select') {
             var options = (field.options || []).map(function (option) {
@@ -1163,7 +1167,7 @@
                 return;
             }
             var value = el.value;
-            if (field.type === 'number') {
+            if (field.type === 'number' || field.type === 'hidden') {
                 data[field.key] = value === '' ? null : Number(value);
             } else if (field.type === 'select' && field.options && typeof field.options[0] === 'object') {
                 var matched = field.options.filter(function (option) {
@@ -1197,8 +1201,11 @@
 
         return openForm((isEdit ? '编辑' : '新增') + config.title, config.fields, values, {
             validate: function (data) {
-                if (Number(data.rarity) > 3 && !data.itemName) {
-                    return '四星 / 五星请填写名称（三星可留空）';
+                if (!data.itemName) {
+                    return '请填写五星名称';
+                }
+                if (!data.pityCount || data.pityCount < 1 || data.pityCount > 180) {
+                    return '抽到五星用了多少抽需在 1-180 之间';
                 }
                 return null;
             }
@@ -1226,73 +1233,53 @@
         });
     }
 
-    /* ---------------- 十连录入 / 批量编辑 ---------------- */
+    /* ---------------- 批量编辑本页 ---------------- */
 
     var BATCH_LIMIT = 10;
 
-    function batchRowHtml(index, item, isEdit) {
-        var rarity = item && item.rarity ? Number(item.rarity) : 3;
-        var name = item && item.itemName && item.itemName !== '三星物品' ? item.itemName : '';
+    function batchRowHtml(index, item) {
+        var rarity = item && item.rarity ? Number(item.rarity) : 5;
+        var name = item && item.itemName ? item.itemName : '';
         var up = item ? !!item.isUp : false;
         var pity = item && item.pityCount ? item.pityCount : 1;
         var time = item && item.wishTime ? String(item.wishTime).replace(' ', 'T').slice(0, 16) : '';
-        var rarityOptions = [3, 4, 5].map(function (value) {
-            return '<option value="' + value + '"' + (value === rarity ? ' selected' : '') + '>'
-                + value + ' 星</option>';
-        }).join('');
 
-        return '<div class="batch-row' + (isEdit ? ' has-time' : '') + '" data-index="' + index + '">'
+        return '<div class="batch-row has-time" data-index="' + index + '">'
             + '<span class="batch-no">' + (index + 1) + '</span>'
-            + '<select class="batch-rarity">' + rarityOptions + '</select>'
+            + '<span class="batch-stars">' + starText(rarity) + '</span>'
             + '<input class="batch-name" type="text" maxlength="64" value="' + esc(name) + '"'
-            + (rarity === 3 ? ' disabled' : '') + ' placeholder="' + (rarity === 3 ? '三星无需填写' : '角色 / 武器名称') + '"/>'
+            + ' placeholder="角色 / 武器名称"/>'
             + '<label class="batch-up"><input class="batch-isup" type="checkbox"' + (up ? ' checked' : '') + '/>UP</label>'
-            + '<input class="batch-pity" type="number" min="1" max="180" value="' + esc(pity) + '" title="保底计数"/>'
-            + (isEdit
-                ? '<input class="batch-time" type="datetime-local" value="' + esc(time) + '"/>'
-                : '')
+            + '<input class="batch-pity" type="number" min="1" max="180" value="' + esc(pity) + '" title="用了多少抽"/>'
+            + '<input class="batch-time" type="datetime-local" value="' + esc(time) + '"/>'
             + '</div>';
     }
 
-    function openBatchEditor(mode) {
-        var isEdit = mode === 'edit';
-        var items = isEdit ? cache.wishes.slice(0, BATCH_LIMIT) : [];
-        if (isEdit && !items.length) {
+    function openBatchEditor() {
+        var items = cache.wishes.slice(0, BATCH_LIMIT);
+        if (!items.length) {
             toast('当前页没有可编辑的记录', 'error');
             return Promise.resolve(null);
         }
-        var count = isEdit ? items.length : BATCH_LIMIT;
 
         return new Promise(function (resolve) {
             var mask = document.createElement('div');
             mask.className = 'modal-mask';
 
             var rows = [];
-            for (var i = 0; i < count; i++) {
-                rows.push(batchRowHtml(i, items[i], isEdit));
+            for (var i = 0; i < items.length; i++) {
+                rows.push(batchRowHtml(i, items[i]));
             }
 
             mask.innerHTML = '<div class="modal modal-wide">'
-                + '<header><h3>' + (isEdit ? '批量编辑本页' : '十连录入') + '</h3>'
+                + '<header><h3>批量编辑本页</h3>'
                 + '<button class="modal-close" type="button" aria-label="关闭">×</button></header>'
-                + '<p class="modal-hint">'
-                + (isEdit
-                    ? '一次修改当前页的记录，每条时间可单独调整。'
-                    : '三星（蓝色）无需填写名称，默认记为「三星物品」。')
-                + '</p>'
+                + '<p class="modal-hint">一次修改当前页的记录，每条时间可单独调整；星级、卡池与类型保持不变。</p>'
                 + '<form class="modal-body batch-body">'
-                + (isEdit ? '' :
-                    '<label class="field"><span>卡池</span><select id="batch-pool">'
-                    + gameConfig().pools.map(function (pool) {
-                        return '<option value="' + pool + '">' + pool + '</option>';
-                    }).join('')
-                    + '</select></label>'
-                    + '<label class="field"><span>抽卡时间</span>'
-                    + '<input id="batch-time" type="datetime-local" value="' + nowLocal() + '"/></label>')
                 + '<div class="batch-rows">' + rows.join('') + '</div>'
                 + '<footer class="modal-foot">'
                 + '<button type="button" class="btn btn-text modal-cancel">取消</button>'
-                + '<button type="submit" class="btn btn-primary">' + (isEdit ? '保存修改' : '保存十抽') + '</button>'
+                + '<button type="submit" class="btn btn-primary">保存修改</button>'
                 + '</footer></form></div>';
 
             document.body.appendChild(mask);
@@ -1318,21 +1305,11 @@
                 }
             });
 
-            $$('.batch-rarity', mask).forEach(function (select) {
-                select.addEventListener('change', function () {
-                    var row = select.closest('.batch-row');
-                    var nameInput = $('.batch-name', row);
-                    var rarity = Number(select.value);
-                    nameInput.disabled = rarity === 3;
-                    nameInput.placeholder = rarity === 3 ? '三星无需填写' : '角色 / 武器名称';
-                });
-            });
-
             form.addEventListener('submit', function (event) {
                 event.preventDefault();
                 var records;
                 try {
-                    records = collectBatchRecords(mask, isEdit, items);
+                    records = collectBatchRecords(mask, items);
                 } catch (err) {
                     toast(err.message || '请检查填写内容', 'error');
                     return;
@@ -1342,46 +1319,36 @@
         });
     }
 
-    function collectBatchRecords(mask, isEdit, items) {
-        var g = gameConfig();
+    function collectBatchRecords(mask, items) {
         var records = [];
         $$('.batch-row', mask).forEach(function (row, index) {
-            var rarity = Number($('.batch-rarity', row).value);
+            var original = items[index];
             var name = $('.batch-name', row).value.trim();
-            if (rarity > 3 && !name) {
-                throw new Error('第 ' + (index + 1) + ' 行是 ' + rarity + ' 星，请填写名称');
+            if (!name) {
+                throw new Error('第 ' + (index + 1) + ' 行请填写名称');
             }
-            var record = {
+            records.push({
+                id: original.id,
                 itemName: name,
-                rarity: rarity,
+                rarity: original.rarity,
+                itemType: original.itemType,
+                pool: original.pool,
                 isUp: $('.batch-isup', row).checked,
-                pityCount: Number($('.batch-pity', row).value) || 1
-            };
-            if (isEdit) {
-                var original = items[index];
-                record.id = original.id;
-                record.pool = original.pool;
-                record.itemType = original.itemType;
-                record.wishTime = toApiTime($('.batch-time', row).value) || original.wishTime;
-            } else {
-                record.pool = $('#batch-pool', mask).value;
-                record.itemType = rarity === 3 ? g.threeStarType : g.itemTypes[0];
-                record.wishTime = toApiTime($('#batch-time', mask).value);
-            }
-            records.push(record);
+                pityCount: Number($('.batch-pity', row).value) || 1,
+                wishTime: toApiTime($('.batch-time', row).value) || original.wishTime
+            });
         });
         return records;
     }
 
-    function submitBatchEditor(mode) {
-        var isEdit = mode === 'edit';
-        return openBatchEditor(mode).then(function (records) {
+    function submitBatchEditor() {
+        return openBatchEditor().then(function (records) {
             if (!records) {
                 return null;
             }
-            return api('/api/wishes/batch', { method: isEdit ? 'PUT' : 'POST', body: { records: records } })
+            return api('/api/wishes/batch', { method: 'PUT', body: { records: records } })
                 .then(function (saved) {
-                    toast(isEdit ? '已保存 ' + records.length + ' 条修改' : '已录入 ' + records.length + ' 抽');
+                    toast('已保存 ' + records.length + ' 条修改');
                     refreshWishList();
                     return saved;
                 });
@@ -1391,15 +1358,9 @@
     /* ---------------- 抽卡记录导入导出 ---------------- */
 
     function bindWishTools() {
-        $('#wish-batch-add').addEventListener('click', function () {
-            guard(function () {
-                return submitBatchEditor('add');
-            });
-        });
-
         $('#wish-batch-edit').addEventListener('click', function () {
             guard(function () {
-                return submitBatchEditor('edit');
+                return submitBatchEditor();
             });
         });
 
@@ -1462,7 +1423,8 @@
                 body: { url: values.url }
             }).then(function (result) {
                 toast('读取完成：新增 ' + result.imported + ' 条'
-                    + (result.skipped ? '，跳过重复 ' + result.skipped + ' 条' : ''));
+                    + (result.skipped ? '，跳过重复 ' + result.skipped + ' 条' : '')
+                    + (result.filtered ? '，忽略 ' + result.filtered + ' 条' : ''));
                 refreshWishList();
                 return result;
             });
@@ -1526,7 +1488,8 @@
                 body: text
             }).then(function (result) {
                 toast('导入完成：新增 ' + result.imported + ' 条'
-                    + (result.skipped ? '，跳过 ' + result.skipped + ' 条' : ''));
+                    + (result.skipped ? '，跳过 ' + result.skipped + ' 条' : '')
+                    + (result.filtered ? '，忽略 ' + result.filtered + ' 条' : ''));
                 refreshWishList();
                 return result;
             });
@@ -2134,7 +2097,8 @@
                     body: payload
                 }).then(function (res) {
                     toast('已导入 ' + res.imported + ' 条'
-                        + (res.skipped ? '，跳过重复 ' + res.skipped + ' 条' : ''));
+                        + (res.skipped ? '，跳过重复 ' + res.skipped + ' 条' : '')
+                        + (res.filtered ? '，忽略 ' + res.filtered + ' 条' : ''));
                     close(true);
                     refreshWishList();
                 });

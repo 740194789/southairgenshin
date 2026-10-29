@@ -69,29 +69,6 @@ public class WishService {
     }
 
     /**
-     * 十连批量新增（最多 10 条）。
-     */
-    @Transactional
-    public List<WishRecord> createBatch(Long userId, String game, WishBatchRequest request) {
-        String gameKey = GameType.normalize(game);
-        List<WishRecord> saved = new ArrayList<>();
-        LocalDateTime fallbackTime = LocalDateTime.now();
-        for (WishRequest item : request.getRecords()) {
-            WishRecord record = new WishRecord();
-            record.setUserId(userId);
-            record.setGame(gameKey);
-            apply(record, item);
-            if (record.getWishTime() == null) {
-                record.setWishTime(fallbackTime);
-            }
-            record.setClientUid(newClientUid());
-            record.setEditedAt(System.currentTimeMillis());
-            saved.add(repository.save(record));
-        }
-        return saved;
-    }
-
-    /**
      * 批量编辑已有记录，每条请求必须带 id。
      */
     @Transactional
@@ -163,8 +140,8 @@ public class WishService {
     /**
      * 导入抽卡记录。
      *
-     * <p>merge 模式下按「名称 + 卡池 + 时间」判重，并保留同名同时间的多条记录，
-     * 避免十连中多件三星物品被误判为重复。</p>
+     * <p>只记录四星角色与五星物品：三星物品、四星武器 / 光锥在导入时直接忽略。
+     * merge 模式下按「名称 + 卡池 + 时间」判重。</p>
      */
     @Transactional
     public WishImportResult importRecords(Long userId, String game, List<WishRecord> records, String mode) {
@@ -208,6 +185,10 @@ public class WishService {
         Map<String, Integer> seen = new HashMap<>();
         for (WishRecord source : records) {
             int rarity = clamp(source.getRarity(), 1, 5, 3);
+            if (!isRecordable(rarity, trim(source.getItemType()))) {
+                result.setFiltered(result.getFiltered() + 1);
+                continue;
+            }
             String itemName = normalizeItemName(source.getItemName(), rarity);
             String pool = trim(source.getPool());
             LocalDateTime wishTime = source.getWishTime() == null ? LocalDateTime.now() : source.getWishTime();
@@ -233,7 +214,20 @@ public class WishService {
     }
 
     /**
-     * 三星（蓝色）允许不填名称，按星级给出默认名称。
+     * 记录规则：三星物品不再记录；四星只记录角色；五星记录角色与武器 / 光锥。
+     */
+    public static boolean isRecordable(Integer rarity, String itemType) {
+        if (rarity == null) {
+            return false;
+        }
+        if (rarity >= 5) {
+            return true;
+        }
+        return rarity == 4 && "角色".equals(itemType);
+    }
+
+    /**
+     * 缺名称时按星级给出默认名称（沿用历史数据的命名）。
      */
     public static String normalizeItemName(String name, Integer rarity) {
         String trimmed = name == null ? null : name.trim();

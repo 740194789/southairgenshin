@@ -7,7 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 十连批量新增 / 批量编辑请求。
+ * 批量编辑请求（仅编辑当前页已存在的记录）。
  */
 public class WishBatchRequest {
 

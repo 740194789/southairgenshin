@@ -10,7 +10,7 @@
   <view class="section-head">
     <view>
       <view class="section-title">抽卡记录</view>
-      <view class="section-sub">出金记录、卡池与保底进度 · 支持十连与导入导出</view>
+      <view class="section-sub">五星出货记录 · 记录抽到五星用了多少抽 · 支持导入导出</view>
     </view>
   </view>
 
@@ -22,8 +22,7 @@
   </view>
 
   <view class="btn-row">
-    <view class="btn btn-primary btn-sm" bindtap="openAdd">记录一抽</view>
-    <view class="btn btn-outline btn-sm" bindtap="openBatch">十连录入</view>
+    <view class="btn btn-primary btn-sm" bindtap="openAdd">录入五星</view>
     <view class="btn btn-danger btn-sm {{selectedCount ? '' : 'disabled'}}" bindtap="deleteSelected">批量删除{{selectedCount ? '（' + selectedCount + '）' : ''}}</view>
     <view class="btn btn-outline btn-sm" bindtap="exportCsv">导出 CSV</view>
     <view class="btn btn-outline btn-sm" bindtap="exportJson">导出 JSON</view>
@@ -43,8 +42,8 @@
 
       <view class="record-meta">
         <text>{{item.itemType}}</text>
-        <text>{{item.isUp ? 'UP 内' : '未中 UP'}}</text>
-        <text>保底 {{item.pityCount}}</text>
+        <text wx:if="{{item.rarity === 5}}">{{item.isUp ? 'UP 内' : '未中 UP'}}</text>
+        <text wx:if="{{item.rarity === 5}}">用了 {{item.pityCount}} 抽</text>
         <text class="record-time">{{item.time}}</text>
       </view>
 
@@ -59,7 +58,7 @@
   </block>
 
   <view wx:if="{{!rows.length}}" class="panel">
-    <view class="empty">暂无抽卡记录，点击「记录一抽」开始记录</view>
+    <view class="empty">暂无抽卡记录，点击「录入五星」开始记录</view>
   </view>
 
   <view class="pager" wx:if="{{total > 0}}">
@@ -68,27 +67,21 @@
     <view class="btn btn-text btn-sm {{page >= pages ? 'disabled' : ''}}" bindtap="nextPage">下一页</view>
   </view>
 
-  <view class="foot-tip">每页 10 条；勾选仅对当前页有效，翻页 / 切卡池 / 切游戏会自动清空。导入合并时按「名称 + 卡池 + 时间」去重。</view>
+  <view class="foot-tip">每页 10 条；勾选仅对当前页有效，翻页 / 切卡池 / 切游戏会自动清空。只记录四星角色与五星物品，导入合并时按「名称 + 卡池 + 时间」去重。</view>
 </view>
 
 <!-- 单条编辑 -->
 <view wx:if="{{editorVisible}}" class="mask" bindtap="closeEditor">
   <view class="modal" catchtap="noop">
     <view class="modal-head">
-      <text class="modal-title">{{editorId ? '编辑抽卡' : '新增抽卡'}} · {{g.fullName}}</text>
+      <text class="modal-title">{{editorId ? '编辑抽卡' : '录入五星'}} · {{g.fullName}}</text>
       <view class="modal-close" bindtap="closeEditor">×</view>
     </view>
     <scroll-view scroll-y class="modal-body">
       <view class="form-row">
-        <text class="form-label">抽到的东西</text>
+        <text class="form-label">抽到的五星</text>
         <input class="form-input" value="{{editor.itemName}}" bindinput="onEditorName"
-               placeholder="{{g.itemTypes[0]}} / {{g.itemTypes[1]}}名称（三星可留空）"/>
-      </view>
-      <view class="form-row">
-        <text class="form-label">星级</text>
-        <picker class="form-picker" range="{{rarityLabels}}" value="{{editor.rarityIndex}}" bindchange="onEditorRarity">
-          <view class="picker-box">{{rarityLabels[editor.rarityIndex]}}</view>
-        </picker>
+               placeholder="{{g.itemTypes[0]}} / {{g.itemTypes[1]}}名称"/>
       </view>
       <view class="form-row">
         <text class="form-label">类型</text>
@@ -107,7 +100,7 @@
         <switch class="switch" color="#d3bc8e" checked="{{editor.isUp}}" bindchange="onEditorUp"/>
       </view>
       <view class="form-row">
-        <text class="form-label">保底计数（第几抽）</text>
+        <text class="form-label">抽到五星用了多少抽</text>
         <input class="form-input" type="number" value="{{editor.pity}}" bindinput="onEditorPity" placeholder="1"/>
       </view>
       <view class="form-row">
@@ -125,6 +118,7 @@
         <text class="form-label">备注</text>
         <input class="form-input" value="{{editor.note}}" bindinput="onEditorNote" placeholder="可选"/>
       </view>
+      <view class="foot-tip">只记录四星角色与五星物品；三星物品、四星武器 / 光锥不记录。</view>
     </scroll-view>
     <view class="modal-foot">
       <view class="btn btn-text" bindtap="closeEditor">取消</view>
@@ -133,58 +127,3 @@
   </view>
 </view>
 
-<!-- 十连录入 -->
-<view wx:if="{{batchVisible}}" class="mask" bindtap="closeBatch">
-  <view class="modal" catchtap="noop">
-    <view class="modal-head">
-      <text class="modal-title">十连录入 · {{g.fullName}}</text>
-      <view class="modal-close" bindtap="closeBatch">×</view>
-    </view>
-    <scroll-view scroll-y class="modal-body">
-      <view class="form-row">
-        <text class="form-label">卡池</text>
-        <picker class="form-picker" range="{{g.pools}}" value="{{batch.poolIndex}}" bindchange="onBatchPool">
-          <view class="picker-box">{{g.pools[batch.poolIndex]}}</view>
-        </picker>
-      </view>
-      <view class="form-row">
-        <text class="form-label">抽卡时间</text>
-        <view class="form-datetime">
-          <picker mode="date" value="{{batch.date}}" bindchange="onBatchDate">
-            <view class="picker-box">{{batch.date}}</view>
-          </picker>
-          <picker mode="time" value="{{batch.time}}" bindchange="onBatchTime">
-            <view class="picker-box picker-time">{{batch.time}}</view>
-          </picker>
-        </view>
-      </view>
-
-      <view class="batch-list">
-        <view class="batch-row" wx:for="{{batch.rows}}" wx:key="key">
-          <view class="batch-top">
-            <text class="batch-no">{{index + 1}}</text>
-            <picker range="{{rarityLabels}}" value="{{item.rarityIndex}}" data-index="{{index}}" bindchange="onBatchRarity">
-              <view class="batch-rarity">{{rarityLabels[item.rarityIndex]}}</view>
-            </picker>
-            <input class="batch-name" value="{{item.name}}" disabled="{{item.rarityIndex === 0}}"
-                   placeholder="{{item.rarityIndex === 0 ? '三星无需填写' : '名称'}}"
-                   data-index="{{index}}" bindinput="onBatchName"/>
-          </view>
-          <view class="batch-bottom">
-            <view class="batch-up {{item.up ? 'on' : ''}}" data-index="{{index}}" bindtap="onBatchUp">{{item.up ? 'UP 内' : '未中 UP'}}</view>
-            <view class="batch-pity-wrap">
-              <text class="batch-pity-label">保底</text>
-              <input class="batch-pity" type="number" value="{{item.pity}}" data-index="{{index}}" bindinput="onBatchPity"/>
-            </view>
-          </view>
-        </view>
-      </view>
-
-      <view class="foot-tip">三星（蓝色）无需填写名称，默认记为「三星物品」；四星 / 五星必须填写名称。</view>
-    </scroll-view>
-    <view class="modal-foot">
-      <view class="btn btn-text" bindtap="closeBatch">取消</view>
-      <view class="btn btn-primary" bindtap="saveBatch">保存十抽</view>
-    </view>
-  </view>
-</view>

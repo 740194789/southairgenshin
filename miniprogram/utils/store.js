@@ -73,6 +73,15 @@ function normalizeItemName(name, rarity) {
   return '三星物品';
 }
 
+/** 记录规则：三星物品不记录；四星只记录角色；五星记录角色与武器 / 光锥。 */
+function isRecordable(rarity, itemType) {
+  var r = clamp(rarity, 1, 5, 0);
+  if (r >= 5) {
+    return true;
+  }
+  return r === 4 && String(itemType || '').trim() === '角色';
+}
+
 function normalizeRecord(source, game, id) {
   var rarity = clamp(source.rarity, 1, 5, 3);
   return {
@@ -346,7 +355,7 @@ function overview(game) {
     wishCount: wishCount,
     fiveStarWishes: fiveStarWishes,
     fourStarWishes: fourStarWishes,
-    fiveStarRate: wishCount === 0 ? 0 : round1(fiveStarWishes * 100 / wishCount),
+    fiveStarRate: pitySum === 0 ? 0 : round1(fiveStarWishes * 100 / pitySum),
     avgFiveStarPity: fiveStarWishes === 0 ? 0 : round1(pitySum / fiveStarWishes),
     poolDistribution: distribution,
     recentWishes: recent,
@@ -426,6 +435,7 @@ function importRecords(game, records, mode) {
   var seen = {};
   var imported = 0;
   var skipped = 0;
+  var filtered = 0;
   var ids = allocIds(game, records.length);
   var idIndex = 0;
 
@@ -434,6 +444,10 @@ function importRecords(game, records, mode) {
       return;
     }
     var rarity = clamp(source.rarity, 1, 5, 3);
+    if (!isRecordable(rarity, source.itemType)) {
+      filtered++;
+      return;
+    }
     var itemName = normalizeItemName(source.itemName, rarity);
     var pool = truncate(source.pool, 16);
     var wishTime = source.wishTime || nowStr();
@@ -472,7 +486,8 @@ function importRecords(game, records, mode) {
   return {
     mode: replace ? 'replace' : 'merge',
     imported: imported,
-    skipped: skipped
+    skipped: skipped,
+    filtered: filtered
   };
 }
 
