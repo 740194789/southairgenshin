@@ -94,7 +94,8 @@ function normalizeRecord(source, game, id) {
     isUp: source.isUp === true,
     pityCount: clamp(source.pityCount, 1, 180, 1),
     wishTime: source.wishTime || nowStr(),
-    note: truncate(source.note, 255)
+    note: truncate(source.note, 255),
+    captureTriggered: source.captureTriggered === true
   };
 }
 
@@ -192,7 +193,9 @@ function updateWish(game, id, data) {
     isUp: data.isUp,
     pityCount: data.pityCount,
     wishTime: data.wishTime || list[index].wishTime,
-    note: data.note
+    note: data.note,
+    captureTriggered: data.captureTriggered !== undefined
+      ? data.captureTriggered : list[index].captureTriggered
   }, game, id);
   list[index] = merged;
   saveWishes(game, list);
@@ -277,6 +280,85 @@ var POOL_DEFS = {
   starrail: [['角色活动', 90], ['光锥活动', 80], ['常驻', 90]]
 };
 
+/**
+ * 抽卡统计：小保底不歪率、连歪 / 连不歪纪录、捕获明光次数与 UP 周期平均抽数。
+ * 连歪 / 连不歪只按「小保底」统计；歪后紧跟的大保底 UP 不计入，也不打断连歪纪录。
+ */
+function luckStats(asc) {
+  var softCount = 0;
+  var softUp = 0;
+  var lost = 0;
+  var captures = 0;
+  var curLoss = 0;
+  var curUp = 0;
+  var maxLoss = 0;
+  var maxUp = 0;
+  var guaranteed = false;
+  var charCycle = 0;
+  var charUps = 0;
+  var charSum = 0;
+  var weaponCycle = 0;
+  var weaponUps = 0;
+  var weaponSum = 0;
+
+  asc.forEach(function (record) {
+    if (record.rarity !== 5) {
+      return;
+    }
+    var pity = record.pityCount || 0;
+    var up = record.isUp === true;
+    if (record.captureTriggered === true) {
+      captures++;
+    }
+    if (record.pool === '角色活动') {
+      charCycle += pity;
+      if (up) {
+        charSum += charCycle;
+        charUps++;
+        charCycle = 0;
+      }
+      if (guaranteed) {
+        guaranteed = !up;
+        return;
+      }
+      softCount++;
+      if (up) {
+        softUp++;
+        curUp++;
+        curLoss = 0;
+        maxUp = Math.max(maxUp, curUp);
+      } else {
+        lost++;
+        curLoss++;
+        curUp = 0;
+        maxLoss = Math.max(maxLoss, curLoss);
+      }
+      guaranteed = !up;
+    } else if (record.pool === '武器活动' || record.pool === '光锥活动') {
+      weaponCycle += pity;
+      if (up) {
+        weaponSum += weaponCycle;
+        weaponUps++;
+        weaponCycle = 0;
+      }
+    }
+  });
+
+  return {
+    softCount: softCount,
+    softUp: softUp,
+    rate: softCount === 0 ? 0 : round1(softUp * 100 / softCount),
+    lost: lost,
+    maxLoss: maxLoss,
+    maxUp: maxUp,
+    captures: captures,
+    charAvg: charUps === 0 ? 0 : round1(charSum / charUps),
+    charUps: charUps,
+    weaponAvg: weaponUps === 0 ? 0 : round1(weaponSum / weaponUps),
+    weaponUps: weaponUps
+  };
+}
+
 function overview(game) {
   var defs = POOL_DEFS[game] || POOL_DEFS.genshin;
   var asc = getWishes(game).slice().sort(ascCompare);
@@ -350,6 +432,7 @@ function overview(game) {
 
   var recent = asc.slice().sort(descCompare).slice(0, 5);
 
+  var luck = luckStats(asc);
   var result = {
     resource: resource,
     wishCount: wishCount,
@@ -357,6 +440,20 @@ function overview(game) {
     fourStarWishes: fourStarWishes,
     fiveStarRate: pitySum === 0 ? 0 : round1(fiveStarWishes * 100 / pitySum),
     avgFiveStarPity: fiveStarWishes === 0 ? 0 : round1(pitySum / fiveStarWishes),
+    totalPulls: pitySum,
+    softPityCount: luck.softCount,
+    softPityUpCount: luck.softUp,
+    softPityUpRate: luck.rate,
+    lostCount: luck.lost,
+    maxLossStreak: luck.maxLoss,
+    maxUpStreak: luck.maxUp,
+    captureTriggeredCount: luck.captures,
+    characterUpAvgPity: luck.charAvg,
+    characterUpSamples: luck.charUps,
+    weaponUpAvgPity: luck.weaponAvg,
+    weaponUpSamples: luck.weaponUps,
+    avgPrimogemsPerUpCharacter: luck.charAvg > 0 ? Math.round(luck.charAvg * PER_PULL) : 0,
+    avgPrimogemsPerUpWeapon: luck.weaponAvg > 0 ? Math.round(luck.weaponAvg * PER_PULL) : 0,
     poolDistribution: distribution,
     recentWishes: recent,
     poolStats: poolStats
@@ -476,7 +573,8 @@ function importRecords(game, records, mode) {
       isUp: source.isUp,
       pityCount: source.pityCount,
       wishTime: wishTime,
-      note: source.note
+      note: source.note,
+      captureTriggered: source.captureTriggered === true
     }, game, ids[idIndex++]));
     imported++;
     seen[key] = seenCount + 1;

@@ -14,7 +14,9 @@ var GAMES = {
     credit: '摩拉',
     fateLimited: '纠缠之缘',
     fateStandard: '相遇之缘',
-    threeStarType: '武器'
+    threeStarType: '武器',
+    charPool: '角色活动',
+    weaponPool: '武器活动'
   },
   starrail: {
     key: 'starrail',
@@ -29,7 +31,9 @@ var GAMES = {
     credit: '信用点',
     fateLimited: '星轨专票',
     fateStandard: '星轨通票',
-    threeStarType: '光锥'
+    threeStarType: '光锥',
+    charPool: '角色活动',
+    weaponPool: '光锥活动'
   }
 };
 

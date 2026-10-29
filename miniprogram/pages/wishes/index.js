@@ -32,6 +32,7 @@ function editorDefaults(g, poolIndex) {
     typeIndex: 0,
     poolIndex: poolIndex || 0,
     isUp: true,
+    capture: false,
     pity: '1',
     date: parts.date,
     time: parts.time,
@@ -101,6 +102,7 @@ Page({
         itemType: record.itemType || '—',
         pool: record.pool || '未知卡池',
         isUp: record.isUp === true,
+        capture: record.captureTriggered === true,
         pityCount: record.pityCount || 1,
         time: (record.wishTime || '').slice(0, 16),
         checked: selected.indexOf(record.id) >= 0
@@ -259,6 +261,7 @@ Page({
         typeIndex: typeIndex < 0 ? 0 : typeIndex,
         poolIndex: poolIndex < 0 ? 0 : poolIndex,
         isUp: record.isUp === true,
+        capture: record.captureTriggered === true,
         pity: String(record.pityCount || 1),
         date: wishTime.slice(0, 10),
         time: wishTime.slice(11, 16),
@@ -288,6 +291,10 @@ Page({
 
   onEditorUp: function (event) {
     this.setData({ 'editor.isUp': event.detail.value });
+  },
+
+  onEditorCapture: function (event) {
+    this.setData({ 'editor.capture': event.detail.value });
   },
 
   onEditorPity: function (event) {
@@ -325,7 +332,8 @@ Page({
       isUp: editor.isUp,
       pityCount: pity,
       wishTime: editor.date + ' ' + editor.time + ':00',
-      note: editor.note
+      note: editor.note,
+      captureTriggered: this.data.game === 'genshin' && editor.capture === true
     };
     if (editing) {
       store.updateWish(this.data.game, this.data.editorId, data);

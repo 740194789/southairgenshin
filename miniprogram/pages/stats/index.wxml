@@ -34,6 +34,57 @@
   </view>
 
   <view class="panel">
+    <view class="panel-title">抽卡统计<text class="pool-tag inline">角色活动 · {{g.weaponPool}}</text></view>
+    <view class="stat-grid">
+      <view class="stat-card">
+        <view class="stat-label">一共抽过</view>
+        <view class="stat-value">{{stats.recordPullsText}} 抽</view>
+        <view class="stat-extra">五星 {{stats.fiveStarWishes}} 次</view>
+      </view>
+      <view class="stat-card">
+        <view class="stat-label">歪了几次</view>
+        <view class="stat-value">{{stats.lostCount}} 次</view>
+        <view class="stat-extra">小保底 {{stats.softPityCount}} 次</view>
+      </view>
+      <view class="stat-card">
+        <view class="stat-label">小保底不歪</view>
+        <view class="stat-value">{{stats.softPityUpCount}} 次</view>
+        <view class="stat-extra">不歪率 {{stats.softPityUpRate}}%</view>
+      </view>
+      <view class="stat-card">
+        <view class="stat-label">最多连歪</view>
+        <view class="stat-value">{{stats.maxLossStreak}} 次</view>
+        <view class="stat-extra">最多连不歪 {{stats.maxUpStreak}} 次</view>
+      </view>
+      <view class="stat-card">
+        <view class="stat-label">平均 UP 角色</view>
+        <view class="stat-value">{{stats.charAvgText}}</view>
+        <view class="stat-extra">UP {{stats.charSamples}} 次</view>
+      </view>
+      <view class="stat-card">
+        <view class="stat-label">平均 UP {{g.weaponPool === '光锥活动' ? '光锥' : '武器'}}</view>
+        <view class="stat-value">{{stats.weaponAvgText}}</view>
+        <view class="stat-extra">UP {{stats.weaponSamples}} 次</view>
+      </view>
+      <view class="stat-card">
+        <view class="stat-label">平均每个 UP 角色</view>
+        <view class="stat-value">{{stats.charCostText}} {{g.currency}}</view>
+        <view class="stat-extra">按 160 {{g.currency}} / 抽</view>
+      </view>
+      <view class="stat-card">
+        <view class="stat-label">平均限定{{g.weaponPool === '光锥活动' ? '光锥' : '武器'}}</view>
+        <view class="stat-value">{{stats.weaponCostText}} {{g.currency}}</view>
+        <view class="stat-extra">按 160 {{g.currency}} / 抽</view>
+      </view>
+      <view class="stat-card" wx:if="{{game === 'genshin'}}">
+        <view class="stat-label">捕获明光触发</view>
+        <view class="stat-value">{{stats.captureCount}} 次</view>
+        <view class="stat-extra">录入时勾选触发次数</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="panel">
     <view class="panel-title">卡池保底统计<text class="pool-tag inline">保底 · 出货</text></view>
     <view class="pool-stat" wx:for="{{pools}}" wx:key="pool">
       <view class="pool-stat-head">

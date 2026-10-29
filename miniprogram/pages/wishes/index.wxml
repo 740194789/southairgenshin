@@ -44,6 +44,7 @@
         <text>{{item.itemType}}</text>
         <text wx:if="{{item.rarity === 5}}">{{item.isUp ? 'UP 内' : '未中 UP'}}</text>
         <text wx:if="{{item.rarity === 5}}">用了 {{item.pityCount}} 抽</text>
+        <text wx:if="{{item.rarity === 5 && item.capture}}" style="color:#7ad7c0">捕获明光</text>
         <text class="record-time">{{item.time}}</text>
       </view>
 
@@ -98,6 +99,10 @@
       <view class="form-row">
         <text class="form-label">是否 UP</text>
         <switch class="switch" color="#d3bc8e" checked="{{editor.isUp}}" bindchange="onEditorUp"/>
+      </view>
+      <view class="form-row" wx:if="{{game === 'genshin'}}">
+        <text class="form-label">触发捕获明光</text>
+        <switch class="switch" color="#d3bc8e" checked="{{editor.capture}}" bindchange="onEditorCapture"/>
       </view>
       <view class="form-row">
         <text class="form-label">抽到五星用了多少抽</text>

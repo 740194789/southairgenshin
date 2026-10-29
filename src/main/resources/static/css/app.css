@@ -1557,6 +1557,12 @@ body.game-starrail {
     overflow: hidden;
 }
 
+.capture-mark {
+    font-size: 11px;
+    color: #7ad7c0;
+    letter-spacing: 0;
+}
+
 .batch-row select,
 .batch-row input[type="text"],
 .batch-row input[type="number"],

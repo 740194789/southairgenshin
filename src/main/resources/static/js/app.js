@@ -804,6 +804,40 @@
         });
     }
 
+    function luckPanelHtml(data) {
+        var g = gameConfig();
+        var weaponWord = g.weaponPool === '光锥活动' ? '光锥' : '武器';
+        var charSamples = Number(data.characterUpSamples) || 0;
+        var weaponSamples = Number(data.weaponUpSamples) || 0;
+        var captureCard = state.game === 'genshin'
+            ? statCard('捕获明光触发', data.captureTriggeredCount || 0, '录入时勾选触发次数')
+            : '';
+
+        return '<section class="panel luck-panel">'
+            + '<h3>抽卡统计<span class="pool-tag">角色活动 · ' + esc(g.weaponPool) + '</span></h3>'
+            + '<div class="stat-grid">'
+            + statCard('一共抽过', fmt(data.totalPulls || 0) + ' 抽',
+                '五星 ' + data.fiveStarWishes + ' 次')
+            + statCard('歪了几次', (data.lostCount || 0) + ' 次',
+                '小保底 ' + (data.softPityCount || 0) + ' 次')
+            + statCard('小保底不歪', (data.softPityUpCount || 0) + ' 次',
+                '不歪率 ' + (data.softPityUpRate || 0) + '%')
+            + statCard('最多连歪', (data.maxLossStreak || 0) + ' 次',
+                '最多连不歪 ' + (data.maxUpStreak || 0) + ' 次')
+            + statCard('平均 UP 角色', charSamples ? num(data.characterUpAvgPity) + ' 抽' : '—',
+                'UP ' + charSamples + ' 次')
+            + statCard('平均 UP ' + weaponWord, weaponSamples ? num(data.weaponUpAvgPity) + ' 抽' : '—',
+                'UP ' + weaponSamples + ' 次')
+            + statCard('平均每个 UP 角色', charSamples
+                ? fmt(data.avgPrimogemsPerUpCharacter) + ' ' + g.currency : '—',
+                charSamples ? '均 ' + num(data.characterUpAvgPity) + ' 抽 × 160' : '暂无样本')
+            + statCard('平均限定' + weaponWord, weaponSamples
+                ? fmt(data.avgPrimogemsPerUpWeapon) + ' ' + g.currency : '—',
+                weaponSamples ? '均 ' + num(data.weaponUpAvgPity) + ' 抽 × 160' : '暂无样本')
+            + captureCard
+            + '</div></section>';
+    }
+
     function loadStats() {
         var el = $('#view-stats');
         var g = gameConfig();
@@ -826,6 +860,7 @@
 
                 + capturePanelHtml(data)
                 + poolStatsPanelHtml(data)
+                + luckPanelHtml(data)
                 + expectationPanelHtml(data)
 
                 + '<div class="stat-grid">'
@@ -866,7 +901,8 @@
             + '<div><span class="pool-tag' + (item.isUp ? ' up' : '') + '">'
             + esc(item.pool || '未知卡池') + '</span></div>'
             + '<div>' + (fiveStar ? (item.isUp ? 'UP 内' : '未中 UP') : '—') + '</div>'
-            + '<div>' + (fiveStar ? '用了 ' + (item.pityCount || 1) + ' 抽' : '—') + '</div>'
+            + '<div>' + (fiveStar ? '用了 ' + (item.pityCount || 1) + ' 抽' : '—')
+            + (fiveStar && item.captureTriggered ? ' <span class="capture-mark">捕获</span>' : '') + '</div>'
             + '<div class="record-time">' + esc(item.wishTime || '') + '</div>'
             + '<div class="record-actions">'
             + '<button class="icon-btn" type="button" data-act="edit">编辑</button>'
@@ -1029,22 +1065,31 @@
 
     function formConfig(type) {
         var g = gameConfig();
+        var fields = [
+            {
+                key: 'itemName', label: '抽到的五星', type: 'text',
+                placeholder: g.itemTypes[0] + ' / ' + g.itemTypes[1] + '名称'
+            },
+            { key: 'rarity', type: 'hidden', default: 5 },
+            { key: 'itemType', label: '类型', type: 'select', options: g.itemTypes, default: g.itemTypes[0] },
+            { key: 'pool', label: '卡池', type: 'select', options: g.pools, default: g.pools[0] },
+            { key: 'pityCount', label: '抽到五星用了多少抽', type: 'number', min: 1, max: 180, default: 1 },
+            { key: 'isUp', label: '是否 UP', type: 'select', options: [{ value: true, label: 'UP 内' }, { value: false, label: '未中 UP' }], default: true }
+        ];
+        if (state.game === 'genshin') {
+            fields.push({
+                key: 'captureTriggered', label: '是否触发捕获明光', type: 'select',
+                options: [{ value: true, label: '是' }, { value: false, label: '否' }], default: false
+            });
+        }
+        fields.push(
+            { key: 'wishTime', label: '抽卡时间', type: 'datetime', full: true, default: nowLocal() },
+            { key: 'note', label: '备注', type: 'textarea', full: true }
+        );
         return {
             title: '抽卡',
             endpoint: '/api/wishes',
-            fields: [
-                {
-                    key: 'itemName', label: '抽到的五星', type: 'text',
-                    placeholder: g.itemTypes[0] + ' / ' + g.itemTypes[1] + '名称'
-                },
-                { key: 'rarity', type: 'hidden', default: 5 },
-                { key: 'itemType', label: '类型', type: 'select', options: g.itemTypes, default: g.itemTypes[0] },
-                { key: 'pool', label: '卡池', type: 'select', options: g.pools, default: g.pools[0] },
-                { key: 'pityCount', label: '抽到五星用了多少抽', type: 'number', min: 1, max: 180, default: 1 },
-                { key: 'isUp', label: '是否 UP', type: 'select', options: [{ value: true, label: 'UP 内' }, { value: false, label: '未中 UP' }], default: true },
-                { key: 'wishTime', label: '抽卡时间', type: 'datetime', full: true, default: nowLocal() },
-                { key: 'note', label: '备注', type: 'textarea', full: true }
-            ]
+            fields: fields
         };
     }
 

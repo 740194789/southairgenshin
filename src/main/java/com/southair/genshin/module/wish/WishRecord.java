@@ -69,6 +69,10 @@ public class WishRecord extends BaseEntity {
     @Column(length = 255)
     private String note;
 
+    /** 该次五星是否由「捕获明光」触发（仅原神角色活动池有意义） */
+    @Column(name = "capture_triggered")
+    private Boolean captureTriggered;
+
     /** 客户端生成的稳定标识，多端同步时用于识别同一条记录 */
     @Column(name = "client_uid", length = 64)
     private String clientUid;
@@ -163,6 +167,14 @@ public class WishRecord extends BaseEntity {
 
     public void setNote(String note) {
         this.note = note;
+    }
+
+    public Boolean getCaptureTriggered() {
+        return captureTriggered;
+    }
+
+    public void setCaptureTriggered(Boolean captureTriggered) {
+        this.captureTriggered = captureTriggered;
     }
 
     public String getClientUid() {

@@ -1,7 +1,7 @@
 /* 抽卡记录 CSV 读写（带 BOM，便于 Excel / WPS 直接编辑），移植自后端 WishCsv.java */
 
 var BOM = '\uFEFF';
-var HEADERS = ['抽卡时间', '物品名称', '星级', '类型', '卡池', '是否UP', '保底计数', '备注'];
+var HEADERS = ['抽卡时间', '物品名称', '星级', '类型', '卡池', '是否UP', '保底计数', '备注', '捕获明光'];
 
 function pad(n) {
   return n < 10 ? '0' + n : String(n);
@@ -43,7 +43,8 @@ function write(records) {
       record.pool || '',
       record.isUp ? 'UP' : '否',
       record.pityCount === null || record.pityCount === undefined ? '' : record.pityCount,
-      record.note || ''
+      record.note || '',
+      record.captureTriggered ? '是' : '否'
     ].map(escapeCell).join(','));
   });
   return BOM + lines.join('\r\n') + '\r\n';
@@ -114,6 +115,9 @@ function normalizeHeader(value) {
   }
   if (header === '备注' || header === 'note' || header === 'remark') {
     return 'note';
+  }
+  if (header === '捕获明光' || header === 'capture' || header === 'capturetriggered' || header === 'captured') {
+    return 'capture';
   }
   return header;
 }
@@ -205,7 +209,8 @@ function parse(text) {
       pool: cell(row, index, 'pool'),
       isUp: parseBoolean(cell(row, index, 'isup')),
       pityCount: parseIntValue(cell(row, index, 'pity')),
-      note: cell(row, index, 'note')
+      note: cell(row, index, 'note'),
+      captureTriggered: parseBoolean(cell(row, index, 'capture')) === true
     });
   }
   return records;

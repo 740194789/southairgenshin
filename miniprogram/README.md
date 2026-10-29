@@ -60,10 +60,10 @@ miniprogram/
 ### 格式一致
 
 - **JSON 备份**：两边都是 `{app, version, game, exportedAt, resource, wishes}`，记录字段为
-  `wishTime / itemName / rarity / itemType / pool / isUp / pityCount / note`；
+  `wishTime / itemName / rarity / itemType / pool / isUp / pityCount / note / captureTriggered`；
   网页端导出可直接导入小程序，小程序导出也可直接导入网页端。
 - **CSV**：表头统一为
-  `抽卡时间, 物品名称, 星级, 类型, 卡池, 是否UP, 保底计数, 备注`，带 BOM，Excel / WPS 可直接编辑。
+  `抽卡时间, 物品名称, 星级, 类型, 卡池, 是否UP, 保底计数, 备注, 捕获明光`，带 BOM，Excel / WPS 可直接编辑。
 - **导入规则**：合并模式按「名称 + 卡池 + 时间」去重；覆盖模式先清空当前游戏记录再写入。
 - **资源**：JSON 备份里的 `resource` 会整体覆盖当前游戏的本机资源。
 
@@ -78,7 +78,8 @@ miniprogram/
 | 卡池保底统计（武器 / 光锥 80，其余 90） | ✅ | ✅ |
 | 捕获明光（仅原神角色池） | ✅ | ✅ |
 | 卡池分布 / 最近出货 | ✅ | ✅ |
-| 五星录入（记录抽到五星用了多少抽）/ 编辑 / 删除 | ✅ | ✅ |
+| 五星录入（记录抽到五星用了多少抽，原神可标记捕获明光）/ 编辑 / 删除 | ✅ | ✅ |
+| 抽卡统计（连歪纪录 / 小保底不歪率 / 平均 UP 抽数与花费） | ✅ | ✅ |
 | 勾选批量删除（仅当前页） | ✅ | ✅ |
 | 批量编辑当前页 | ✅ | ❌（未实现） |
 | CSV 导入导出（BOM） | ✅ | ✅ |

@@ -55,7 +55,21 @@ Page({
       fourStarWishes: data.fourStarWishes,
       fiveStarRate: data.fiveStarRate,
       avgFiveStarPity: data.avgFiveStarPity,
-      fourStarPercent: data.wishCount ? Math.round(data.fourStarWishes * 100 / data.wishCount) : 0
+      fourStarPercent: data.wishCount ? Math.round(data.fourStarWishes * 100 / data.wishCount) : 0,
+      recordPullsText: store.fmt(data.totalPulls || 0),
+      lostCount: data.lostCount || 0,
+      softPityCount: data.softPityCount || 0,
+      softPityUpCount: data.softPityUpCount || 0,
+      softPityUpRate: data.softPityUpRate || 0,
+      maxLossStreak: data.maxLossStreak || 0,
+      maxUpStreak: data.maxUpStreak || 0,
+      captureCount: data.captureTriggeredCount || 0,
+      charSamples: data.characterUpSamples || 0,
+      weaponSamples: data.weaponUpSamples || 0,
+      charAvgText: data.characterUpSamples ? String(data.characterUpAvgPity) : '—',
+      weaponAvgText: data.weaponUpSamples ? String(data.weaponUpAvgPity) : '—',
+      charCostText: data.characterUpSamples ? store.fmt(data.avgPrimogemsPerUpCharacter) : '—',
+      weaponCostText: data.weaponUpSamples ? store.fmt(data.avgPrimogemsPerUpWeapon) : '—'
     };
 
     var pools = data.poolStats.map(function (item) {
@@ -88,7 +102,7 @@ Page({
       return {
         id: item.id,
         stars: starText(item.rarity),
-        name: item.itemName || '三星物品',
+        name: item.itemName || '未命名',
         time: (item.wishTime || '').slice(5, 16)
       };
     });

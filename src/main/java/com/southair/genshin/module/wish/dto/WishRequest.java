@@ -44,6 +44,9 @@ public class WishRequest {
     @Size(max = 255, message = "备注最长 255 字")
     private String note;
 
+    /** 是否由捕获明光触发（仅原神角色活动池） */
+    private Boolean captureTriggered;
+
     public Long getId() {
         return id;
     }
@@ -114,5 +117,13 @@ public class WishRequest {
 
     public void setNote(String note) {
         this.note = note;
+    }
+
+    public Boolean getCaptureTriggered() {
+        return captureTriggered;
+    }
+
+    public void setCaptureTriggered(Boolean captureTriggered) {
+        this.captureTriggered = captureTriggered;
     }
 }

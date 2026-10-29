@@ -257,6 +257,7 @@ public class WishService {
         target.setPityCount(clamp(source.getPityCount(), 1, 180, 1));
         target.setWishTime(wishTime);
         target.setNote(truncate(trim(source.getNote()), 255));
+        target.setCaptureTriggered(Boolean.TRUE.equals(source.getCaptureTriggered()));
         target.setClientUid(StringUtils.hasText(source.getClientUid())
                 ? truncate(source.getClientUid().trim(), 64)
                 : newClientUid());
@@ -287,6 +288,12 @@ public class WishService {
         record.setPityCount(request.getPityCount() == null ? 1 : request.getPityCount());
         record.setWishTime(request.getWishTime());
         record.setNote(request.getNote());
+        // 未传该字段时（如批量编辑）保留原值；新建记录则为 false
+        if (request.getCaptureTriggered() != null) {
+            record.setCaptureTriggered(request.getCaptureTriggered());
+        } else if (record.getCaptureTriggered() == null) {
+            record.setCaptureTriggered(Boolean.FALSE);
+        }
     }
 
     private String recordKey(String itemName, String pool, LocalDateTime wishTime) {

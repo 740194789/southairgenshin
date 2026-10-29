@@ -58,7 +58,9 @@ public class StatsService {
         List<WishRecord> recent = wishRepository.findTop5ByUserIdAndGameOrderByWishTimeDesc(userId, gameKey);
         vo.setRecentWishes(recent);
         applyPityProgress(vo, recent.isEmpty() ? null : recent.get(0));
-        applyPoolStats(vo, userId, gameKey);
+        List<WishRecord> all = wishRepository.findByUserIdAndGameOrderByWishTimeAsc(userId, gameKey);
+        applyPoolStats(vo, all, gameKey);
+        applyLuckStats(vo, all);
         if (!GameType.isStarRail(gameKey)) {
             applyCapturingRadiance(vo, userId, gameKey);
         }
@@ -68,8 +70,7 @@ public class StatsService {
     /**
      * 按卡池统计：保底进度、五星数、五星平均抽数与 UP / 定轨保底状态。
      */
-    private void applyPoolStats(OverviewVO vo, Long userId, String game) {
-        List<WishRecord> all = wishRepository.findByUserIdAndGameOrderByWishTimeAsc(userId, game);
+    private void applyPoolStats(OverviewVO vo, List<WishRecord> all, String game) {
         String[][] pools = GameType.isStarRail(game)
                 ? new String[][]{{"角色活动", "90"}, {"光锥活动", "80"}, {"常驻", "90"}}
                 : new String[][]{{"角色活动", "90"}, {"武器活动", "80"}, {"集录祈愿", "90"}, {"常驻", "90"}};
@@ -117,6 +118,70 @@ public class StatsService {
         }
         vo.setPoolStats(stats);
         applyUpCyclePity(vo, all, GameType.isStarRail(game) ? "光锥活动" : "武器活动");
+    }
+
+    /**
+     * 抽卡统计：总抽数、歪的次数、小保底不歪率、连歪 / 连不歪纪录、
+     * 捕获明光触发次数，以及 UP 角色 / 武器的平均抽数与货币成本。
+     *
+     * <p>连歪 / 连不歪只统计「小保底」：歪后紧跟的大保底 UP 不计入，也不打断连歪纪录。</p>
+     */
+    private void applyLuckStats(OverviewVO vo, List<WishRecord> all) {
+        long totalPulls = 0L;
+        long softCount = 0L;
+        long softUp = 0L;
+        long lost = 0L;
+        long captures = 0L;
+        int currentLoss = 0;
+        int currentUp = 0;
+        int maxLoss = 0;
+        int maxUp = 0;
+        boolean guaranteed = false;
+
+        for (WishRecord record : all) {
+            if (!Integer.valueOf(5).equals(record.getRarity())) {
+                continue;
+            }
+            totalPulls += record.getPityCount() == null ? 0 : record.getPityCount();
+            if (Boolean.TRUE.equals(record.getCaptureTriggered())) {
+                captures++;
+            }
+            if (!"角色活动".equals(record.getPool())) {
+                continue;
+            }
+            boolean up = Boolean.TRUE.equals(record.getIsUp());
+            if (guaranteed) {
+                // 大保底：必定 UP，不计入小保底统计，也不影响连歪 / 连不歪
+                guaranteed = !up;
+                continue;
+            }
+            softCount++;
+            if (up) {
+                softUp++;
+                currentUp++;
+                currentLoss = 0;
+                maxUp = Math.max(maxUp, currentUp);
+            } else {
+                lost++;
+                currentLoss++;
+                currentUp = 0;
+                maxLoss = Math.max(maxLoss, currentLoss);
+            }
+            guaranteed = !up;
+        }
+
+        vo.setTotalPulls(totalPulls);
+        vo.setSoftPityCount(softCount);
+        vo.setSoftPityUpCount(softUp);
+        vo.setSoftPityUpRate(softCount == 0 ? 0D : round(softUp * 100D / softCount));
+        vo.setLostCount(lost);
+        vo.setMaxLossStreak(maxLoss);
+        vo.setMaxUpStreak(maxUp);
+        vo.setCaptureTriggeredCount(captures);
+        vo.setAvgPrimogemsPerUpCharacter(vo.getCharacterUpAvgPity() <= 0 ? 0L
+                : Math.round(vo.getCharacterUpAvgPity() * ResourceService.PRIMOGEMS_PER_PULL));
+        vo.setAvgPrimogemsPerUpWeapon(vo.getWeaponUpAvgPity() <= 0 ? 0L
+                : Math.round(vo.getWeaponUpAvgPity() * ResourceService.PRIMOGEMS_PER_PULL));
     }
 
     /**

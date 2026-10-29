@@ -12,12 +12,12 @@ import java.util.Map;
 /**
  * 抽卡记录的 CSV 读写（带 BOM，便于 Excel 直接打开）。
  *
- * <p>列：抽卡时间, 物品名称, 星级, 类型, 卡池, 是否UP, 保底计数, 备注</p>
+ * <p>列：抽卡时间, 物品名称, 星级, 类型, 卡池, 是否UP, 保底计数, 备注, 捕获明光</p>
  */
 public final class WishCsv {
 
     private static final String BOM = "\uFEFF";
-    private static final String[] HEADERS = {"抽卡时间", "物品名称", "星级", "类型", "卡池", "是否UP", "保底计数", "备注"};
+    private static final String[] HEADERS = {"抽卡时间", "物品名称", "星级", "类型", "卡池", "是否UP", "保底计数", "备注", "捕获明光"};
 
     private static final DateTimeFormatter OUTPUT_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final DateTimeFormatter INPUT_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -41,7 +41,8 @@ public final class WishCsv {
                     safe(record.getPool()),
                     Boolean.TRUE.equals(record.getIsUp()) ? "UP" : "否",
                     record.getPityCount() == null ? "" : String.valueOf(record.getPityCount()),
-                    safe(record.getNote())
+                    safe(record.getNote()),
+                    Boolean.TRUE.equals(record.getCaptureTriggered()) ? "是" : "否"
             })).append("\r\n");
         }
         return sb.toString();
@@ -81,6 +82,7 @@ public final class WishCsv {
             record.setIsUp(parseBoolean(cell(row, index, "isup")));
             record.setPityCount(parseInt(cell(row, index, "pity")));
             record.setNote(cell(row, index, "note"));
+            record.setCaptureTriggered(parseBoolean(cell(row, index, "capture")));
             records.add(record);
         }
         return records;
@@ -174,6 +176,10 @@ public final class WishCsv {
         }
         if (header.equals("备注") || header.equals("note") || header.equals("remark")) {
             return "note";
+        }
+        if (header.equals("捕获明光") || header.equals("capture")
+                || header.equals("capturetriggered") || header.equals("captured")) {
+            return "capture";
         }
         return header;
     }

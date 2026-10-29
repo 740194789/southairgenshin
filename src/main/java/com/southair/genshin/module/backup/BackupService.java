@@ -144,6 +144,7 @@ public class BackupService {
         target.setPityCount(clamp(source.getPityCount(), 1, 180, 1));
         target.setWishTime(wishTime);
         target.setNote(truncate(trim(source.getNote()), 255));
+        target.setCaptureTriggered(Boolean.TRUE.equals(source.getCaptureTriggered()));
         return target;
     }
 

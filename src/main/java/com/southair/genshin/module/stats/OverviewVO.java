@@ -69,6 +69,27 @@ public class OverviewVO implements Serializable {
     /** 武器 / 光锥 UP 周期样本数 */
     private long weaponUpSamples;
 
+    /** 一共抽过多少抽（Σ 五星记录的保底抽数） */
+    private long totalPulls;
+    /** 角色活动池小保底次数（不含大保底） */
+    private long softPityCount;
+    /** 小保底未歪次数 */
+    private long softPityUpCount;
+    /** 小保底不歪率（%） */
+    private double softPityUpRate;
+    /** 角色活动池歪掉的次数 */
+    private long lostCount;
+    /** 最多连续歪几次（按小保底计算） */
+    private int maxLossStreak;
+    /** 最多连续不歪几次（按小保底计算） */
+    private int maxUpStreak;
+    /** 捕获明光触发次数（用户标记） */
+    private long captureTriggeredCount;
+    /** 平均每个 UP 角色消耗的货币（原石 / 星琼） */
+    private long avgPrimogemsPerUpCharacter;
+    /** 平均每个限定武器 / 光锥消耗的货币（原石 / 星琼） */
+    private long avgPrimogemsPerUpWeapon;
+
     private List<NameCount> poolDistribution;
     private List<WishRecord> recentWishes;
     /** 按卡池拆分的保底与出货统计 */
@@ -280,6 +301,86 @@ public class OverviewVO implements Serializable {
 
     public void setWeaponUpSamples(long weaponUpSamples) {
         this.weaponUpSamples = weaponUpSamples;
+    }
+
+    public long getTotalPulls() {
+        return totalPulls;
+    }
+
+    public void setTotalPulls(long totalPulls) {
+        this.totalPulls = totalPulls;
+    }
+
+    public long getSoftPityCount() {
+        return softPityCount;
+    }
+
+    public void setSoftPityCount(long softPityCount) {
+        this.softPityCount = softPityCount;
+    }
+
+    public long getSoftPityUpCount() {
+        return softPityUpCount;
+    }
+
+    public void setSoftPityUpCount(long softPityUpCount) {
+        this.softPityUpCount = softPityUpCount;
+    }
+
+    public double getSoftPityUpRate() {
+        return softPityUpRate;
+    }
+
+    public void setSoftPityUpRate(double softPityUpRate) {
+        this.softPityUpRate = softPityUpRate;
+    }
+
+    public long getLostCount() {
+        return lostCount;
+    }
+
+    public void setLostCount(long lostCount) {
+        this.lostCount = lostCount;
+    }
+
+    public int getMaxLossStreak() {
+        return maxLossStreak;
+    }
+
+    public void setMaxLossStreak(int maxLossStreak) {
+        this.maxLossStreak = maxLossStreak;
+    }
+
+    public int getMaxUpStreak() {
+        return maxUpStreak;
+    }
+
+    public void setMaxUpStreak(int maxUpStreak) {
+        this.maxUpStreak = maxUpStreak;
+    }
+
+    public long getCaptureTriggeredCount() {
+        return captureTriggeredCount;
+    }
+
+    public void setCaptureTriggeredCount(long captureTriggeredCount) {
+        this.captureTriggeredCount = captureTriggeredCount;
+    }
+
+    public long getAvgPrimogemsPerUpCharacter() {
+        return avgPrimogemsPerUpCharacter;
+    }
+
+    public void setAvgPrimogemsPerUpCharacter(long avgPrimogemsPerUpCharacter) {
+        this.avgPrimogemsPerUpCharacter = avgPrimogemsPerUpCharacter;
+    }
+
+    public long getAvgPrimogemsPerUpWeapon() {
+        return avgPrimogemsPerUpWeapon;
+    }
+
+    public void setAvgPrimogemsPerUpWeapon(long avgPrimogemsPerUpWeapon) {
+        this.avgPrimogemsPerUpWeapon = avgPrimogemsPerUpWeapon;
     }
 
     public List<NameCount> getPoolDistribution() {
