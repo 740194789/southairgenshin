@@ -60,6 +60,15 @@ public class OverviewVO implements Serializable {
     /** 角色活动池 UP 率（%） */
     private double characterUpRate;
 
+    /** 角色 UP 平均周期抽数（含歪掉的五星，按 UP 计） */
+    private double characterUpAvgPity;
+    /** 角色 UP 周期样本数 */
+    private long characterUpSamples;
+    /** 武器 / 光锥 UP 平均周期抽数（含歪掉的五星，按 UP 计） */
+    private double weaponUpAvgPity;
+    /** 武器 / 光锥 UP 周期样本数 */
+    private long weaponUpSamples;
+
     private List<NameCount> poolDistribution;
     private List<WishRecord> recentWishes;
     /** 按卡池拆分的保底与出货统计 */
@@ -239,6 +248,38 @@ public class OverviewVO implements Serializable {
 
     public void setCharacterUpRate(double characterUpRate) {
         this.characterUpRate = characterUpRate;
+    }
+
+    public double getCharacterUpAvgPity() {
+        return characterUpAvgPity;
+    }
+
+    public void setCharacterUpAvgPity(double characterUpAvgPity) {
+        this.characterUpAvgPity = characterUpAvgPity;
+    }
+
+    public long getCharacterUpSamples() {
+        return characterUpSamples;
+    }
+
+    public void setCharacterUpSamples(long characterUpSamples) {
+        this.characterUpSamples = characterUpSamples;
+    }
+
+    public double getWeaponUpAvgPity() {
+        return weaponUpAvgPity;
+    }
+
+    public void setWeaponUpAvgPity(double weaponUpAvgPity) {
+        this.weaponUpAvgPity = weaponUpAvgPity;
+    }
+
+    public long getWeaponUpSamples() {
+        return weaponUpSamples;
+    }
+
+    public void setWeaponUpSamples(long weaponUpSamples) {
+        this.weaponUpSamples = weaponUpSamples;
     }
 
     public List<NameCount> getPoolDistribution() {

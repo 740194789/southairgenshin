@@ -113,6 +113,48 @@ public class StatsService {
             stats.add(stat);
         }
         vo.setPoolStats(stats);
+        applyUpCyclePity(vo, all, GameType.isStarRail(game) ? "光锥活动" : "武器活动");
+    }
+
+    /**
+     * 统计「每个 UP 的实际平均抽数」：按卡池内五星顺序累加保底抽数，
+     * 命中 UP 时把这一轮（可能包含歪掉的五星）的总抽数计入样本。
+     * 用于按用户往期数据估算抽卡期望。
+     */
+    private void applyUpCyclePity(OverviewVO vo, List<WishRecord> all, String weaponPool) {
+        double charSum = 0D;
+        long charUps = 0;
+        int charCycle = 0;
+        double weaponSum = 0D;
+        long weaponUps = 0;
+        int weaponCycle = 0;
+
+        for (WishRecord record : all) {
+            if (!Integer.valueOf(5).equals(record.getRarity())) {
+                continue;
+            }
+            int pity = record.getPityCount() == null ? 0 : record.getPityCount();
+            if ("角色活动".equals(record.getPool())) {
+                charCycle += pity;
+                if (Boolean.TRUE.equals(record.getIsUp())) {
+                    charSum += charCycle;
+                    charUps++;
+                    charCycle = 0;
+                }
+            } else if (weaponPool.equals(record.getPool())) {
+                weaponCycle += pity;
+                if (Boolean.TRUE.equals(record.getIsUp())) {
+                    weaponSum += weaponCycle;
+                    weaponUps++;
+                    weaponCycle = 0;
+                }
+            }
+        }
+
+        vo.setCharacterUpAvgPity(charUps == 0 ? 0D : round(charSum / charUps));
+        vo.setCharacterUpSamples(charUps);
+        vo.setWeaponUpAvgPity(weaponUps == 0 ? 0D : round(weaponSum / weaponUps));
+        vo.setWeaponUpSamples(weaponUps);
     }
 
     /**

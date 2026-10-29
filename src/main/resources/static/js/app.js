@@ -24,7 +24,9 @@
             credit: '摩拉',
             fateLimited: '纠缠之缘',
             fateStandard: '相遇之缘',
-            threeStarType: '武器'
+            threeStarType: '武器',
+            charPool: '角色活动',
+            weaponPool: '武器活动'
         },
         starrail: {
             key: 'starrail',
@@ -39,7 +41,9 @@
             credit: '信用点',
             fateLimited: '星轨专票',
             fateStandard: '星轨通票',
-            threeStarType: '光锥'
+            threeStarType: '光锥',
+            charPool: '角色活动',
+            weaponPool: '光锥活动'
         }
     };
 
@@ -329,19 +333,20 @@
             + '</div>';
     }
 
-    function resourceCard(label, value, extra) {
-        return '<div class="stat-card">'
-            + '<div class="stat-label">' + esc(label) + '</div>'
-            + '<div class="stat-value">' + esc(fmt(value)) + '</div>'
-            + '<div class="stat-extra">' + esc(extra) + '</div>'
-            + '</div>';
+    function resourceTile(glyph, label, value, extra) {
+        return '<article class="inventory-tile">'
+            + '<span class="tile-glyph" aria-hidden="true">' + glyph + '</span>'
+            + '<span class="tile-label">' + esc(label) + '</span>'
+            + '<strong class="tile-value">' + esc(fmt(value)) + '</strong>'
+            + '<span class="tile-note">' + esc(extra) + '</span>'
+            + '</article>';
     }
 
-    function convertItem(label, value, note, highlight) {
-        return '<div class="convert-item' + (highlight ? ' highlight' : '') + '">'
-            + '<span class="convert-label">' + esc(label) + '</span>'
-            + '<strong class="convert-value">' + esc(value) + '</strong>'
-            + '<span class="convert-note">' + esc(note) + '</span>'
+    function ledgerItem(label, value, note, highlight) {
+        return '<div class="ledger-item' + (highlight ? ' highlight' : '') + '">'
+            + '<span class="ledger-label">' + esc(label) + '</span>'
+            + '<strong class="ledger-value">' + esc(value) + '</strong>'
+            + '<span class="ledger-note">' + esc(note) + '</span>'
             + '</div>';
     }
 
@@ -450,6 +455,247 @@
             + '</div></section>';
     }
 
+    /* ---------------- 抽卡期望 ---------------- */
+
+    var EXPECT_KEY = 'sg_expect_';
+
+    /* 官方 / 社区通行估算值 */
+    var EXPECT_MODEL = {
+        fiveStarAvg: 62.5,
+        weaponFiveStarAvg: 53.3,
+        genshinCharUpRate: 0.55,
+        starrailCharUpRate: 0.5,
+        starrailWeaponUpRate: 0.75,
+        genshinWeaponFives: 2
+    };
+
+    function expectPrefs() {
+        var raw = safeParse(localStorage.getItem(EXPECT_KEY + state.game)) || {};
+        return {
+            c: Math.max(0, Math.min(6, Number(raw.c) || 0)),
+            r: Math.max(0, Math.min(5, Number(raw.r) || 0)),
+            mode: raw.mode === 'history' ? 'history' : 'theory'
+        };
+    }
+
+    function saveExpectPrefs(prefs) {
+        try {
+            localStorage.setItem(EXPECT_KEY + state.game, JSON.stringify(prefs));
+        } catch (e) {
+            /* 忽略隐私模式下的写入失败 */
+        }
+    }
+
+    function poolStatOf(data, pool) {
+        var list = data.poolStats || [];
+        for (var i = 0; i < list.length; i++) {
+            if (list[i].pool === pool) {
+                return list[i];
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 目标（角色 c 命 + 武器 r 精炼）的抽数期望。
+     * theory：按平均五星抽数与 UP 概率推算；history：用账号历史 UP 周期平均抽数。
+     * 首个 UP 会先抵扣当前保底进度；已有大保底时首个 UP 只需一个五星。
+     */
+    function expectationPlan(data, prefs) {
+        var g = gameConfig();
+        var isSR = state.game === 'starrail';
+        var charPool = poolStatOf(data, g.charPool);
+        var weaponPool = poolStatOf(data, g.weaponPool);
+        var charPity = charPool ? Math.max(0, charPool.currentPity || 0) : 0;
+        var weaponPity = weaponPool ? Math.max(0, weaponPool.currentPity || 0) : 0;
+        var charGuaranteed = !!(charPool && charPool.upGuaranteed);
+        var weaponGuaranteed = !!(weaponPool && weaponPool.upGuaranteed);
+
+        var charRate = isSR ? EXPECT_MODEL.starrailCharUpRate : EXPECT_MODEL.genshinCharUpRate;
+        var charUnitTheory = EXPECT_MODEL.fiveStarAvg * (1 + (1 - charRate));
+        var weaponUnitTheory = isSR
+            ? EXPECT_MODEL.weaponFiveStarAvg * (1 + (1 - EXPECT_MODEL.starrailWeaponUpRate))
+            : EXPECT_MODEL.weaponFiveStarAvg * EXPECT_MODEL.genshinWeaponFives;
+
+        var charSamples = Number(data.characterUpSamples) || 0;
+        var weaponSamples = Number(data.weaponUpSamples) || 0;
+        var historyReady = charSamples >= 2 && data.characterUpAvgPity > 0;
+        var useHistory = prefs.mode === 'history' && historyReady;
+        var weaponHistory = useHistory && weaponSamples >= 2 && data.weaponUpAvgPity > 0;
+
+        var charUnit = useHistory ? data.characterUpAvgPity : charUnitTheory;
+        var weaponUnit = weaponHistory ? data.weaponUpAvgPity : weaponUnitTheory;
+
+        var charFirst = Math.max(1, (charGuaranteed ? EXPECT_MODEL.fiveStarAvg : charUnit) - charPity);
+        var charCost = charFirst + prefs.c * charUnit;
+
+        var weaponCost = 0;
+        if (prefs.r > 0) {
+            var weaponFirst = Math.max(1, (weaponGuaranteed ? EXPECT_MODEL.weaponFiveStarAvg : weaponUnit)
+                - weaponPity);
+            weaponCost = weaponFirst + (prefs.r - 1) * weaponUnit;
+        }
+
+        return {
+            total: charCost + weaponCost,
+            charCost: charCost,
+            weaponCost: weaponCost,
+            charUnit: charUnit,
+            weaponUnit: weaponUnit,
+            charPity: charPity,
+            weaponPity: weaponPity,
+            charGuaranteed: charGuaranteed,
+            weaponGuaranteed: weaponGuaranteed,
+            useHistory: useHistory,
+            historyReady: historyReady,
+            weaponHistory: weaponHistory,
+            charSamples: charSamples,
+            weaponSamples: weaponSamples,
+            available: data.resource.totalPulls || 0,
+            currencyPerPull: data.resource.primogemsPerPull || 160
+        };
+    }
+
+    function expectStepper(kind, value, min, max, unit) {
+        return '<div class="expect-stepper">'
+            + '<button class="expect-step" type="button" data-step="' + kind + '" data-dir="-1"'
+            + (value <= min ? ' disabled' : '') + ' aria-label="减少">−</button>'
+            + '<strong class="expect-step-value">' + value + '<em>' + unit + '</em></strong>'
+            + '<button class="expect-step" type="button" data-step="' + kind + '" data-dir="1"'
+            + (value >= max ? ' disabled' : '') + ' aria-label="增加">＋</button>'
+            + '</div>';
+    }
+
+    function expectationPanelHtml(data) {
+        var g = gameConfig();
+        var prefs = expectPrefs();
+        var plan = expectationPlan(data, prefs);
+        var historyOn = plan.useHistory;
+        var targetName = 'C' + prefs.c + (prefs.r > 0 ? ' + R' + prefs.r : '');
+        var total = Math.max(1, Math.round(plan.total));
+        var available = plan.available;
+        var gap = total - available;
+        var enough = gap <= 0;
+        var percent = Math.min(100, Math.round(available / total * 100));
+
+        var compareText = enough
+            ? '当前可抽 <strong>' + fmt(available) + '</strong> 抽 · 已足够，余 <strong>'
+                + fmt(-gap) + '</strong> 抽'
+            : '当前可抽 <strong>' + fmt(available) + '</strong> 抽 · 还差 <strong>' + fmt(gap)
+                + '</strong> 抽（约 ' + fmt(gap * plan.currencyPerPull) + ' ' + esc(g.currency) + '）';
+
+        var sourceNote;
+        if (historyOn) {
+            sourceNote = '往期数据：角色 UP 平均 ' + num(data.characterUpAvgPity) + ' 抽（'
+                + plan.charSamples + ' 次样本）';
+            if (prefs.r > 0) {
+                sourceNote += plan.weaponHistory
+                    ? ' · 武器 UP 平均 ' + num(data.weaponUpAvgPity) + ' 抽（' + plan.weaponSamples + ' 次样本）'
+                    : ' · 武器样本不足 2 次，改用理论值';
+            }
+        } else {
+            sourceNote = state.game === 'starrail'
+                ? '理论模型：角色池五星平均 62.5 抽、UP 基础 50%；光锥池五星平均 53.3 抽、UP 75%，歪后大保底。'
+                : '理论模型：角色池五星平均 62.5 抽、UP 综合 55%（含捕获明光）；'
+                    + '武器池五星平均 53.3 抽、定轨约需 2 个五星。';
+        }
+
+        var pityNote = '已扣除当前保底进度：' + esc(g.charPool) + ' ' + plan.charPity + ' / 90'
+            + (prefs.r > 0 ? '，' + esc(g.weaponPool) + ' ' + plan.weaponPity + ' / 80' : '')
+            + (plan.charGuaranteed ? ' · 角色池大保底' : '')
+            + (plan.weaponGuaranteed && prefs.r > 0 ? ' · 武器池大保底' : '') + '。';
+
+        return '<section class="panel expect-panel">'
+            + '<div class="expect-head">'
+            + '<h3>抽卡期望<span class="pool-tag">目标模拟</span></h3>'
+            + '<div class="expect-modes">'
+            + '<button class="expect-mode' + (historyOn ? '' : ' is-on')
+            + '" type="button" data-mode="theory">理论模型</button>'
+            + '<button class="expect-mode' + (historyOn ? ' is-on' : '')
+            + '" type="button" data-mode="history"'
+            + (plan.historyReady ? '' : ' disabled title="往期 UP 样本不足 2 次"')
+            + '>往期数据</button>'
+            + '</div>'
+            + '</div>'
+
+            + '<div class="expect-targets">'
+            + '<div class="expect-target">'
+            + '<span class="expect-target-label">角色命座</span>'
+            + expectStepper('c', prefs.c, 0, 6, '命')
+            + '<span class="expect-target-note">'
+            + (prefs.c === 0 ? '仅本体，不追命座' : '本体 + ' + prefs.c + ' 命') + '</span>'
+            + '</div>'
+            + '<div class="expect-target">'
+            + '<span class="expect-target-label">武器精炼</span>'
+            + expectStepper('r', prefs.r, 0, 5, '精')
+            + '<span class="expect-target-note">'
+            + (prefs.r === 0 ? '不抽武器' : '本体 + ' + (prefs.r - 1) + ' 把精炼') + '</span>'
+            + '</div>'
+            + '</div>'
+
+            + '<div class="expect-readout">'
+            + '<span class="expect-kicker">目标 ' + esc(targetName) + ' · 期望抽数</span>'
+            + '<div class="expect-number">' + fmt(total) + '<span class="unit">抽</span></div>'
+            + '<p class="expect-compare">' + compareText + '</p>'
+            + '<div class="expect-bar' + (enough ? ' done' : '') + '">'
+            + '<span style="width:' + percent + '%"></span></div>'
+            + '</div>'
+
+            + '<div class="expect-split">'
+            + '<div class="expect-part">'
+            + '<span class="expect-part-label">角色 C' + prefs.c + '</span>'
+            + '<strong>' + fmt(Math.round(plan.charCost)) + ' 抽</strong>'
+            + '<em>' + (prefs.c + 1) + ' 个 UP</em>'
+            + '</div>'
+            + '<div class="expect-part">'
+            + '<span class="expect-part-label">' + (prefs.r > 0 ? '武器 R' + prefs.r : '武器') + '</span>'
+            + '<strong>' + (prefs.r > 0 ? fmt(Math.round(plan.weaponCost)) + ' 抽' : '—') + '</strong>'
+            + '<em>' + (prefs.r > 0 ? prefs.r + ' 把 UP' : '未选择') + '</em>'
+            + '</div>'
+            + '</div>'
+
+            + '<p class="expect-note">' + esc(sourceNote) + '</p>'
+            + '<p class="expect-note">' + esc(pityNote) + '期望值为平均情况，约一半概率在期望抽数内达成。</p>'
+            + '</section>';
+    }
+
+    function bindExpectation(data) {
+        var panel = $('.expect-panel');
+        if (!panel) {
+            return;
+        }
+        panel.addEventListener('click', function (event) {
+            var modeBtn = event.target.closest('[data-mode]');
+            var stepBtn = event.target.closest('[data-step]');
+            if (!modeBtn && !stepBtn) {
+                return;
+            }
+            var prefs = expectPrefs();
+            if (modeBtn) {
+                if (modeBtn.dataset.mode === 'history' && !expectationPlan(data, prefs).historyReady) {
+                    toast('往期 UP 样本不足 2 次，先记录更多抽卡数据', 'error');
+                    return;
+                }
+                prefs.mode = modeBtn.dataset.mode;
+            }
+            if (stepBtn) {
+                var dir = Number(stepBtn.dataset.dir) || 0;
+                if (stepBtn.dataset.step === 'c') {
+                    prefs.c = Math.max(0, Math.min(6, prefs.c + dir));
+                } else if (stepBtn.dataset.step === 'r') {
+                    prefs.r = Math.max(0, Math.min(5, prefs.r + dir));
+                }
+            }
+            saveExpectPrefs(prefs);
+
+            var host = $('.expect-panel');
+            if (host) {
+                host.outerHTML = expectationPanelHtml(data);
+                bindExpectation(data);
+            }
+        });
+    }
+
     function backupPanelHtml() {
         var g = gameConfig();
         return '<section class="panel backup-panel">'
@@ -470,35 +716,68 @@
 
         return api('/api/stats/overview').then(function (data) {
             var resource = data.resource;
+            var total = resource.totalPulls || 0;
+            var currencyPulls = resource.pullsFromPrimogems || 0;
+            var limited = resource.intertwinedFates || 0;
+            var standard = resource.acquaintedFates || 0;
+            var currencyPct = total > 0 ? Math.round(currencyPulls * 100 / total) : 0;
+            var fatePct = total > 0 ? 100 - currencyPct : 0;
 
             el.innerHTML =
-                '<div class="page-head">'
+                '<div class="page-head dash-head">'
                 + '<div><h2>账号资源</h2><p class="sub">' + esc(g.fullName) + ' · 资源与抽数换算</p></div>'
-                + '<div class="head-actions">'
-                + '<button class="btn btn-outline btn-sm" id="resource-ocr" type="button">截图识别</button>'
-                + '<button class="btn btn-outline btn-sm" id="resource-edit" type="button">编辑资源</button>'
                 + '</div>'
 
-                + '<div class="stat-grid">'
-                + resourceCard(g.currency, resource.primogems, '≈ ' + fmt(resource.pullsFromPrimogems) + ' 抽')
-                + resourceCard(g.credit, resource.mora, '游戏内货币')
-                + resourceCard(g.fateLimited, resource.intertwinedFates, '限定池抽数')
-                + resourceCard(g.fateStandard, resource.acquaintedFates, '常驻池抽数 · 不计入可抽数')
+                + '<section class="fortune">'
+                + '<div class="fortune-copy">'
+                + '<span class="fortune-kicker">合计可抽 · Total pulls</span>'
+                + '<div class="fortune-number">' + esc(fmt(total)) + '<span class="unit">抽</span></div>'
+                + '<div class="compose" role="img" aria-label="可抽构成">'
+                + '<span class="seg-currency" style="width:' + currencyPct + '%"></span>'
+                + '<span class="seg-fate" style="width:' + fatePct + '%"></span>'
+                + '</div>'
+                + '<div class="fortune-legend">'
+                + '<span><i class="legend-dot currency"></i>' + esc(g.currency) + '兑换 <strong>'
+                + fmt(currencyPulls) + '</strong> 抽</span>'
+                + '<span><i class="legend-dot fate"></i>' + esc(g.fateLimited) + ' <strong>'
+                + fmt(limited) + '</strong> 抽</span>'
+                + '<span class="legend-muted">' + esc(g.fateStandard) + ' ' + fmt(standard)
+                + ' 抽不计入</span>'
+                + '</div>'
+                + '</div>'
+                + '<aside class="fortune-side">'
+                + '<div class="asset">'
+                + '<span class="asset-label">总资产</span>'
+                + '<strong class="asset-value">' + esc(fmt(resource.totalPrimogems))
+                + '<span class="asset-unit">' + esc(g.currency) + '</span></strong>'
+                + '</div>'
+                + '<div class="fortune-actions">'
+                + '<button class="btn btn-primary" id="resource-ocr" type="button">截图识别</button>'
+                + '<button class="btn btn-outline" id="resource-edit" type="button">编辑资源</button>'
+                + '</div>'
+                + '</aside>'
+                + '</section>'
+
+                + '<div class="inventory">'
+                + resourceTile('✦', g.currency, resource.primogems, '≈ ' + fmt(currencyPulls) + ' 抽')
+                + resourceTile('◉', g.credit, resource.mora, '游戏内通用货币')
+                + resourceTile('✧', g.fateLimited, limited, '限定池 · 1 枚 = 1 抽')
+                + resourceTile('◇', g.fateStandard, standard, '常驻池 · 不计入合计')
                 + '</div>'
 
-                + '<section class="panel">'
-                + '<h3>抽数换算</h3>'
-                + '<p class="panel-desc">常驻池抽数（' + esc(g.fateStandard)
-                + '）不计入货币折算与合计可抽。</p>'
-                + '<div class="convert-grid">'
-                + convertItem(g.currency + '可兑换', fmt(resource.pullsFromPrimogems) + ' 抽',
-                    '余 ' + fmt(resource.primogemsRemainder) + ' ' + g.currency + ' · 1 抽 = '
-                    + resource.primogemsPerPull + ' ' + g.currency)
-                + convertItem('限定抽数折算', fmt(resource.primogemsFromFates) + ' ' + g.currency,
-                    g.fateLimited + ' × ' + resource.primogemsPerPull)
-                + convertItem('合计可抽', fmt(resource.totalPulls) + ' 抽',
-                    '货币 + 限定抽数折算 ' + fmt(resource.totalPrimogems) + ' ' + g.currency, true)
+                + '<section class="ledger">'
+                + '<div class="ledger-head"><h3>抽数换算</h3>'
+                + '<span>常驻抽数不计入折算与合计</span></div>'
+                + '<div class="ledger-grid">'
+                + ledgerItem(g.currency + '可兑换', fmt(currencyPulls) + ' 抽',
+                    '余 ' + fmt(resource.primogemsRemainder) + ' ' + g.currency)
+                + ledgerItem(g.fateLimited + '折算', fmt(resource.primogemsFromFates) + ' ' + g.currency,
+                    limited + ' 枚 × ' + resource.primogemsPerPull)
+                + ledgerItem('合计可抽', fmt(total) + ' 抽',
+                    '折合总资产 ' + fmt(resource.totalPrimogems) + ' ' + g.currency, true)
                 + '</div>'
+                + '<p class="ledger-foot">换算基准：1 抽 = ' + resource.primogemsPerPull
+                + ' ' + esc(g.currency) + '</p>'
                 + '</section>';
 
             var editBtn = $('#resource-edit');
@@ -547,6 +826,7 @@
 
                 + capturePanelHtml(data)
                 + poolStatsPanelHtml(data)
+                + expectationPanelHtml(data)
 
                 + '<div class="stat-grid">'
                 + statCard('出货记录', data.wishCount, '四星 ' + data.fourStarWishes + ' 次')
@@ -564,6 +844,7 @@
                 + backupPanelHtml();
 
             bindBackupPanel();
+            bindExpectation(data);
         }).catch(function (err) {
             if (state.token) {
                 el.innerHTML = errorHtml(err);
