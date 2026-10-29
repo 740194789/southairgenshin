@@ -102,16 +102,6 @@ page {
   font-size: 24rpx;
 }
 
-.btn-row {
-  display: flex;
-  flex-wrap: wrap;
-  margin-bottom: 16rpx;
-}
-
-.btn-row .btn {
-  margin: 0 12rpx 12rpx 0;
-}
-
 .btn:active {
   opacity: 0.75;
 }

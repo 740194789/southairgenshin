@@ -49,7 +49,7 @@
       </view>
 
       <view class="record-bottom">
-        <text class="record-id">#{{item.shortId}}</text>
+        <text class="record-id">#{{item.id}}</text>
         <view class="record-actions">
           <text class="link" data-id="{{item.id}}" bindtap="editRow">编辑</text>
           <text class="link danger" data-id="{{item.id}}" bindtap="removeRow">删除</text>
