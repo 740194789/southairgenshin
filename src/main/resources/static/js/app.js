@@ -474,6 +474,8 @@
             el.innerHTML =
                 '<div class="page-head">'
                 + '<div><h2>账号资源</h2><p class="sub">' + esc(g.fullName) + ' · 资源与抽数换算</p></div>'
+                + '<div class="head-actions">'
+                + '<button class="btn btn-outline btn-sm" id="resource-ocr" type="button">截图识别</button>'
                 + '<button class="btn btn-outline btn-sm" id="resource-edit" type="button">编辑资源</button>'
                 + '</div>'
 
@@ -504,6 +506,15 @@
                 editBtn.addEventListener('click', function () {
                     guard(function () {
                         return editResource(resource);
+                    });
+                });
+            }
+
+            var ocrBtn = $('#resource-ocr');
+            if (ocrBtn) {
+                ocrBtn.addEventListener('click', function () {
+                    guard(function () {
+                        return openOcrDialog('resource');
                     });
                 });
             }
@@ -602,6 +613,7 @@
             + '<select id="wish-pool" class="input">' + poolOptions + '</select>'
             + '<div class="toolbar-actions">'
             + '<button class="btn btn-text btn-sm" id="wish-batch-edit" type="button">批量编辑本页</button>'
+            + '<button class="btn btn-outline btn-sm" id="wish-ocr" type="button">截图导入</button>'
             + '<button class="btn btn-text btn-sm btn-danger" id="wish-batch-del" type="button" disabled>批量删除</button>'
             + '<button class="btn btn-outline btn-sm" id="wish-export-csv" type="button">导出 CSV</button>'
             + '<button class="btn btn-outline btn-sm" id="wish-export-json" type="button">导出 JSON</button>'
@@ -615,6 +627,12 @@
         $('#wish-add').addEventListener('click', function () {
             guard(function () {
                 return openEditor('wishes', null);
+            });
+        });
+
+        $('#wish-ocr').addEventListener('click', function () {
+            guard(function () {
+                return openOcrDialog('wishes');
             });
         });
 
@@ -1341,6 +1359,458 @@
                     + (result.skipped ? '，跳过 ' + result.skipped + ' 条' : ''));
                 switchView('stats');
                 return result;
+            });
+        });
+    }
+
+    /* ---------------- 截图识别 ---------------- */
+
+    var OCR_ENGINE_KEY = 'sg_ocr_engine';
+    var TESSERACT_SRC = 'https://cdn.jsdelivr.net/npm/tesseract.js@4.1.4/dist/tesseract.min.js';
+    var tesseractLoading = null;
+
+    /** 带图片上传的请求：不能设置 Content-Type，交给浏览器生成 boundary */
+    function apiUpload(path, formData) {
+        var headers = {};
+        if (state.token) {
+            headers.Authorization = 'Bearer ' + state.token;
+        }
+        return fetch(withGame(path), { method: 'POST', headers: headers, body: formData })
+            .then(function (res) {
+                return res.text().then(function (text) {
+                    var payload = safeParse(text);
+                    if (res.status === 401) {
+                        logout(true);
+                        throw new Error((payload && payload.message) || '登录已失效，请重新登录');
+                    }
+                    if (!res.ok) {
+                        throw new Error((payload && payload.message) || ('请求失败（' + res.status + '）'));
+                    }
+                    if (payload && payload.code !== 0) {
+                        throw new Error(payload.message || '请求失败');
+                    }
+                    return payload ? payload.data : null;
+                });
+            });
+    }
+
+    function engineOptions(status) {
+        var list = [];
+        list.push({
+            key: 'vision',
+            label: '视觉模型',
+            note: status.visionConfigured ? status.visionModel : '未配置',
+            enabled: status.visionConfigured,
+            hint: '识别率最高，需要服务端配置 Base URL / Key / 模型'
+        });
+        list.push({
+            key: 'tesseract',
+            label: '本地 Tesseract',
+            note: status.tesseractAvailable ? '已安装' : '未安装',
+            enabled: status.tesseractAvailable,
+            hint: status.tesseractAvailable ? '离线识别，数字识别较稳' : (status.tesseractHint || '本机未安装 tesseract')
+        });
+        list.push({
+            key: 'browser',
+            label: '浏览器 OCR',
+            note: 'tesseract.js',
+            enabled: true,
+            hint: '首次需下载约 10-15MB 模型，速度较慢'
+        });
+        return list;
+    }
+
+    function loadTesseract() {
+        if (window.Tesseract) {
+            return Promise.resolve(window.Tesseract);
+        }
+        if (tesseractLoading) {
+            return tesseractLoading;
+        }
+        tesseractLoading = new Promise(function (resolve, reject) {
+            var script = document.createElement('script');
+            script.src = TESSERACT_SRC;
+            script.async = true;
+            script.onload = function () {
+                window.Tesseract ? resolve(window.Tesseract) : reject(new Error('OCR 脚本加载异常'));
+            };
+            script.onerror = function () {
+                tesseractLoading = null;
+                reject(new Error('无法加载浏览器 OCR（请检查网络或使用其它引擎）'));
+            };
+            document.head.appendChild(script);
+        });
+        return tesseractLoading;
+    }
+
+    function runBrowserOcr(kind, file, onStatus) {
+        return loadTesseract().then(function (Tesseract) {
+            return Tesseract.recognize(file, 'chi_sim+eng', {
+                logger: function (m) {
+                    if (!onStatus) {
+                        return;
+                    }
+                    if (m.status === 'recognizing text') {
+                        onStatus('浏览器识别中 ' + Math.round((m.progress || 0) * 100) + '%');
+                    } else if (m.status) {
+                        onStatus('准备模型：' + m.status);
+                    }
+                }
+            }).then(function (res) {
+                var text = res && res.data ? res.data.text : '';
+                return api('/api/ocr/parse', { method: 'POST', body: { kind: kind, text: text } });
+            });
+        });
+    }
+
+    function ocrWarningsHtml(warnings) {
+        if (!warnings || !warnings.length) {
+            return '';
+        }
+        return '<div class="ocr-warn">' + warnings.map(function (item) {
+            return '<p>· ' + esc(item) + '</p>';
+        }).join('') + '</div>';
+    }
+
+    function ocrRawHtml(rawText) {
+        if (!rawText) {
+            return '';
+        }
+        return '<details class="ocr-raw"><summary>查看识别原文</summary>'
+            + '<pre>' + esc(rawText) + '</pre></details>';
+    }
+
+    function localTimeValue(text) {
+        if (!text) {
+            return '';
+        }
+        return String(text).replace(' ', 'T').slice(0, 16);
+    }
+
+    function openOcrDialog(kind) {
+        var g = gameConfig();
+        var isResource = kind === 'resource';
+        var selected = localStorage.getItem(OCR_ENGINE_KEY) || '';
+        var currentFile = null;
+
+        return new Promise(function (resolve) {
+            var mask = document.createElement('div');
+            mask.className = 'modal-mask';
+            mask.innerHTML = '<div class="modal modal-wide ocr-modal">'
+                + '<header><h3>' + (isResource ? '截图识别资源' : '截图识别抽卡')
+                + '<span class="pool-tag">' + esc(g.fullName) + '</span></h3>'
+                + '<button class="modal-close" type="button" aria-label="关闭">×</button></header>'
+                + '<div class="modal-body ocr-body">'
+                + '<p class="modal-hint">' + (isResource
+                    ? '上传游戏内资源界面截图，自动识别 ' + esc(g.currency) + '、' + esc(g.credit) + '、'
+                        + esc(g.fateLimited) + '、' + esc(g.fateStandard) + ' 的数量，确认后填入资源。'
+                    : '上传抽卡记录截图，生成候选记录，核对名称、星级与卡池后再导入。')
+                + '</p>'
+                + '<div class="ocr-engines" id="ocr-engines"><span class="ocr-loading">正在检测可用引擎…</span></div>'
+                + '<div class="ocr-drop" id="ocr-drop" role="button" tabindex="0">'
+                + '<input id="ocr-file" type="file" accept="image/*" hidden/>'
+                + '<div class="ocr-drop-hint" id="ocr-drop-hint">点击选择截图，或把图片拖到这里</div>'
+                + '<img id="ocr-preview" class="ocr-preview" hidden alt="待识别截图"/>'
+                + '</div>'
+                + '<div class="ocr-bar">'
+                + '<span class="ocr-status" id="ocr-status"></span>'
+                + '<button class="btn btn-primary btn-sm" id="ocr-run" type="button" disabled>开始识别</button>'
+                + '</div>'
+                + '<div id="ocr-result" class="ocr-result"></div>'
+                + '</div>'
+                + '<footer class="modal-foot"><button type="button" class="btn btn-text modal-cancel">关闭</button></footer>'
+                + '</div>';
+
+            document.body.appendChild(mask);
+            document.body.style.overflow = 'hidden';
+
+            function close(result) {
+                mask.remove();
+                document.body.style.overflow = '';
+                resolve(result);
+            }
+
+            $('.modal-close', mask).addEventListener('click', function () {
+                close(false);
+            });
+            $('.modal-cancel', mask).addEventListener('click', function () {
+                close(false);
+            });
+            mask.addEventListener('click', function (event) {
+                if (event.target === mask) {
+                    close(false);
+                }
+            });
+
+            var enginesBox = $('#ocr-engines', mask);
+            var drop = $('#ocr-drop', mask);
+            var fileInput = $('#ocr-file', mask);
+            var preview = $('#ocr-preview', mask);
+            var runBtn = $('#ocr-run', mask);
+            var statusEl = $('#ocr-status', mask);
+            var resultBox = $('#ocr-result', mask);
+            var engines = [];
+
+            function setStatus(text, isError) {
+                statusEl.textContent = text || '';
+                statusEl.className = 'ocr-status' + (isError ? ' error' : '');
+            }
+
+            function renderEngines() {
+                enginesBox.innerHTML = engines.map(function (engine) {
+                    var active = engine.key === selected;
+                    return '<button type="button" class="ocr-engine'
+                        + (active ? ' active' : '') + (engine.enabled ? '' : ' disabled')
+                        + '" data-engine="' + engine.key + '"' + (engine.enabled ? '' : ' disabled')
+                        + ' title="' + esc(engine.hint) + '">'
+                        + '<strong>' + esc(engine.label) + '</strong>'
+                        + '<span>' + esc(engine.note) + '</span>'
+                        + '</button>';
+                }).join('');
+                $$('.ocr-engine', enginesBox).forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        if (btn.disabled) {
+                            return;
+                        }
+                        selected = btn.dataset.engine;
+                        localStorage.setItem(OCR_ENGINE_KEY, selected);
+                        renderEngines();
+                        updateRunState();
+                    });
+                });
+            }
+
+            function updateRunState() {
+                runBtn.disabled = !currentFile || !selected;
+            }
+
+            function pickFile(file) {
+                if (!file) {
+                    return;
+                }
+                if (!/^image\//.test(file.type)) {
+                    toast('请选择图片文件', 'error');
+                    return;
+                }
+                if (file.size > 8 * 1024 * 1024) {
+                    toast('图片不能超过 8MB', 'error');
+                    return;
+                }
+                currentFile = file;
+                preview.src = URL.createObjectURL(file);
+                preview.hidden = false;
+                $('#ocr-drop-hint', mask).hidden = true;
+                resultBox.innerHTML = '';
+                setStatus('');
+                updateRunState();
+            }
+
+            api('/api/ocr/engines').then(function (status) {
+                engines = engineOptions(status || {});
+                var enabled = engines.filter(function (item) {
+                    return item.enabled;
+                });
+                if (!selected || !enabled.some(function (item) {
+                    return item.key === selected;
+                })) {
+                    selected = enabled.length ? enabled[0].key : '';
+                }
+                renderEngines();
+                updateRunState();
+            }).catch(function (err) {
+                enginesBox.innerHTML = '<span class="ocr-loading">引擎检测失败：' + esc(err.message) + '</span>';
+            });
+
+            drop.addEventListener('click', function () {
+                fileInput.click();
+            });
+            drop.addEventListener('keydown', function (event) {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    fileInput.click();
+                }
+            });
+            drop.addEventListener('dragover', function (event) {
+                event.preventDefault();
+                drop.classList.add('dragging');
+            });
+            drop.addEventListener('dragleave', function () {
+                drop.classList.remove('dragging');
+            });
+            drop.addEventListener('drop', function (event) {
+                event.preventDefault();
+                drop.classList.remove('dragging');
+                var files = event.dataTransfer && event.dataTransfer.files;
+                pickFile(files && files[0]);
+            });
+            fileInput.addEventListener('change', function (event) {
+                var file = event.target.files && event.target.files[0];
+                event.target.value = '';
+                pickFile(file);
+            });
+
+            runBtn.addEventListener('click', function () {
+                if (!currentFile || !selected) {
+                    return;
+                }
+                runBtn.disabled = true;
+                resultBox.innerHTML = '';
+                setStatus(selected === 'browser' ? '准备浏览器 OCR…' : '识别中，请稍候…');
+
+                var task = selected === 'browser'
+                    ? runBrowserOcr(kind, currentFile, setStatus)
+                    : (function () {
+                        var field = new FormData();
+                        field.append('file', currentFile);
+                        return apiUpload('/api/ocr/' + (isResource ? 'resource' : 'wishes')
+                            + '?engine=' + encodeURIComponent(selected), field);
+                    })();
+
+                task.then(function (result) {
+                    setStatus('识别完成');
+                    runBtn.disabled = false;
+                    if (!result) {
+                        resultBox.innerHTML = ocrWarningsHtml(['没有返回识别结果']);
+                        return;
+                    }
+                    if (isResource) {
+                        renderOcrResource(result, resultBox, close);
+                    } else {
+                        renderOcrWishes(result, resultBox, close);
+                    }
+                }).catch(function (err) {
+                    setStatus(err.message || '识别失败', true);
+                    runBtn.disabled = false;
+                });
+            });
+        });
+    }
+
+    function renderOcrResource(result, box, close) {
+        var g = gameConfig();
+        var fields = [
+            { key: 'primogems', label: g.currency },
+            { key: 'mora', label: g.credit },
+            { key: 'intertwinedFates', label: g.fateLimited + '（抽）' },
+            { key: 'acquaintedFates', label: g.fateStandard + '（抽）' }
+        ];
+
+        box.innerHTML = ocrWarningsHtml(result.warnings)
+            + '<div class="ocr-fields">' + fields.map(function (field) {
+                var value = result[field.key];
+                return '<label class="field"><span>' + esc(field.label) + '</span>'
+                    + '<input type="number" min="0" step="1" data-ocr-field="' + field.key + '" value="'
+                    + (value === null || value === undefined ? '' : value) + '" placeholder="未识别"/></label>';
+            }).join('') + '</div>'
+            + '<div class="ocr-foot"><button class="btn btn-primary btn-sm" id="ocr-apply" type="button">'
+            + '按识别结果填入</button></div>'
+            + ocrRawHtml(result.rawText);
+
+        var applyBtn = $('#ocr-apply', box);
+        if (!applyBtn) {
+            return;
+        }
+        applyBtn.addEventListener('click', function () {
+            guard(function () {
+                var body = {};
+                var filled = 0;
+                $$('[data-ocr-field]', box).forEach(function (input) {
+                    var raw = input.value.trim();
+                    if (raw === '') {
+                        return;
+                    }
+                    var value = Number(raw);
+                    if (!isFinite(value) || value < 0) {
+                        return;
+                    }
+                    body[input.dataset.ocrField] = Math.floor(value);
+                    filled += 1;
+                });
+                if (!filled) {
+                    throw new Error('请至少填写或识别出一项资源');
+                }
+                return api('/api/resources', { method: 'PUT', body: body }).then(function () {
+                    toast('资源已更新');
+                    close(true);
+                    loadDashboard();
+                });
+            });
+        });
+    }
+
+    function renderOcrWishes(result, box, close) {
+        var g = gameConfig();
+        var candidates = (result && result.candidates) || [];
+        if (!candidates.length) {
+            box.innerHTML = ocrWarningsHtml(result.warnings) + ocrRawHtml(result.rawText);
+            return;
+        }
+
+        box.innerHTML = ocrWarningsHtml(result.warnings)
+            + '<div class="ocr-wish-head">共识别 ' + candidates.length + ' 条四星及以上记录，勾选后导入</div>'
+            + '<div class="ocr-wish-list">' + candidates.map(function (item, index) {
+                var poolOptions = g.pools.map(function (pool) {
+                    return '<option value="' + esc(pool) + '"'
+                        + (item.pool === pool ? ' selected' : '') + '>' + esc(pool) + '</option>';
+                }).join('');
+                return '<div class="ocr-wish-row" data-index="' + index + '">'
+                    + '<input type="checkbox" class="ocr-wish-check" checked aria-label="导入该条"/>'
+                    + '<div class="ocr-wish-fields">'
+                    + '<input class="input" data-w="itemName" value="' + esc(item.itemName || '')
+                    + '" placeholder="物品名称"/>'
+                    + '<select class="input" data-w="rarity">'
+                    + '<option value="5"' + (item.rarity === 5 ? ' selected' : '') + '>五星</option>'
+                    + '<option value="4"' + (item.rarity === 4 ? ' selected' : '') + '>四星</option>'
+                    + '</select>'
+                    + '<select class="input" data-w="pool">' + poolOptions + '</select>'
+                    + '<input class="input" type="number" min="1" max="180" data-w="pityCount" value="'
+                    + (item.pityCount === null || item.pityCount === undefined ? '' : item.pityCount)
+                    + '" placeholder="第几抽"/>'
+                    + '<input class="input" type="datetime-local" data-w="wishTime" value="'
+                    + localTimeValue(item.wishTime) + '"/>'
+                    + '</div></div>';
+            }).join('') + '</div>'
+            + '<div class="ocr-foot"><button class="btn btn-primary btn-sm" id="ocr-import" type="button">'
+            + '导入勾选记录</button></div>'
+            + ocrRawHtml(result.rawText);
+
+        var importBtn = $('#ocr-import', box);
+        importBtn.addEventListener('click', function () {
+            guard(function () {
+                var payload = [];
+                $$('.ocr-wish-row', box).forEach(function (row) {
+                    if (!$('.ocr-wish-check', row).checked) {
+                        return;
+                    }
+                    var nameInput = $('[data-w=itemName]', row).value.trim();
+                    var rarity = Number($('[data-w=rarity]', row).value);
+                    var pool = $('[data-w=pool]', row).value;
+                    var pityRaw = $('[data-w=pityCount]', row).value.trim();
+                    var timeRaw = $('[data-w=wishTime]', row).value;
+                    if (!nameInput) {
+                        throw new Error('第 ' + (Number(row.dataset.index) + 1) + ' 条缺少物品名称');
+                    }
+                    payload.push({
+                        itemName: nameInput,
+                        rarity: rarity,
+                        pool: pool,
+                        itemType: /武器|光锥/.test(pool) ? g.itemTypes[1] : g.itemTypes[0],
+                        pityCount: pityRaw === '' ? null : Number(pityRaw),
+                        wishTime: timeRaw ? toApiTime(timeRaw) : null
+                    });
+                });
+                if (!payload.length) {
+                    throw new Error('请至少勾选一条记录');
+                }
+                return api('/api/wishes/import?format=json&mode=merge', {
+                    method: 'POST',
+                    body: payload
+                }).then(function (res) {
+                    toast('已导入 ' + res.imported + ' 条'
+                        + (res.skipped ? '，跳过重复 ' + res.skipped + ' 条' : ''));
+                    close(true);
+                    refreshWishList();
+                });
             });
         });
     }

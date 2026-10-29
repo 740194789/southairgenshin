@@ -1290,3 +1290,258 @@ body.game-starrail {
         grid-column: 1 / -1;
     }
 }
+
+/* ---------- 截图识别 ---------- */
+
+.ocr-modal .modal-body.ocr-body {
+    display: block;
+}
+
+.ocr-modal .modal-foot {
+    flex: none;
+    padding: 0 20px 18px;
+}
+
+.ocr-engines {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    margin: 14px 20px 0;
+}
+
+.ocr-engine {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    padding: 10px 12px;
+    border-radius: 11px;
+    border: 1px solid var(--line);
+    background: rgba(9, 11, 20, 0.55);
+    color: var(--text);
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s, color 0.2s;
+}
+
+.ocr-engine strong {
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.ocr-engine span {
+    font-size: 11.5px;
+    color: var(--muted);
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ocr-engine.active {
+    border-color: var(--line-strong);
+    background: rgba(211, 188, 142, 0.14);
+}
+
+.ocr-engine.active strong {
+    color: var(--gold-2);
+}
+
+.ocr-engine.disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.ocr-loading {
+    font-size: 12.5px;
+    color: var(--muted);
+}
+
+.ocr-drop {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 120px;
+    margin: 14px 20px 0;
+    padding: 12px;
+    border-radius: 13px;
+    border: 1px dashed var(--line-strong);
+    background: rgba(9, 11, 20, 0.45);
+    cursor: pointer;
+    overflow: hidden;
+    transition: border-color 0.2s, background 0.2s;
+}
+
+.ocr-drop:hover,
+.ocr-drop.dragging {
+    border-color: var(--gold);
+    background: rgba(211, 188, 142, 0.10);
+}
+
+.ocr-drop-hint {
+    font-size: 12.5px;
+    color: var(--muted);
+}
+
+.ocr-preview {
+    max-width: 100%;
+    max-height: 220px;
+    border-radius: 9px;
+    display: block;
+}
+
+.ocr-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 12px 20px 0;
+}
+
+.ocr-status {
+    flex: 1;
+    min-width: 0;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.ocr-status.error {
+    color: var(--danger);
+}
+
+.ocr-result:empty {
+    display: none;
+}
+
+.ocr-result {
+    margin: 14px 20px 4px;
+}
+
+.ocr-warn {
+    margin-bottom: 10px;
+    padding: 9px 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(211, 188, 142, 0.28);
+    background: rgba(211, 188, 142, 0.08);
+    font-size: 12px;
+    color: var(--gold-2);
+}
+
+.ocr-warn p {
+    margin: 0;
+    line-height: 1.7;
+}
+
+.ocr-fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.ocr-foot {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 14px;
+}
+
+.ocr-raw {
+    margin-top: 12px;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.ocr-raw summary {
+    cursor: pointer;
+}
+
+.ocr-raw pre {
+    margin: 8px 0 0;
+    max-height: 180px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: rgba(9, 11, 20, 0.6);
+    font-size: 12px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    overflow: auto;
+}
+
+.ocr-wish-head {
+    font-size: 12.5px;
+    color: var(--muted);
+    margin-bottom: 10px;
+}
+
+.ocr-wish-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.ocr-wish-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: rgba(9, 11, 20, 0.45);
+}
+
+.ocr-wish-check {
+    flex: 0 0 auto;
+    width: 16px;
+    height: 16px;
+    accent-color: var(--gold);
+    cursor: pointer;
+}
+
+.ocr-wish-fields {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) 78px minmax(0, 1fr) 72px minmax(0, 1.2fr);
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+}
+
+.ocr-wish-fields .input {
+    padding: 8px 10px;
+    font-size: 12.5px;
+}
+
+@media (max-width: 760px) {
+    .ocr-engines {
+        grid-template-columns: 1fr;
+        margin: 12px 18px 0;
+    }
+
+    .ocr-drop {
+        margin: 12px 18px 0;
+    }
+
+    .ocr-bar {
+        margin: 12px 18px 0;
+    }
+
+    .ocr-result {
+        margin: 12px 18px 4px;
+    }
+
+    .ocr-modal .modal-foot {
+        padding: 0 18px calc(16px + env(safe-area-inset-bottom));
+    }
+
+    .ocr-fields {
+        grid-template-columns: 1fr;
+    }
+
+    .ocr-wish-fields {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .ocr-wish-fields [data-w="itemName"] {
+        grid-column: 1 / -1;
+    }
+}
+
