@@ -6,6 +6,7 @@ import com.southair.genshin.common.BusinessException;
 import com.southair.genshin.common.GameType;
 import com.southair.genshin.common.PageResult;
 import com.southair.genshin.common.R;
+import com.southair.genshin.module.wish.dto.GachaLinkRequest;
 import com.southair.genshin.module.wish.dto.WishBatchRequest;
 import com.southair.genshin.module.wish.dto.WishImportResult;
 import com.southair.genshin.module.wish.dto.WishRequest;
@@ -38,10 +39,12 @@ public class WishController {
 
     private final WishService wishService;
     private final ObjectMapper objectMapper;
+    private final GachaLinkImporter gachaLinkImporter;
 
-    public WishController(WishService wishService, ObjectMapper objectMapper) {
+    public WishController(WishService wishService, ObjectMapper objectMapper, GachaLinkImporter gachaLinkImporter) {
         this.wishService = wishService;
         this.objectMapper = objectMapper;
+        this.gachaLinkImporter = gachaLinkImporter;
     }
 
     @GetMapping
@@ -141,6 +144,18 @@ public class WishController {
                 ? parseJson(body)
                 : WishCsv.parse(body);
         return R.ok(wishService.importRecords(UserContext.require(), game, records, mode));
+    }
+
+    /**
+     * 通过游戏内「抽卡记录」链接导入。后端代理抓取，浏览器直连会被跨域拦截。
+     *
+     * @param mode merge（默认，跳过重复）/ replace（清空后全量导入）
+     */
+    @PostMapping("/import-url")
+    public R<WishImportResult> importFromUrl(@RequestBody GachaLinkRequest request,
+                                             @RequestParam(defaultValue = "genshin") String game,
+                                             @RequestParam(defaultValue = "merge") String mode) {
+        return R.ok(gachaLinkImporter.importFrom(request.getUrl(), UserContext.require(), game, mode));
     }
 
     private List<WishRecord> parseJson(String body) {

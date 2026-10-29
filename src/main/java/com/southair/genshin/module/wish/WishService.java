@@ -168,11 +168,20 @@ public class WishService {
      */
     @Transactional
     public WishImportResult importRecords(Long userId, String game, List<WishRecord> records, String mode) {
+        return importRecords(userId, game, records, mode, MAX_IMPORT_RECORDS);
+    }
+
+    /**
+     * 带条数上限的导入。抽卡链接可能包含账号全部历史，需要比文件导入更大的上限。
+     */
+    @Transactional
+    public WishImportResult importRecords(Long userId, String game, List<WishRecord> records, String mode,
+                                          int limit) {
         if (records == null || records.isEmpty()) {
-            throw new BusinessException("文件中没有可导入的抽卡记录");
+            throw new BusinessException("没有可导入的抽卡记录");
         }
-        if (records.size() > MAX_IMPORT_RECORDS) {
-            throw new BusinessException("单次导入最多 " + MAX_IMPORT_RECORDS + " 条抽卡记录");
+        if (records.size() > limit) {
+            throw new BusinessException("单次导入最多 " + limit + " 条抽卡记录");
         }
 
         String gameKey = GameType.normalize(game);
@@ -188,16 +197,25 @@ public class WishService {
         WishImportResult result = new WishImportResult();
         result.setMode(replace ? "replace" : "merge");
 
+        Map<String, Integer> existingCounts = new HashMap<>();
+        if (!replace) {
+            for (WishRecord saved : repository.findByUserIdAndGameOrderByWishTimeAsc(userId, gameKey)) {
+                existingCounts.merge(recordKey(saved.getItemName(), saved.getPool(), saved.getWishTime()),
+                        1, Integer::sum);
+            }
+        }
+
         Map<String, Integer> seen = new HashMap<>();
         for (WishRecord source : records) {
             int rarity = clamp(source.getRarity(), 1, 5, 3);
             String itemName = normalizeItemName(source.getItemName(), rarity);
             String pool = trim(source.getPool());
             LocalDateTime wishTime = source.getWishTime() == null ? LocalDateTime.now() : source.getWishTime();
-            String key = itemName + "\u0001" + (pool == null ? "" : pool) + "\u0001" + wishTime;
+            String key = recordKey(itemName, pool, wishTime);
 
             int seenCount = seen.containsKey(key) ? seen.get(key) : 0;
-            if (!replace && repository.countDuplicate(userId, gameKey, itemName, pool, wishTime) > seenCount) {
+            int available = existingCounts.containsKey(key) ? existingCounts.get(key) : 0;
+            if (!replace && available > seenCount) {
                 result.setSkipped(result.getSkipped() + 1);
                 seen.put(key, seenCount + 1);
                 continue;
@@ -275,6 +293,10 @@ public class WishService {
         record.setPityCount(request.getPityCount() == null ? 1 : request.getPityCount());
         record.setWishTime(request.getWishTime());
         record.setNote(request.getNote());
+    }
+
+    private String recordKey(String itemName, String pool, LocalDateTime wishTime) {
+        return (itemName == null ? "" : itemName) + "\u0001" + (pool == null ? "" : pool) + "\u0001" + wishTime;
     }
 
     private String trim(String value) {

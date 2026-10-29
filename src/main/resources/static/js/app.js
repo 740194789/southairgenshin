@@ -899,6 +899,7 @@
             + '<button class="btn btn-outline btn-sm" id="wish-export-csv" type="button">导出 CSV</button>'
             + '<button class="btn btn-outline btn-sm" id="wish-export-json" type="button">导出 JSON</button>'
             + '<button class="btn btn-outline btn-sm" id="wish-import" type="button">导入记录</button>'
+            + '<button class="btn btn-outline btn-sm" id="wish-link-import" type="button">链接导入</button>'
             + '<input id="wish-file" type="file" accept=".csv,.json,text/csv,application/json" hidden/>'
             + '</div>'
             + '</div>'
@@ -1420,7 +1421,52 @@
             $('#wish-file').click();
         });
 
+        $('#wish-link-import').addEventListener('click', function () {
+            guard(importFromLink);
+        });
+
         $('#wish-file').addEventListener('change', onWishFileSelected);
+    }
+
+    /* 抽卡链接导入：后端代理读取米游社接口，避开浏览器跨域限制 */
+    function importFromLink() {
+        var g = gameConfig();
+        return openForm('从抽卡链接导入 · ' + g.fullName, [
+            {
+                key: 'url',
+                label: '抽卡记录链接',
+                type: 'textarea',
+                full: true,
+                placeholder: '粘贴抽卡记录网页链接或 getGachaLog 接口链接'
+            }
+        ], null, {
+            hint: '游戏内打开「抽卡记录 > 历史记录」复制链接即可，网页链接与接口链接都支持，有效期约 24 小时，'
+                + '链接含账号凭证请勿分享。五星歪没歪会自动判定：'
+                + '角色活动池按常驻名单（崩铁还包含星缘相邀可选名单）判歪，其它五星算 UP。',
+            submitText: '读取并导入',
+            validate: function (values) {
+                var url = values.url || '';
+                var hostOk = /^https:\/\/(public-operation-(hk4e|hkrpg)|webstatic(-sea)?)\.(mihoyo|hoyoverse)\.com/.test(url);
+                if (!hostOk || url.indexOf('authkey=') < 0) {
+                    return '请粘贴完整的米游社抽卡记录链接';
+                }
+                return null;
+            }
+        }).then(function (values) {
+            if (!values) {
+                return null;
+            }
+            toast('正在读取抽卡记录…');
+            return api('/api/wishes/import-url?mode=merge', {
+                method: 'POST',
+                body: { url: values.url }
+            }).then(function (result) {
+                toast('读取完成：新增 ' + result.imported + ' 条'
+                    + (result.skipped ? '，跳过重复 ' + result.skipped + ' 条' : ''));
+                refreshWishList();
+                return result;
+            });
+        });
     }
 
     function onWishFileSelected(event) {
