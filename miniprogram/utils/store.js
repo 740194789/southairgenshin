@@ -92,7 +92,7 @@ function normalizeRecord(source, game, id) {
     pool: truncate(source.pool, 16),
     rarity: rarity,
     isUp: source.isUp === true,
-    pityCount: clamp(source.pityCount, 1, 180, 1),
+    pityCount: clamp(source.pityCount, 1, 90, 1),
     wishTime: source.wishTime || nowStr(),
     note: truncate(source.note, 255),
     captureTriggered: source.captureTriggered === true
@@ -456,6 +456,9 @@ function overview(game) {
     avgPrimogemsPerUpWeapon: luck.weaponAvg > 0 ? Math.round(luck.weaponAvg * PER_PULL) : 0,
     poolDistribution: distribution,
     recentWishes: recent,
+    fiveStarHistory: asc.filter(function (record) {
+      return record.rarity === 5;
+    }),
     poolStats: poolStats
   };
 

@@ -160,3 +160,80 @@
   font-size: 22rpx;
   color: #8b90a6;
 }
+
+/* ---------- 五星抽数柱形图 ---------- */
+
+.pull-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.pull-toggle {
+  font-size: 20rpx;
+  color: #c8ccdb;
+  border: 1rpx solid rgba(211, 188, 142, 0.4);
+  border-radius: 999rpx;
+  padding: 6rpx 18rpx;
+}
+
+.pull-toggle.active {
+  color: #ffd479;
+  border-color: rgba(255, 212, 121, 0.7);
+}
+
+.pull-summary {
+  font-size: 22rpx;
+  color: #8b90a6;
+  line-height: 1.6;
+  margin-bottom: 16rpx;
+}
+
+.pull-scroll {
+  width: 100%;
+  white-space: nowrap;
+}
+
+.pull-chart {
+  display: flex;
+  align-items: flex-end;
+  padding: 0 4rpx;
+}
+
+.pull-col {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  width: 64rpx;
+  flex-shrink: 0;
+}
+
+.pull-val {
+  height: 26rpx;
+  line-height: 26rpx;
+  font-size: 18rpx;
+  color: #f2e2bd;
+}
+
+.pull-bar {
+  width: 28rpx;
+  border-radius: 8rpx 8rpx 2rpx 2rpx;
+  background: linear-gradient(180deg, #f2e2bd, #9f8b5f);
+}
+
+.pull-col.lost .pull-bar {
+  background: linear-gradient(180deg, #6b7185, #444a5e);
+}
+
+.pull-name {
+  width: 60rpx;
+  height: 84rpx;
+  overflow: hidden;
+  margin-top: 8rpx;
+  font-size: 18rpx;
+  line-height: 1.2;
+  color: #8b90a6;
+  text-align: center;
+  word-break: break-all;
+}

@@ -92,6 +92,8 @@ public class OverviewVO implements Serializable {
 
     private List<NameCount> poolDistribution;
     private List<WishRecord> recentWishes;
+    /** 全部五星记录（按抽卡时间升序），用于五星抽数柱形图 */
+    private List<WishRecord> fiveStarRecords;
     /** 按卡池拆分的保底与出货统计 */
     private List<PoolStat> poolStats;
 
@@ -397,6 +399,14 @@ public class OverviewVO implements Serializable {
 
     public void setRecentWishes(List<WishRecord> recentWishes) {
         this.recentWishes = recentWishes;
+    }
+
+    public List<WishRecord> getFiveStarRecords() {
+        return fiveStarRecords;
+    }
+
+    public void setFiveStarRecords(List<WishRecord> fiveStarRecords) {
+        this.fiveStarRecords = fiveStarRecords;
     }
 
     public List<PoolStat> getPoolStats() {

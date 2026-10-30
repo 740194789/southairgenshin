@@ -838,6 +838,105 @@
             + '</div></section>';
     }
 
+    /* ---------- 五星抽数柱形图 ---------- */
+
+    /** 把五星记录转换成柱形图数据；real 为 true 时隐藏歪的记录并按 UP 周期累计真实抽数。 */
+    function pullChartPoints(list, real) {
+        var points = [];
+        if (real) {
+            var cycles = {};
+            (list || []).forEach(function (item) {
+                var pool = item.pool || '未知卡池';
+                var acc = (cycles[pool] || 0) + (Number(item.pityCount) || 0);
+                if (item.isUp === true) {
+                    points.push({ name: item.itemName || '未命名', pool: pool, value: acc, up: true });
+                    acc = 0;
+                }
+                cycles[pool] = acc;
+            });
+            return points;
+        }
+        return (list || []).map(function (item) {
+            return {
+                name: item.itemName || '未命名',
+                pool: item.pool || '未知卡池',
+                value: Number(item.pityCount) || 0,
+                up: item.isUp === true
+            };
+        });
+    }
+
+    function pullChartHtml(points) {
+        if (!points.length) {
+            return emptyHtml('还没有五星记录');
+        }
+        var max = 1;
+        points.forEach(function (point) {
+            max = Math.max(max, point.value);
+        });
+        return '<div class="pull-chart">' + points.map(function (point) {
+            var height = Math.max(8, Math.round(point.value / max * 168));
+            return '<div class="pull-col' + (point.up ? '' : ' lost') + '" title="' + esc(point.pool) + ' · '
+                + (point.up ? 'UP' : '歪') + ' · 用了 ' + point.value + ' 抽">'
+                + '<span class="pull-val">' + point.value + '</span>'
+                + '<div class="pull-bar" style="height:' + height + 'px"></div>'
+                + '<span class="pull-name">' + esc(point.name) + '</span>'
+                + '</div>';
+        }).join('') + '</div>';
+    }
+
+    function pullPanelHtml() {
+        return '<section class="panel pull-panel">'
+            + '<h3>五星抽数<span class="pool-tag">每次五星用了多少抽</span>'
+            + '<button class="btn btn-text pull-toggle" type="button" id="pull-toggle">显示真实抽数</button></h3>'
+            + '<p class="pull-summary" id="pull-summary"></p>'
+            + '<div class="pull-chart-wrap" id="pull-chart-wrap"></div></section>';
+    }
+
+    function renderPullChart(real) {
+        var list = (cache.stats && cache.stats.fiveStarRecords) || [];
+        cache.pullReal = real;
+        var points = pullChartPoints(list, real);
+        var wrap = $('#pull-chart-wrap');
+        var summary = $('#pull-summary');
+        var toggle = $('#pull-toggle');
+        if (!wrap) {
+            return;
+        }
+        wrap.innerHTML = pullChartHtml(points);
+        if (toggle) {
+            toggle.textContent = real ? '显示原始抽数' : '显示真实抽数';
+            toggle.classList.toggle('active', real);
+        }
+        var total = 0;
+        points.forEach(function (point) {
+            total += point.value;
+        });
+        if (summary) {
+            if (real) {
+                var hidden = list.filter(function (item) {
+                    return item.isUp !== true;
+                }).length;
+                summary.textContent = '已隐藏 ' + hidden + ' 次歪的记录 · 抽到 UP 一共用了 '
+                    + total + ' 抽（含歪掉的抽数，按卡池分别累计）';
+            } else {
+                summary.textContent = '共 ' + points.length + ' 次五星，合计 ' + total
+                    + ' 抽；深色柱为歪掉的五星';
+            }
+        }
+    }
+
+    function bindPullChart() {
+        var toggle = $('#pull-toggle');
+        if (!toggle) {
+            return;
+        }
+        toggle.addEventListener('click', function () {
+            renderPullChart(!cache.pullReal);
+        });
+        renderPullChart(false);
+    }
+
     function loadStats() {
         var el = $('#view-stats');
         var g = gameConfig();
@@ -846,6 +945,7 @@
         return api('/api/stats/overview').then(function (data) {
             var resource = data.resource;
             var name = (state.user && (state.user.nickname || state.user.username)) || '旅行者';
+            cache.stats = data;
 
             el.innerHTML =
                 '<div class="hero">'
@@ -861,6 +961,7 @@
                 + capturePanelHtml(data)
                 + poolStatsPanelHtml(data)
                 + luckPanelHtml(data)
+                + pullPanelHtml()
                 + expectationPanelHtml(data)
 
                 + '<div class="stat-grid">'
@@ -879,6 +980,7 @@
                 + backupPanelHtml();
 
             bindBackupPanel();
+            bindPullChart();
             bindExpectation(data);
         }).catch(function (err) {
             if (state.token) {
@@ -1073,7 +1175,7 @@
             { key: 'rarity', type: 'hidden', default: 5 },
             { key: 'itemType', label: '类型', type: 'select', options: g.itemTypes, default: g.itemTypes[0] },
             { key: 'pool', label: '卡池', type: 'select', options: g.pools, default: g.pools[0] },
-            { key: 'pityCount', label: '抽到五星用了多少抽', type: 'number', min: 1, max: 180, default: 1 },
+            { key: 'pityCount', label: '抽到五星用了多少抽', type: 'number', min: 1, max: 90, default: 1 },
             { key: 'isUp', label: '是否 UP', type: 'select', options: [{ value: true, label: 'UP 内' }, { value: false, label: '未中 UP' }], default: true }
         ];
         if (state.game === 'genshin') {
@@ -1249,8 +1351,8 @@
                 if (!data.itemName) {
                     return '请填写五星名称';
                 }
-                if (!data.pityCount || data.pityCount < 1 || data.pityCount > 180) {
-                    return '抽到五星用了多少抽需在 1-180 之间';
+                if (!data.pityCount || data.pityCount < 1 || data.pityCount > 90) {
+                    return '抽到五星用了多少抽需在 1-90 之间';
                 }
                 return null;
             }
@@ -1295,7 +1397,7 @@
             + '<input class="batch-name" type="text" maxlength="64" value="' + esc(name) + '"'
             + ' placeholder="角色 / 武器名称"/>'
             + '<label class="batch-up"><input class="batch-isup" type="checkbox"' + (up ? ' checked' : '') + '/>UP</label>'
-            + '<input class="batch-pity" type="number" min="1" max="180" value="' + esc(pity) + '" title="用了多少抽"/>'
+            + '<input class="batch-pity" type="number" min="1" max="90" value="' + esc(pity) + '" title="用了多少抽"/>'
             + '<input class="batch-time" type="datetime-local" value="' + esc(time) + '"/>'
             + '</div>';
     }
@@ -2098,7 +2200,7 @@
                     + '<option value="4"' + (item.rarity === 4 ? ' selected' : '') + '>四星</option>'
                     + '</select>'
                     + '<select class="input" data-w="pool">' + poolOptions + '</select>'
-                    + '<input class="input" type="number" min="1" max="180" data-w="pityCount" value="'
+                    + '<input class="input" type="number" min="1" max="90" data-w="pityCount" value="'
                     + (item.pityCount === null || item.pityCount === undefined ? '' : item.pityCount)
                     + '" placeholder="第几抽"/>'
                     + '<input class="input" type="datetime-local" data-w="wishTime" value="'

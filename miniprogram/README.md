@@ -63,7 +63,7 @@ miniprogram/
   `wishTime / itemName / rarity / itemType / pool / isUp / pityCount / note / captureTriggered`；
   网页端导出可直接导入小程序，小程序导出也可直接导入网页端。
 - **CSV**：表头统一为
-  `抽卡时间, 物品名称, 星级, 类型, 卡池, 是否UP, 保底计数, 备注, 捕获明光`，带 BOM，Excel / WPS 可直接编辑。
+  `抽卡时间, 物品名称, 星级, 类型, 卡池, 是否UP, 保底计数, 备注, 捕获明光`，带 BOM，Excel / WPS 可直接编辑；保底计数取值范围 1–90。
 - **导入规则**：合并模式按「名称 + 卡池 + 时间」去重；覆盖模式先清空当前游戏记录再写入。
 - **资源**：JSON 备份里的 `resource` 会整体覆盖当前游戏的本机资源。
 

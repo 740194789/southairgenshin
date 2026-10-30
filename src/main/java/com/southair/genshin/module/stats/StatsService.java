@@ -137,11 +137,13 @@ public class StatsService {
         int maxLoss = 0;
         int maxUp = 0;
         boolean guaranteed = false;
+        List<WishRecord> fiveStars = new ArrayList<>();
 
         for (WishRecord record : all) {
             if (!Integer.valueOf(5).equals(record.getRarity())) {
                 continue;
             }
+            fiveStars.add(record);
             totalPulls += record.getPityCount() == null ? 0 : record.getPityCount();
             if (Boolean.TRUE.equals(record.getCaptureTriggered())) {
                 captures++;
@@ -178,6 +180,7 @@ public class StatsService {
         vo.setMaxLossStreak(maxLoss);
         vo.setMaxUpStreak(maxUp);
         vo.setCaptureTriggeredCount(captures);
+        vo.setFiveStarRecords(fiveStars);
         vo.setAvgPrimogemsPerUpCharacter(vo.getCharacterUpAvgPity() <= 0 ? 0L
                 : Math.round(vo.getCharacterUpAvgPity() * ResourceService.PRIMOGEMS_PER_PULL));
         vo.setAvgPrimogemsPerUpWeapon(vo.getWeaponUpAvgPity() <= 0 ? 0L

@@ -85,6 +85,24 @@
   </view>
 
   <view class="panel">
+    <view class="panel-title pull-head">
+      <text>五星抽数</text>
+      <view class="pull-toggle {{chartReal ? 'active' : ''}}" bindtap="onToggleReal">{{chartReal ? '显示原始抽数' : '显示真实抽数'}}</view>
+    </view>
+    <view class="pull-summary">{{chart.summary}}</view>
+    <scroll-view class="pull-scroll" scroll-x wx:if="{{chart.points.length}}">
+      <view class="pull-chart">
+        <view class="pull-col {{item.up ? '' : 'lost'}}" wx:for="{{chart.points}}" wx:key="index">
+          <text class="pull-val">{{item.value}}</text>
+          <view class="pull-bar" style="height:{{item.height}}rpx"></view>
+          <text class="pull-name">{{item.name}}</text>
+        </view>
+      </view>
+    </scroll-view>
+    <view wx:else class="empty">还没有五星记录</view>
+  </view>
+
+  <view class="panel">
     <view class="panel-title">卡池保底统计<text class="pool-tag inline">保底 · 出货</text></view>
     <view class="pool-stat" wx:for="{{pools}}" wx:key="pool">
       <view class="pool-stat-head">

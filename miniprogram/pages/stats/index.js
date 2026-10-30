@@ -22,6 +22,57 @@ function guaranteeText(pool) {
   return '大保底 · 下次必定 UP';
 }
 
+/**
+ * 五星抽数柱形图：real 为 true 时隐藏歪的记录，按 UP 周期累计真实抽数。
+ * 周期按卡池分别累计，避免角色池与武器 / 光锥池混算。
+ */
+function buildChart(list, real) {
+  var points = [];
+  var total = 0;
+
+  if (real) {
+    var cycles = {};
+    (list || []).forEach(function (item) {
+      var pool = item.pool || '未知卡池';
+      var acc = (cycles[pool] || 0) + (item.pityCount || 0);
+      if (item.isUp === true) {
+        points.push({ name: item.itemName || '未命名', value: acc, up: true });
+        acc = 0;
+      }
+      cycles[pool] = acc;
+    });
+  } else {
+    points = (list || []).map(function (item) {
+      return {
+        name: item.itemName || '未命名',
+        value: item.pityCount || 0,
+        up: item.isUp === true
+      };
+    });
+  }
+
+  var max = 1;
+  points.forEach(function (point) {
+    max = Math.max(max, point.value);
+  });
+  points.forEach(function (point) {
+    point.height = Math.max(10, Math.round(point.value / max * 250));
+    total += point.value;
+  });
+
+  var hidden = (list || []).filter(function (item) {
+    return item.isUp !== true;
+  }).length;
+
+  return {
+    points: points,
+    total: total,
+    summary: real
+      ? '已隐藏 ' + hidden + ' 次歪的记录 · 抽到 UP 一共用了 ' + total + ' 抽（含歪掉的抽数，按卡池分别累计）'
+      : '共 ' + points.length + ' 次五星，合计 ' + total + ' 抽；深色柱为歪掉的五星'
+  };
+}
+
 Page({
   data: {
     statusBarHeight: 20,
@@ -31,7 +82,9 @@ Page({
     pools: [],
     dist: [],
     recent: [],
-    capture: null
+    capture: null,
+    chartReal: false,
+    chart: { points: [], summary: '' }
   },
 
   onLoad: function () {
@@ -46,6 +99,8 @@ Page({
   load: function (game) {
     var data = store.overview(game);
     var g = gameLib.config(game);
+    this.fiveStars = data.fiveStarHistory || [];
+    var chart = buildChart(this.fiveStars, this.data.chartReal);
 
     var stats = {
       totalPullsText: store.fmt(data.resource.totalPulls),
@@ -133,14 +188,24 @@ Page({
       pools: pools,
       dist: dist,
       recent: recent,
-      capture: capture
+      capture: capture,
+      chart: chart
     });
   },
 
   onSwitchGame: function (event) {
     var game = event.detail.game;
     app.setGame(game);
+    this.setData({ chartReal: false });
     this.load(game);
+  },
+
+  onToggleReal: function () {
+    var real = !this.data.chartReal;
+    this.setData({
+      chartReal: real,
+      chart: buildChart(this.fiveStars || [], real)
+    });
   },
 
   exportBackup: function () {

@@ -254,7 +254,7 @@ public class WishService {
         target.setPool(truncate(pool, 16));
         target.setRarity(rarity);
         target.setIsUp(source.getIsUp() == null ? Boolean.FALSE : source.getIsUp());
-        target.setPityCount(clamp(source.getPityCount(), 1, 180, 1));
+        target.setPityCount(clamp(source.getPityCount(), 1, 90, 1));
         target.setWishTime(wishTime);
         target.setNote(truncate(trim(source.getNote()), 255));
         target.setCaptureTriggered(Boolean.TRUE.equals(source.getCaptureTriggered()));

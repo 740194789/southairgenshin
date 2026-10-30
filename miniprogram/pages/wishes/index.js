@@ -323,7 +323,7 @@ Page({
       wx.showToast({ title: '请填写五星名称', icon: 'none' });
       return;
     }
-    var pity = Math.max(1, Math.min(180, Number(editor.pity) || 1));
+    var pity = Math.max(1, Math.min(90, Number(editor.pity) || 1));
     var data = {
       itemName: name,
       rarity: rarity,

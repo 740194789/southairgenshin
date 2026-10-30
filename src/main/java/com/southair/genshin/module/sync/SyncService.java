@@ -189,7 +189,7 @@ public class SyncService {
         target.setPool(truncate(trim(source.getPool()), 16));
         target.setRarity(rarity);
         target.setIsUp(source.getIsUp() == null ? Boolean.FALSE : source.getIsUp());
-        target.setPityCount(clamp(source.getPityCount(), 1, 180, 1));
+        target.setPityCount(clamp(source.getPityCount(), 1, 90, 1));
         target.setWishTime(source.getWishTime());
         target.setNote(truncate(trim(source.getNote()), 255));
     }

@@ -34,8 +34,8 @@ public class WishRequest {
     private Boolean isUp;
 
     @JsonAlias("pity")
-    @Min(value = 1, message = "保底计数范围为 1-180")
-    @Max(value = 180, message = "保底计数范围为 1-180")
+    @Min(value = 1, message = "保底计数范围为 1-90")
+    @Max(value = 90, message = "保底计数范围为 1-90")
     private Integer pityCount;
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
