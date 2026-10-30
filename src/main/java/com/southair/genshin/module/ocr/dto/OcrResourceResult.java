@@ -16,7 +16,7 @@ public class OcrResourceResult implements Serializable {
     private Long intertwinedFates;
     private Long acquaintedFates;
 
-    /** 实际使用的引擎：vision / tesseract / browser */
+    /** 实际使用的引擎：tesseract / browser */
     private String engine;
     /** 识别出的原始文本，便于前端展开查看与人工核对 */
     private String rawText;

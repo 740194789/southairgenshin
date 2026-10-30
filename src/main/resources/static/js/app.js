@@ -35,7 +35,7 @@
             title: 'SouthAir Genshin · 崩坏：星穹铁道记录',
             subtitle: '星穹列车数据记录 · Web / Mobile',
             heroSub: 'Warp Planner',
-            pools: ['角色活动', '光锥活动', '常驻'],
+            pools: ['角色活动', '光锥活动', '联动', '常驻'],
             itemTypes: ['角色', '光锥'],
             currency: '星琼',
             credit: '信用点',
@@ -154,14 +154,15 @@
 
     /* ---------------- 接口请求 ---------------- */
 
-    function withGame(path) {
+    function withGame(path, game) {
         if (path.indexOf('/api/') !== 0 || path.indexOf('/api/auth/') === 0) {
             return path;
         }
-        return path + (path.indexOf('?') >= 0 ? '&' : '?') + 'game=' + encodeURIComponent(state.game);
+        var key = game || state.game;
+        return path + (path.indexOf('?') >= 0 ? '&' : '?') + 'game=' + encodeURIComponent(key);
     }
 
-    function api(path, options) {
+    function api(path, options, game) {
         var opts = Object.assign({}, options || {});
         opts.headers = Object.assign({}, opts.headers || {});
         if (state.token) {
@@ -172,7 +173,7 @@
             opts.body = JSON.stringify(opts.body);
         }
 
-        return fetch(withGame(path), opts).then(function (res) {
+        return fetch(withGame(path, game), opts).then(function (res) {
             return res.text().then(function (text) {
                 var payload = safeParse(text);
                 if (res.status === 401) {
@@ -285,7 +286,7 @@
         $$('.tab-btn').forEach(function (btn) {
             btn.classList.toggle('active', btn.dataset.view === view);
         });
-        ['dashboard', 'stats', 'wishes'].forEach(function (name) {
+        ['dashboard', 'stats', 'wishes', 'settings'].forEach(function (name) {
             $('#view-' + name).hidden = name !== view;
         });
 
@@ -297,7 +298,8 @@
         var loaders = {
             dashboard: loadDashboard,
             stats: loadStats,
-            wishes: loadWishes
+            wishes: loadWishes,
+            settings: loadSettings
         };
         loaders[view]();
     }
@@ -368,6 +370,19 @@
         }).join('') + '</div>';
     }
 
+    function avatarHtml(item) {
+        if (!item || item.itemType !== '角色') {
+            return '';
+        }
+        var map = (window.SG_AVATARS || {})[state.game];
+        var url = map ? map[item.itemName] : '';
+        if (!url) {
+            return '';
+        }
+        return '<img class="char-avatar" src="' + esc(url) + '" alt="" loading="lazy"'
+            + ' onerror="this.remove()"/>';
+    }
+
     function miniWishes(list) {
         if (!list || !list.length) {
             return emptyHtml('还没有抽卡记录');
@@ -375,7 +390,8 @@
         return '<div class="mini-list">' + list.map(function (item) {
             var time = (item.wishTime || '').slice(5, 16);
             return '<div class="mini-item">'
-                + '<span class="name"><span class="stars">' + starText(item.rarity) + '</span>'
+                + '<span class="name">' + avatarHtml(item)
+                + '<span class="stars">' + starText(item.rarity) + '</span>'
                 + esc(item.itemName) + '</span>'
                 + '<span class="time">' + esc(time) + '</span>'
                 + '</div>';
@@ -696,15 +712,19 @@
         });
     }
 
-    function backupPanelHtml() {
+    function resourcePanelHtml() {
         var g = gameConfig();
         return '<section class="panel backup-panel">'
-            + '<h3>数据备份 · ' + esc(g.fullName) + '</h3>'
-            + '<p class="panel-desc">导出当前游戏的抽卡记录与账号资源为 JSON 文件，或从备份文件恢复数据。</p>'
+            + '<h3>账号资源导入导出 · ' + esc(g.fullName) + '</h3>'
+            + '<p class="panel-desc">导出或导入当前游戏的账号资源（' + esc(g.currency) + '、'
+            + esc(g.credit) + '、' + esc(g.fateLimited) + '、' + esc(g.fateStandard)
+            + '）。抽卡记录请在「抽卡」页导入导出，全量备份请到「设置」页。</p>'
             + '<div class="panel-actions">'
-            + '<button class="btn btn-primary" id="backup-export" type="button">导出备份</button>'
-            + '<button class="btn btn-outline" id="backup-import" type="button">导入备份</button>'
-            + '<input id="backup-file" type="file" accept="application/json,.json" hidden/>'
+            + '<button class="btn btn-primary" id="resource-export-csv" type="button">导出 CSV</button>'
+            + '<button class="btn btn-outline" id="resource-export-json" type="button">导出 JSON</button>'
+            + '<button class="btn btn-text" id="resource-template" type="button">下载导入模板</button>'
+            + '<button class="btn btn-outline" id="resource-import" type="button">导入资源</button>'
+            + '<input id="resource-file" type="file" accept=".csv,.json,text/csv,application/json" hidden/>'
             + '</div>'
             + '</section>';
     }
@@ -849,7 +869,8 @@
                 var pool = item.pool || '未知卡池';
                 var acc = (cycles[pool] || 0) + (Number(item.pityCount) || 0);
                 if (item.isUp === true) {
-                    points.push({ name: item.itemName || '未命名', pool: pool, value: acc, up: true });
+                    points.push({ name: item.itemName || '未命名', type: item.itemType,
+                        pool: pool, value: acc, up: true });
                     acc = 0;
                 }
                 cycles[pool] = acc;
@@ -859,6 +880,7 @@
         return (list || []).map(function (item) {
             return {
                 name: item.itemName || '未命名',
+                type: item.itemType,
                 pool: item.pool || '未知卡池',
                 value: Number(item.pityCount) || 0,
                 up: item.isUp === true
@@ -878,6 +900,7 @@
             var height = Math.max(8, Math.round(point.value / max * 168));
             return '<div class="pull-col' + (point.up ? '' : ' lost') + '" title="' + esc(point.pool) + ' · '
                 + (point.up ? 'UP' : '歪') + ' · 用了 ' + point.value + ' 抽">'
+                + avatarHtml({ itemName: point.name, itemType: point.type })
                 + '<span class="pull-val">' + point.value + '</span>'
                 + '<div class="pull-bar" style="height:' + height + 'px"></div>'
                 + '<span class="pull-name">' + esc(point.name) + '</span>'
@@ -977,9 +1000,9 @@
                 + '<section class="panel"><h3>最近出货</h3>' + miniWishes(data.recentWishes) + '</section>'
                 + '</div>'
 
-                + backupPanelHtml();
+                + resourcePanelHtml();
 
-            bindBackupPanel();
+            bindResourcePanel();
             bindPullChart();
             bindExpectation(data);
         }).catch(function (err) {
@@ -997,7 +1020,8 @@
         return '<div class="record-row" data-id="' + item.id + '">'
             + '<input type="checkbox" class="record-check" data-check'
             + (state.wishSelected.has(item.id) ? ' checked' : '') + ' aria-label="选择"/>'
-            + '<div class="record-name"><span class="stars">' + starText(item.rarity) + '</span>'
+            + '<div class="record-name">' + avatarHtml(item)
+            + '<span class="stars">' + starText(item.rarity) + '</span>'
             + '<span class="name' + (item.rarity === 3 ? ' muted' : '') + '">' + esc(name) + '</span></div>'
             + '<div>' + esc(item.itemType || '—') + '</div>'
             + '<div><span class="pool-tag' + (item.isUp ? ' up' : '') + '">'
@@ -1036,6 +1060,7 @@
             + '<button class="btn btn-text btn-sm btn-danger" id="wish-batch-del" type="button" disabled>批量删除</button>'
             + '<button class="btn btn-outline btn-sm" id="wish-export-csv" type="button">导出 CSV</button>'
             + '<button class="btn btn-outline btn-sm" id="wish-export-json" type="button">导出 JSON</button>'
+            + '<button class="btn btn-text btn-sm" id="wish-template" type="button">下载模板</button>'
             + '<button class="btn btn-outline btn-sm" id="wish-import" type="button">导入记录</button>'
             + '<button class="btn btn-outline btn-sm" id="wish-link-import" type="button">链接导入</button>'
             + '<input id="wish-file" type="file" accept=".csv,.json,text/csv,application/json" hidden/>'
@@ -1526,7 +1551,15 @@
         });
 
         $('#wish-import').addEventListener('click', function () {
-            $('#wish-file').click();
+            guard(function () {
+                return chooseImport('wishes', 'wish-file', state.game);
+            });
+        });
+
+        $('#wish-template').addEventListener('click', function () {
+            guard(function () {
+                return chooseTemplate('wishes', state.game);
+            });
         });
 
         $('#wish-link-import').addEventListener('click', function () {
@@ -1578,7 +1611,7 @@
         });
     }
 
-    function onWishFileSelected(event) {
+    function onWishFileSelected(event, game) {
         var file = event.target.files && event.target.files[0];
         event.target.value = '';
         if (!file) {
@@ -1596,7 +1629,7 @@
         var reader = new FileReader();
         reader.onload = function () {
             guard(function () {
-                return importWishes(file.name, format, String(reader.result || ''));
+                return importWishes(file.name, format, String(reader.result || ''), game);
             });
         };
         reader.onerror = function () {
@@ -1605,8 +1638,9 @@
         reader.readAsText(file, 'utf-8');
     }
 
-    function importWishes(fileName, format, text) {
-        return openForm('导入抽卡记录', [
+    function importWishes(fileName, format, text, game) {
+        var g = GAMES[game || state.game] || gameConfig();
+        return openForm('导入抽卡记录 · ' + g.fullName, [
             {
                 key: 'mode',
                 label: '导入方式',
@@ -1626,18 +1660,20 @@
                 return null;
             }
             if (values.mode === 'replace'
-                && !window.confirm('覆盖导入会清空当前账号的全部抽卡记录，确定继续吗？')) {
+                && !window.confirm('覆盖导入会清空「' + g.fullName + '」的全部抽卡记录，确定继续吗？')) {
                 return null;
             }
             return api('/api/wishes/import?format=' + format + '&mode=' + encodeURIComponent(values.mode), {
                 method: 'POST',
                 headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
                 body: text
-            }).then(function (result) {
+            }, game).then(function (result) {
                 toast('导入完成：新增 ' + result.imported + ' 条'
                     + (result.skipped ? '，跳过 ' + result.skipped + ' 条' : '')
                     + (result.filtered ? '，忽略 ' + result.filtered + ' 条' : ''));
-                refreshWishList();
+                if ((game || state.game) === state.game) {
+                    refreshWishList();
+                }
                 return result;
             });
         });
@@ -1667,62 +1703,199 @@
         });
     }
 
-    /* ---------------- 数据备份 ---------------- */
+    /* ---------------- 导入 / 导出 ---------------- */
 
-    function bindBackupPanel() {
-        var exportBtn = $('#backup-export');
-        var importBtn = $('#backup-import');
-        var fileInput = $('#backup-file');
-        if (!exportBtn || !importBtn || !fileInput) {
+    function openChoice(title, hint, actions) {
+        return new Promise(function (resolve) {
+            var mask = document.createElement('div');
+            mask.className = 'modal-mask';
+            mask.innerHTML = '<div class="modal choice-modal">'
+                + '<header><h3>' + esc(title) + '</h3>'
+                + '<button class="modal-close" type="button" aria-label="关闭">×</button></header>'
+                + (hint ? '<p class="modal-hint">' + esc(hint) + '</p>' : '')
+                + '<div class="modal-body"><div class="choice-actions">'
+                + actions.map(function (action) {
+                    return '<button type="button" class="btn '
+                        + (action.primary ? 'btn-primary' : 'btn-outline')
+                        + '" data-choice="' + esc(action.key) + '">' + esc(action.label) + '</button>';
+                }).join('')
+                + '</div></div>'
+                + '<footer class="modal-foot">'
+                + '<button type="button" class="btn btn-text modal-cancel">取消</button>'
+                + '</footer></div>';
+
+            document.body.appendChild(mask);
+            document.body.style.overflow = 'hidden';
+
+            function close(result) {
+                mask.remove();
+                document.body.style.overflow = '';
+                resolve(result);
+            }
+
+            $('.modal-close', mask).addEventListener('click', function () {
+                close(null);
+            });
+            $('.modal-cancel', mask).addEventListener('click', function () {
+                close(null);
+            });
+            mask.addEventListener('click', function (event) {
+                if (event.target === mask) {
+                    close(null);
+                }
+            });
+            $('.choice-actions', mask).addEventListener('click', function (event) {
+                var btn = event.target.closest('[data-choice]');
+                if (btn) {
+                    close(btn.dataset.choice);
+                }
+            });
+        });
+    }
+
+    /** 点击导入时先让用户选择：下载模板（CSV / JSON）或直接导入。 */
+    function chooseImport(kind, fileInputId, game) {
+        var g = GAMES[game || state.game] || gameConfig();
+        var isWish = kind === 'wishes';
+        return openChoice(
+            (isWish ? '导入抽卡记录' : '导入账号资源') + ' · ' + g.fullName,
+            isWish
+                ? '可以先下载模板，按列名填好后再导入；模板里的示例行是三星物品，导入时会被自动忽略。'
+                : '可以先下载模板，填入数值后再导入；空着的单元格不会改动现有资源。',
+            [
+                { key: 'csv', label: '下载 CSV 模板' },
+                { key: 'json', label: '下载 JSON 模板' },
+                { key: 'import', label: '直接导入', primary: true }
+            ]
+        ).then(function (choice) {
+            if (!choice) {
+                return null;
+            }
+            var work = choice === 'import'
+                ? Promise.resolve()
+                : downloadFile((isWish ? '/api/wishes/template' : '/api/resources/template')
+                    + '?format=' + choice,
+                'southair-' + (isWish ? 'wishes' : 'resources') + '-template.' + choice,
+                '模板已下载，填写后再导入', game);
+            return work.then(function () {
+                var input = document.getElementById(fileInputId);
+                if (input) {
+                    input.click();
+                }
+            });
+        });
+    }
+
+    /** 只下载模板，不触发文件选择。 */
+    function chooseTemplate(kind, game) {
+        var isWish = kind === 'wishes';
+        return openChoice(
+            (isWish ? '抽卡记录导入模板' : '账号资源导入模板'),
+            isWish
+                ? 'CSV 为表头 + 一条三星示例行，JSON 为一条示例记录；示例数据导入时会被忽略。'
+                : 'CSV 只有表头，JSON 字段为空；填入数值后再使用「导入」。',
+            [
+                { key: 'csv', label: '下载 CSV 模板' },
+                { key: 'json', label: '下载 JSON 模板', primary: true }
+            ]
+        ).then(function (choice) {
+            if (!choice) {
+                return null;
+            }
+            return downloadFile((isWish ? '/api/wishes/template' : '/api/resources/template')
+                + '?format=' + choice,
+            'southair-' + (isWish ? 'wishes' : 'resources') + '-template.' + choice,
+            '模板已下载', game);
+        });
+    }
+
+    function bindResourcePanel() {
+        var csvBtn = $('#resource-export-csv');
+        var jsonBtn = $('#resource-export-json');
+        var templateBtn = $('#resource-template');
+        var importBtn = $('#resource-import');
+        var fileInput = $('#resource-file');
+        if (!csvBtn || !jsonBtn || !importBtn || !fileInput) {
             return;
         }
 
-        exportBtn.addEventListener('click', function () {
-            guard(exportBackup);
+        csvBtn.addEventListener('click', function () {
+            guard(function () {
+                return downloadFile('/api/resources/export?format=csv',
+                    'southair-resources.csv', '资源已导出（CSV）');
+            });
         });
-
-        importBtn.addEventListener('click', function () {
-            fileInput.click();
+        jsonBtn.addEventListener('click', function () {
+            guard(function () {
+                return downloadFile('/api/resources/export?format=json',
+                    'southair-resources.json', '资源已导出（JSON）');
+            });
         });
-
-        fileInput.addEventListener('change', function (event) {
-            var file = event.target.files && event.target.files[0];
-            event.target.value = '';
-            if (!file) {
-                return;
-            }
-            if (file.size > 5 * 1024 * 1024) {
-                toast('备份文件不能超过 5MB', 'error');
-                return;
-            }
-            var reader = new FileReader();
-            reader.onload = function () {
-                var data = safeParse(String(reader.result));
-                if (!data || typeof data !== 'object') {
-                    toast('备份文件格式不正确', 'error');
-                    return;
-                }
-                if (!Array.isArray(data.wishes) && !data.resource) {
-                    toast('这不是 SouthAir Genshin 的备份文件', 'error');
-                    return;
-                }
+        if (templateBtn) {
+            templateBtn.addEventListener('click', function () {
                 guard(function () {
-                    return importBackup(data);
+                    return chooseTemplate('resources', state.game);
                 });
-            };
-            reader.onerror = function () {
-                toast('读取文件失败', 'error');
-            };
-            reader.readAsText(file, 'utf-8');
+            });
+        }
+        importBtn.addEventListener('click', function () {
+            guard(function () {
+                return chooseImport('resources', 'resource-file', state.game);
+            });
+        });
+        fileInput.addEventListener('change', function (event) {
+            onResourceFileSelected(event, state.game);
         });
     }
 
-    function exportBackup() {
-        return downloadFile('/api/backup/export', 'southair-genshin-backup.json', '备份已导出');
+    function onResourceFileSelected(event, game) {
+        var file = event.target.files && event.target.files[0];
+        event.target.value = '';
+        if (!file) {
+            return;
+        }
+        if (!/\.(csv|json)$/i.test(file.name)) {
+            toast('仅支持 .csv 或 .json 文件', 'error');
+            return;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+            toast('文件不能超过 5MB', 'error');
+            return;
+        }
+        var format = /\.json$/i.test(file.name) ? 'json' : 'csv';
+        var reader = new FileReader();
+        reader.onload = function () {
+            guard(function () {
+                return importResource(file.name, format, String(reader.result || ''), game);
+            });
+        };
+        reader.onerror = function () {
+            toast('读取文件失败', 'error');
+        };
+        reader.readAsText(file, 'utf-8');
     }
 
-    function downloadFile(path, fallbackName, successMessage) {
-        return fetch(withGame(path), {
+    function importResource(fileName, format, text, game) {
+        var g = GAMES[game || state.game] || gameConfig();
+        if (!window.confirm('导入会覆盖「' + g.fullName + '」中已填写的资源数值，确定继续吗？')) {
+            return Promise.resolve(null);
+        }
+        return api('/api/resources/import?format=' + format, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+            body: text
+        }, game).then(function (resource) {
+            toast('资源已导入：' + g.currency + ' ' + fmt(resource.primogems)
+                + ' · ' + g.credit + ' ' + fmt(resource.mora));
+            if ((game || state.game) === state.game) {
+                switchView(state.view);
+            }
+            return resource;
+        });
+    }
+
+    function downloadFile(path, fallbackName, successMessage, game) {
+        return fetch(withGame(path, game), {
             headers: state.token ? { Authorization: 'Bearer ' + state.token } : {}
         }).then(function (res) {
             if (res.status === 401) {
@@ -1759,45 +1932,271 @@
         });
     }
 
-    function importBackup(data) {
-        var g = gameConfig();
-        var counts = '抽卡记录 ' + (data.wishes || []).length + ' 条'
-            + (data.resource ? ' · 含账号资源' : '');
+    function importAllBackup(data) {
+        var games = data.games || {};
+        var counts = [];
+        ['genshin', 'starrail'].forEach(function (key) {
+            var item = games[key];
+            if (!item) {
+                return;
+            }
+            counts.push(GAMES[key].fullName + ' 抽卡 ' + ((item.wishes || []).length) + ' 条'
+                + (item.resource ? ' + 资源' : ''));
+        });
 
-        return openForm('导入备份', [
+        return openForm('导入全部数据', [
             {
                 key: 'mode',
                 label: '导入方式',
                 type: 'select',
                 full: true,
                 options: [
-                    { value: 'merge', label: '合并：保留现有抽卡记录，自动跳过重复' },
-                    { value: 'replace', label: '覆盖：先清空当前账号的抽卡记录' }
+                    { value: 'merge', label: '合并：保留现有数据，自动跳过重复' },
+                    { value: 'replace', label: '覆盖：先清空两个游戏的抽卡记录' }
                 ],
                 default: 'merge'
             }
         ], null, {
-            hint: '备份文件包含：' + counts + '，数据将写入当前游戏「' + g.fullName + '」',
+            hint: '备份文件包含：' + (counts.join('；') || '未识别到游戏数据'),
             submitText: '开始导入'
         }).then(function (values) {
             if (!values) {
                 return null;
             }
             if (values.mode === 'replace'
-                && !window.confirm('覆盖导入会清空当前账号的全部抽卡记录，确定继续吗？')) {
+                && !window.confirm('覆盖导入会清空两个游戏的全部抽卡记录，确定继续吗？')) {
                 return null;
             }
-            return api('/api/backup/import?mode=' + encodeURIComponent(values.mode), {
+            return api('/api/backup/import-all?mode=' + encodeURIComponent(values.mode), {
                 method: 'POST',
                 body: data
             }).then(function (result) {
-                toast('导入完成：抽卡 ' + result.wishes + ' 条'
+                toast('全部数据导入完成：抽卡 ' + result.wishes + ' 条'
                     + (result.resourceUpdated ? '，资源已更新' : '')
                     + (result.skipped ? '，跳过 ' + result.skipped + ' 条' : ''));
-                switchView('stats');
+                switchView('settings');
                 return result;
             });
         });
+    }
+
+    function onAllBackupFileSelected(event) {
+        var file = event.target.files && event.target.files[0];
+        event.target.value = '';
+        if (!file) {
+            return;
+        }
+        if (!/\.json$/i.test(file.name)) {
+            toast('全量备份仅支持 .json 文件', 'error');
+            return;
+        }
+        if (file.size > 20 * 1024 * 1024) {
+            toast('备份文件不能超过 20MB', 'error');
+            return;
+        }
+        var reader = new FileReader();
+        reader.onload = function () {
+            var data = safeParse(String(reader.result));
+            if (!data || typeof data !== 'object' || !data.games) {
+                toast('这不是 SouthAir Genshin 的全量备份文件', 'error');
+                return;
+            }
+            guard(function () {
+                return importAllBackup(data);
+            });
+        };
+        reader.onerror = function () {
+            toast('读取文件失败', 'error');
+        };
+        reader.readAsText(file, 'utf-8');
+    }
+
+    /* ---------------- 设置 ---------------- */
+
+    function gameDataPanelHtml(game) {
+        var g = GAMES[game];
+        return '<section class="panel">'
+            + '<h3>' + esc(g.fullName) + '</h3>'
+            + '<p class="panel-desc">抽卡记录与账号资源分开导入导出。</p>'
+            + '<div class="settings-group">'
+            + '<span class="settings-label">抽卡记录</span>'
+            + '<div class="panel-actions">'
+            + '<button class="btn btn-outline btn-sm" type="button" data-sg="wish-export" data-game="'
+            + game + '" data-format="csv">导出 CSV</button>'
+            + '<button class="btn btn-outline btn-sm" type="button" data-sg="wish-export" data-game="'
+            + game + '" data-format="json">导出 JSON</button>'
+            + '<button class="btn btn-text btn-sm" type="button" data-sg="template" data-kind="wishes" data-game="'
+            + game + '">下载模板</button>'
+            + '<button class="btn btn-outline btn-sm" type="button" data-sg="wish-import" data-game="'
+            + game + '">导入记录</button>'
+            + '<input id="sg-wish-file-' + game + '" class="sg-file" type="file" '
+            + 'accept=".csv,.json,text/csv,application/json" data-sg-file="wish" data-game="' + game + '" hidden/>'
+            + '</div></div>'
+            + '<div class="settings-group">'
+            + '<span class="settings-label">账号资源</span>'
+            + '<div class="panel-actions">'
+            + '<button class="btn btn-outline btn-sm" type="button" data-sg="resource-export" data-game="'
+            + game + '" data-format="csv">导出 CSV</button>'
+            + '<button class="btn btn-outline btn-sm" type="button" data-sg="resource-export" data-game="'
+            + game + '" data-format="json">导出 JSON</button>'
+            + '<button class="btn btn-text btn-sm" type="button" data-sg="template" data-kind="resources" data-game="'
+            + game + '">下载模板</button>'
+            + '<button class="btn btn-outline btn-sm" type="button" data-sg="resource-import" data-game="'
+            + game + '">导入资源</button>'
+            + '<input id="sg-resource-file-' + game + '" class="sg-file" type="file" '
+            + 'accept=".csv,.json,text/csv,application/json" data-sg-file="resource" data-game="' + game + '" hidden/>'
+            + '</div></div>'
+            + '</section>';
+    }
+
+    function loadSettings() {
+        var el = $('#view-settings');
+        var name = (state.user && (state.user.nickname || state.user.username)) || '旅行者';
+        var username = (state.user && state.user.username) || '';
+        el.innerHTML =
+            '<div class="page-head">'
+            + '<div><h2>设置</h2><p class="sub">数据备份与导入导出 · 换设备、长期备份从这里开始</p></div>'
+            + '</div>'
+
+            + '<section class="panel">'
+            + '<h3>全量备份 · 换设备</h3>'
+            + '<p class="panel-desc">把原神与星穹铁道的全部抽卡记录、账号资源打包成一个 JSON 文件；'
+            + '在新设备登录后导入即可恢复全部数据。</p>'
+            + '<div class="panel-actions">'
+            + '<button class="btn btn-primary" id="settings-export-all" type="button">导出全部数据</button>'
+            + '<button class="btn btn-outline" id="settings-import-all" type="button">导入全部数据</button>'
+            + '<input id="settings-all-file" type="file" accept=".json,application/json" hidden/>'
+            + '</div>'
+            + '</section>'
+
+            + '<div class="panel-grid">'
+            + gameDataPanelHtml('genshin')
+            + gameDataPanelHtml('starrail')
+            + '</div>'
+
+            + '<section class="panel">'
+            + '<h3>用户名</h3>'
+            + '<p class="panel-desc">用户名只用于页面顶部显示，与登录账号、密码分开管理，修改后不影响登录。</p>'
+            + '<div class="profile-fields">'
+            + '<label class="field"><span>登录账号</span>'
+            + '<input id="profile-username" type="text" value="' + esc(username) + '" readonly/></label>'
+            + '<label class="field"><span>用户名</span>'
+            + '<input id="profile-nickname" type="text" maxlength="32" value="' + esc(name) + '"/></label>'
+            + '</div>'
+            + '<div class="panel-actions">'
+            + '<button class="btn btn-primary" id="profile-save" type="button">保存用户名</button>'
+            + '</div>'
+            + '</section>';
+
+        bindSettings();
+    }
+
+    function bindSettings() {
+        var el = $('#view-settings');
+        var exportAllBtn = $('#settings-export-all');
+        var importAllBtn = $('#settings-import-all');
+        var allFile = $('#settings-all-file');
+        if (!el || !exportAllBtn || !importAllBtn || !allFile) {
+            return;
+        }
+
+        exportAllBtn.addEventListener('click', function () {
+            guard(function () {
+                return downloadFile('/api/backup/export-all',
+                    'southair-all-backup.json', '全部数据已导出');
+            });
+        });
+        importAllBtn.addEventListener('click', function () {
+            allFile.click();
+        });
+        allFile.addEventListener('change', onAllBackupFileSelected);
+
+        var profileSave = $('#profile-save');
+        if (profileSave) {
+            profileSave.addEventListener('click', function () {
+                guard(saveProfile);
+            });
+        }
+        var nicknameInput = $('#profile-nickname');
+        if (nicknameInput) {
+            nicknameInput.addEventListener('keydown', function (event) {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    guard(saveProfile);
+                }
+            });
+        }
+
+        el.addEventListener('click', function (event) {
+            var btn = event.target.closest('[data-sg]');
+            if (!btn) {
+                return;
+            }
+            var game = btn.dataset.game;
+            var action = btn.dataset.sg;
+            var format = btn.dataset.format || 'csv';
+            if (action === 'wish-export') {
+                guard(function () {
+                    return downloadFile('/api/wishes/export?format=' + format,
+                        'southair-wishes.' + format, '抽卡记录已导出（' + format.toUpperCase() + '）', game);
+                });
+            } else if (action === 'wish-import') {
+                guard(function () {
+                    return chooseImport('wishes', 'sg-wish-file-' + game, game);
+                });
+            } else if (action === 'resource-export') {
+                guard(function () {
+                    return downloadFile('/api/resources/export?format=' + format,
+                        'southair-resources.' + format, '资源已导出（' + format.toUpperCase() + '）', game);
+                });
+            } else if (action === 'resource-import') {
+                guard(function () {
+                    return chooseImport('resources', 'sg-resource-file-' + game, game);
+                });
+            } else if (action === 'template') {
+                guard(function () {
+                    return chooseTemplate(btn.dataset.kind, game);
+                });
+            }
+        });
+
+        el.addEventListener('change', function (event) {
+            var input = event.target;
+            if (!input.classList || !input.classList.contains('sg-file')) {
+                return;
+            }
+            if (input.dataset.sgFile === 'wish') {
+                onWishFileSelected(event, input.dataset.game);
+            } else {
+                onResourceFileSelected(event, input.dataset.game);
+            }
+        });
+    }
+
+    /** 修改用户名（昵称）：登录账号与密码保持不变。 */
+    function saveProfile() {
+        var input = $('#profile-nickname');
+        var nickname = input ? input.value.trim() : '';
+        if (!nickname) {
+            toast('用户名不能为空', 'error');
+            return null;
+        }
+        if (nickname === ((state.user && state.user.nickname) || '')) {
+            toast('用户名没有变化');
+            return null;
+        }
+        return api('/api/auth/profile', { method: 'PUT', body: { nickname: nickname } })
+            .then(function (user) {
+                state.user = user;
+                localStorage.setItem(USER_KEY, JSON.stringify(user));
+                var label = $('#user-name');
+                if (label) {
+                    label.textContent = user.nickname || user.username;
+                }
+                toast('用户名已更新');
+                switchView('settings');
+                return user;
+            });
     }
 
     /* ---------------- 截图识别 ---------------- */
@@ -1833,13 +2232,6 @@
 
     function engineOptions(status) {
         var list = [];
-        list.push({
-            key: 'vision',
-            label: '视觉模型',
-            note: status.visionConfigured ? status.visionModel : '未配置',
-            enabled: status.visionConfigured,
-            hint: '识别率最高，需要服务端配置 Base URL / Key / 模型'
-        });
         list.push({
             key: 'tesseract',
             label: '本地 Tesseract',
@@ -1924,6 +2316,42 @@
         return String(text).replace(' ', 'T').slice(0, 16);
     }
 
+    /** 大图先在本地缩放/压缩，避免超过 8MB 上限或上传过慢 */
+    function compressOcrImage(file) {
+        var LIMIT = 8 * 1024 * 1024;
+        var MAX_SIDE = 2000;
+        return new Promise(function (resolve) {
+            var url = URL.createObjectURL(file);
+            var img = new Image();
+            img.onload = function () {
+                URL.revokeObjectURL(url);
+                var side = Math.max(img.width, img.height);
+                var scale = Math.min(1, MAX_SIDE / side);
+                if (scale === 1 && file.size <= LIMIT) {
+                    resolve(file);
+                    return;
+                }
+                var canvas = document.createElement('canvas');
+                canvas.width = Math.round(img.width * scale);
+                canvas.height = Math.round(img.height * scale);
+                canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+                canvas.toBlob(function (blob) {
+                    if (!blob) {
+                        resolve(file);
+                        return;
+                    }
+                    var out = new File([blob], 'ocr.jpg', { type: 'image/jpeg' });
+                    resolve(out.size <= LIMIT ? out : file);
+                }, 'image/jpeg', 0.88);
+            };
+            img.onerror = function () {
+                URL.revokeObjectURL(url);
+                resolve(file);
+            };
+            img.src = url;
+        });
+    }
+
     function openOcrDialog(kind) {
         var g = gameConfig();
         var isResource = kind === 'resource';
@@ -1946,7 +2374,7 @@
                 + '<div class="ocr-engines" id="ocr-engines"><span class="ocr-loading">正在检测可用引擎…</span></div>'
                 + '<div class="ocr-drop" id="ocr-drop" role="button" tabindex="0">'
                 + '<input id="ocr-file" type="file" accept="image/*" hidden/>'
-                + '<div class="ocr-drop-hint" id="ocr-drop-hint">点击选择截图，或把图片拖到这里</div>'
+                + '<div class="ocr-drop-hint" id="ocr-drop-hint">点击选择、拖入图片，或按 Ctrl+V 粘贴截图</div>'
                 + '<img id="ocr-preview" class="ocr-preview" hidden alt="待识别截图"/>'
                 + '</div>'
                 + '<div class="ocr-bar">'
@@ -1962,6 +2390,10 @@
             document.body.style.overflow = 'hidden';
 
             function close(result) {
+                document.removeEventListener('paste', onPaste);
+                if (previewUrl) {
+                    URL.revokeObjectURL(previewUrl);
+                }
                 mask.remove();
                 document.body.style.overflow = '';
                 resolve(result);
@@ -2021,6 +2453,8 @@
                 runBtn.disabled = !currentFile || !selected;
             }
 
+            var previewUrl = '';
+
             function pickFile(file) {
                 if (!file) {
                     return;
@@ -2029,18 +2463,39 @@
                     toast('请选择图片文件', 'error');
                     return;
                 }
-                if (file.size > 8 * 1024 * 1024) {
-                    toast('图片不能超过 8MB', 'error');
-                    return;
-                }
-                currentFile = file;
-                preview.src = URL.createObjectURL(file);
-                preview.hidden = false;
-                $('#ocr-drop-hint', mask).hidden = true;
-                resultBox.innerHTML = '';
-                setStatus('');
-                updateRunState();
+                setStatus('正在处理图片…');
+                compressOcrImage(file).then(function (ready) {
+                    if (ready.size > 8 * 1024 * 1024) {
+                        toast('图片过大，压缩后仍超过 8MB', 'error');
+                        setStatus('');
+                        return;
+                    }
+                    currentFile = ready;
+                    if (previewUrl) {
+                        URL.revokeObjectURL(previewUrl);
+                    }
+                    previewUrl = URL.createObjectURL(ready);
+                    preview.src = previewUrl;
+                    preview.hidden = false;
+                    $('#ocr-drop-hint', mask).hidden = true;
+                    resultBox.innerHTML = '';
+                    setStatus(ready === file ? '' : '图片已压缩至 ' + Math.round(ready.size / 1024) + 'KB');
+                    updateRunState();
+                });
             }
+
+            function onPaste(event) {
+                var items = (event.clipboardData && event.clipboardData.items) || [];
+                for (var i = 0; i < items.length; i++) {
+                    if (items[i].type && items[i].type.indexOf('image/') === 0) {
+                        event.preventDefault();
+                        pickFile(items[i].getAsFile());
+                        return;
+                    }
+                }
+            }
+
+            document.addEventListener('paste', onPaste);
 
             api('/api/ocr/engines').then(function (status) {
                 engines = engineOptions(status || {});
@@ -2086,39 +2541,78 @@
                 pickFile(file);
             });
 
+            function engineLabel(key) {
+                var hit = engines.filter(function (item) {
+                    return item.key === key;
+                })[0];
+                return hit ? hit.label : key;
+            }
+
+            function runEngine(engineKey) {
+                return engineKey === 'browser'
+                    ? runBrowserOcr(kind, currentFile, setStatus)
+                    : (function () {
+                        var field = new FormData();
+                        field.append('file', currentFile);
+                        return apiUpload('/api/ocr/' + (isResource ? 'resource' : 'wishes')
+                            + '?engine=' + encodeURIComponent(engineKey), field);
+                    })();
+            }
+
+            function showResult(result) {
+                if (!result) {
+                    resultBox.innerHTML = ocrWarningsHtml(['没有返回识别结果']);
+                    return;
+                }
+                if (isResource) {
+                    renderOcrResource(result, resultBox, close);
+                } else {
+                    renderOcrWishes(result, resultBox, close);
+                }
+            }
+
             runBtn.addEventListener('click', function () {
                 if (!currentFile || !selected) {
                     return;
                 }
                 runBtn.disabled = true;
                 resultBox.innerHTML = '';
-                setStatus(selected === 'browser' ? '准备浏览器 OCR…' : '识别中，请稍候…');
+                // 当前引擎优先，失败时按顺序自动降级到其它可用引擎
+                var chain = [selected].concat(engines
+                    .filter(function (item) {
+                        return item.enabled && item.key !== selected;
+                    })
+                    .map(function (item) {
+                        return item.key;
+                    }));
+                var index = 0;
 
-                var task = selected === 'browser'
-                    ? runBrowserOcr(kind, currentFile, setStatus)
-                    : (function () {
-                        var field = new FormData();
-                        field.append('file', currentFile);
-                        return apiUpload('/api/ocr/' + (isResource ? 'resource' : 'wishes')
-                            + '?engine=' + encodeURIComponent(selected), field);
-                    })();
+                function attempt() {
+                    var engineKey = chain[index];
+                    setStatus('识别中（' + engineLabel(engineKey) + '）…');
+                    runEngine(engineKey).then(function (result) {
+                        setStatus('识别完成 · ' + engineLabel(engineKey));
+                        runBtn.disabled = false;
+                        if (engineKey !== selected) {
+                            selected = engineKey;
+                            localStorage.setItem(OCR_ENGINE_KEY, selected);
+                            renderEngines();
+                        }
+                        showResult(result);
+                    }).catch(function (err) {
+                        index += 1;
+                        if (index < chain.length) {
+                            setStatus('「' + engineLabel(chain[index - 1]) + '」失败，切换到 '
+                                + engineLabel(chain[index]) + '…');
+                            attempt();
+                            return;
+                        }
+                        setStatus(err.message || '识别失败', true);
+                        runBtn.disabled = false;
+                    });
+                }
 
-                task.then(function (result) {
-                    setStatus('识别完成');
-                    runBtn.disabled = false;
-                    if (!result) {
-                        resultBox.innerHTML = ocrWarningsHtml(['没有返回识别结果']);
-                        return;
-                    }
-                    if (isResource) {
-                        renderOcrResource(result, resultBox, close);
-                    } else {
-                        renderOcrWishes(result, resultBox, close);
-                    }
-                }).catch(function (err) {
-                    setStatus(err.message || '识别失败', true);
-                    runBtn.disabled = false;
-                });
+                attempt();
             });
         });
     }

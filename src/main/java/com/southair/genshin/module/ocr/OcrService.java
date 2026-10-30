@@ -20,7 +20,6 @@ import java.util.Set;
 @Service
 public class OcrService {
 
-    public static final String ENGINE_VISION = "vision";
     public static final String ENGINE_TESSERACT = "tesseract";
     public static final String ENGINE_BROWSER = "browser";
 
@@ -30,23 +29,16 @@ public class OcrService {
     private static final Set<String> ALLOWED_TYPES = new HashSet<>(Arrays.asList(
             "image/png", "image/jpeg", "image/jpg", "image/webp", "image/bmp", "image/gif"));
 
-    private final OcrProperties properties;
-    private final VisionEngine visionEngine;
     private final TesseractEngine tesseractEngine;
     private final OcrTextParser parser;
 
-    public OcrService(OcrProperties properties, VisionEngine visionEngine,
-                      TesseractEngine tesseractEngine, OcrTextParser parser) {
-        this.properties = properties;
-        this.visionEngine = visionEngine;
+    public OcrService(TesseractEngine tesseractEngine, OcrTextParser parser) {
         this.tesseractEngine = tesseractEngine;
         this.parser = parser;
     }
 
     public OcrEngineStatus status() {
         OcrEngineStatus status = new OcrEngineStatus();
-        status.setVisionConfigured(visionEngine.isConfigured());
-        status.setVisionModel(visionEngine.getModel());
         status.setTesseractAvailable(tesseractEngine.isAvailable());
         status.setTesseractHint(tesseractEngine.getHint());
         status.setBrowserAvailable(true);
@@ -54,14 +46,14 @@ public class OcrService {
     }
 
     public OcrResourceResult recognizeResource(MultipartFile file, String engine, String game) {
-        String text = recognizeText(file, engine, "resource", game);
+        String text = recognizeText(file, engine);
         OcrResourceResult result = parser.parseResource(text, game);
         result.setEngine(engine);
         return result;
     }
 
     public OcrWishResult recognizeWishes(MultipartFile file, String engine, String game) {
-        String text = recognizeText(file, engine, "wishes", game);
+        String text = recognizeText(file, engine);
         OcrWishResult result = parser.parseWishes(text, game);
         result.setEngine(engine);
         return result;
@@ -79,11 +71,11 @@ public class OcrService {
         return result;
     }
 
-    private String recognizeText(MultipartFile file, String engine, String kind, String game) {
+    private String recognizeText(MultipartFile file, String engine) {
         validate(file);
         String normalized = engine == null ? "" : engine.trim().toLowerCase(Locale.ROOT);
         if (normalized.isEmpty()) {
-            normalized = visionEngine.isConfigured() ? ENGINE_VISION : ENGINE_TESSERACT;
+            normalized = ENGINE_TESSERACT;
         }
         byte[] bytes;
         try {
@@ -93,8 +85,6 @@ public class OcrService {
         }
 
         switch (normalized) {
-            case ENGINE_VISION:
-                return visionEngine.recognize(bytes, resolveMime(file), kind, game);
             case ENGINE_TESSERACT:
                 return tesseractEngine.recognize(bytes, resolveExtension(file));
             case ENGINE_BROWSER:

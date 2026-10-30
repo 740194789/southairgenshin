@@ -20,8 +20,8 @@ import java.util.regex.Pattern;
 /**
  * 把识别出的文本解析成结构化数据。
  *
- * <p>视觉模型会直接返回 JSON，优先按 JSON 解析；Tesseract / 浏览器 OCR 返回纯文本，
- * 走基于标签与数字邻近关系的启发式解析。所有结果都只作为「候选」，最终由用户确认。</p>
+ * <p>文本若是 JSON 则优先按 JSON 解析，否则走基于标签与数字邻近关系的启发式解析。
+ * 所有结果都只作为「候选」，最终由用户确认。</p>
  */
 @Component
 public class OcrTextParser {
@@ -81,14 +81,14 @@ public class OcrTextParser {
         result.setAcquaintedFates(values.get("acquaintedFates"));
 
         if (values.isEmpty()) {
-            result.getWarnings().add("未能从文本中定位到资源数量，请手动填写或换用视觉模型识别");
+            result.getWarnings().add("未能从文本中定位到资源数量，请手动填写");
         } else if (values.size() < 4) {
             result.getWarnings().add("只识别到 " + values.size() + " 项资源，其余请手动补全");
         }
         return result;
     }
 
-    /** 视觉模型返回的 JSON：{primogems: 123, mora: ..., ...} */
+    /** JSON 形式的资源结果：{primogems: 123, mora: ..., ...} */
     private boolean applyResourceJson(String text, String game, OcrResourceResult result) {
         String trimmed = text.trim();
         int brace = trimmed.indexOf('{');
@@ -357,14 +357,14 @@ public class OcrTextParser {
 
         result.setCandidates(wishesFromLines(text, game, result));
         if (result.getCandidates().isEmpty()) {
-            result.getWarnings().add("未能从文本中解析出抽卡记录，建议改用视觉模型识别");
+            result.getWarnings().add("未能从文本中解析出抽卡记录，建议手动录入");
         } else {
             result.getWarnings().add("纯文本识别结果仅供参考，导入前请核对物品名称、星级与卡池");
         }
         return result;
     }
 
-    /** 视觉模型返回的 JSON 数组 */
+    /** JSON 形式的抽卡记录数组 */
     private List<OcrWishCandidate> wishesFromJson(String text, String game) {
         String trimmed = text.trim();
         int start = trimmed.indexOf('[');
@@ -564,7 +564,7 @@ public class OcrTextParser {
         }
         String cleaned = pool.replaceAll("[\\s:：]", "");
         List<String> valid = "starrail".equalsIgnoreCase(game)
-                ? Arrays.asList("角色活动", "光锥活动", "常驻")
+                ? Arrays.asList("角色活动", "光锥活动", "联动", "常驻")
                 : Arrays.asList("角色活动", "武器活动", "集录祈愿", "常驻");
         for (String item : valid) {
             if (cleaned.contains(item)) {
@@ -576,6 +576,9 @@ public class OcrTextParser {
         }
         if (cleaned.contains("光锥")) {
             return "光锥活动";
+        }
+        if (cleaned.contains("联动") || cleaned.contains("联动跃迁")) {
+            return "联动";
         }
         if (cleaned.contains("常驻") || cleaned.contains("标准")) {
             return "常驻";

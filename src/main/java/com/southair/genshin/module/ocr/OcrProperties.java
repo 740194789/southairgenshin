@@ -6,64 +6,17 @@ import org.springframework.stereotype.Component;
 /**
  * 图像识别配置。
  *
- * <p>三种引擎：视觉大模型（OpenAI 兼容接口）、本地 Tesseract、浏览器 tesseract.js。
- * 前两者由后端调用，第三者完全在前端执行，只把识别出的文本回传后端解析。</p>
+ * <p>两种引擎：本地 Tesseract（后端调用命令行）、浏览器 tesseract.js（完全在前端执行，
+ * 只把识别出的文本回传后端解析）。</p>
  */
 @Component
 @ConfigurationProperties(prefix = "app.ocr")
 public class OcrProperties {
 
-    private final Vision vision = new Vision();
     private final Tesseract tesseract = new Tesseract();
-
-    public Vision getVision() {
-        return vision;
-    }
 
     public Tesseract getTesseract() {
         return tesseract;
-    }
-
-    public static class Vision {
-
-        /** OpenAI 兼容接口根地址，如 https://api.openai.com/v1 */
-        private String baseUrl = "";
-        private String apiKey = "";
-        /** 视觉模型名，如 gpt-4o-mini / qwen-vl-max / glm-4v */
-        private String model = "";
-        private int timeoutSeconds = 60;
-
-        public String getBaseUrl() {
-            return baseUrl;
-        }
-
-        public void setBaseUrl(String baseUrl) {
-            this.baseUrl = baseUrl;
-        }
-
-        public String getApiKey() {
-            return apiKey;
-        }
-
-        public void setApiKey(String apiKey) {
-            this.apiKey = apiKey;
-        }
-
-        public String getModel() {
-            return model;
-        }
-
-        public void setModel(String model) {
-            this.model = model;
-        }
-
-        public int getTimeoutSeconds() {
-            return timeoutSeconds;
-        }
-
-        public void setTimeoutSeconds(int timeoutSeconds) {
-            this.timeoutSeconds = timeoutSeconds;
-        }
     }
 
     public static class Tesseract {

@@ -123,6 +123,56 @@ public class WishController {
     }
 
     /**
+     * 导入模板：CSV 为表头 + 一条三星示例行，JSON 为一条示例记录。
+     * 三星物品不会被记录，所以示例行即使忘记删除也不会污染数据。
+     */
+    @GetMapping("/template")
+    public ResponseEntity<byte[]> template(@RequestParam(defaultValue = "csv") String format) {
+        WishRecord sample = new WishRecord();
+        sample.setWishTime(LocalDateTime.of(2026, 1, 1, 12, 0, 0));
+        sample.setItemName("示例物品");
+        sample.setRarity(3);
+        sample.setItemType("武器");
+        sample.setPool("常驻");
+        sample.setIsUp(Boolean.FALSE);
+        sample.setPityCount(1);
+        sample.setNote("示例行可删除，导入时会被忽略");
+        sample.setCaptureTriggered(Boolean.FALSE);
+
+        boolean json = "json".equalsIgnoreCase(format);
+        byte[] content;
+        MediaType mediaType;
+        if (json) {
+            java.util.Map<String, Object> sampleJson = new java.util.LinkedHashMap<>();
+            sampleJson.put("wishTime", "2026-01-01 12:00:00");
+            sampleJson.put("itemName", "示例物品");
+            sampleJson.put("rarity", 3);
+            sampleJson.put("itemType", "武器");
+            sampleJson.put("pool", "常驻");
+            sampleJson.put("isUp", Boolean.FALSE);
+            sampleJson.put("pityCount", 1);
+            sampleJson.put("note", "示例行可删除，导入时会被忽略");
+            try {
+                content = objectMapper.writerWithDefaultPrettyPrinter()
+                        .writeValueAsBytes(java.util.Collections.singletonList(sampleJson));
+            } catch (Exception e) {
+                throw new BusinessException(500, "模板生成失败：" + e.getMessage());
+            }
+            mediaType = new MediaType(MediaType.APPLICATION_JSON, StandardCharsets.UTF_8);
+        } else {
+            content = WishCsv.write(java.util.Collections.singletonList(sample))
+                    .getBytes(StandardCharsets.UTF_8);
+            mediaType = new MediaType("text", "csv", StandardCharsets.UTF_8);
+        }
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"southair-wishes-template." + (json ? "json" : "csv") + "\"")
+                .contentType(mediaType)
+                .body(content);
+    }
+
+    /**
      * 导入抽卡记录。
      *
      * @param format csv（默认）/ json

@@ -56,6 +56,38 @@ public class BackupController {
     }
 
     /**
+     * 全量导出：一次把两个游戏的资源与抽卡记录打包成一个 JSON，用于换设备或整体备份。
+     */
+    @GetMapping("/export-all")
+    public ResponseEntity<byte[]> exportAll() {
+        FullBackupVO backup = backupService.exportAll(UserContext.require());
+        byte[] content;
+        try {
+            content = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(backup);
+        } catch (JsonProcessingException e) {
+            throw new BusinessException(500, "导出失败：" + e.getOriginalMessage());
+        }
+
+        String filename = "southair-all-backup-"
+                + LocalDateTime.now().format(FILE_TIME) + ".json";
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .contentType(new MediaType(MediaType.APPLICATION_JSON, StandardCharsets.UTF_8))
+                .body(content);
+    }
+
+    /**
+     * 全量导入：按文件内的游戏分别写入。
+     *
+     * @param mode merge（默认，保留现有数据并跳过重复） / replace（清空后全量导入）
+     */
+    @PostMapping("/import-all")
+    public R<ImportResultVO> importAll(@RequestBody FullBackupVO backup,
+                                       @RequestParam(defaultValue = "merge") String mode) {
+        return R.ok(backupService.importAll(UserContext.require(), backup, mode));
+    }
+
+    /**
      * @param mode merge（默认，保留现有数据并跳过重复） / replace（清空后全量导入）
      */
     @PostMapping("/import")

@@ -53,17 +53,8 @@ app:
     secret: southair-genshin-secret-key-change-me-in-production-2026
     expire-hours: 72
 
-  # 图像识别：三种引擎按需启用
+  # 图像识别：本地 Tesseract 与浏览器 OCR 两种引擎
   ocr:
-    # 视觉大模型：任意 OpenAI 兼容的多模态接口
-    # 示例（阿里云百炼）：base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
-    # 示例（硅基流动）：base-url: https://api.siliconflow.cn/v1
-    # 示例（智谱）：base-url: https://open.bigmodel.cn/api/paas/v4
-    vision:
-      base-url: ${SA_OCR_BASE_URL:}
-      api-key: ${SA_OCR_API_KEY:}
-      model: ${SA_OCR_MODEL:}
-      timeout-seconds: 60
     # 本地 Tesseract：需安装 tesseract 与 chi_sim 语言包
     tesseract:
       command: ${SA_TESSERACT_CMD:tesseract}

@@ -25,7 +25,7 @@ var GAMES = {
     title: 'SouthAir Genshin · 崩坏：星穹铁道记录',
     subtitle: '星穹列车数据记录 · 离线小程序',
     heroSub: 'Warp Planner',
-    pools: ['角色活动', '光锥活动', '常驻'],
+    pools: ['角色活动', '光锥活动', '联动', '常驻'],
     itemTypes: ['角色', '光锥'],
     currency: '星琼',
     credit: '信用点',

@@ -29,9 +29,12 @@ import java.util.Map;
 public class BackupService {
 
     private static final int BACKUP_VERSION = 4;
+    private static final int FULL_BACKUP_VERSION = 5;
     private static final int MAX_RECORDS = 2000;
     private static final long MAX_PRIMOGEMS = 999_999_999L;
     private static final long MAX_FATES = 99_999L;
+
+    private static final String[] GAMES = {GameType.GENSHIN, GameType.STAR_RAIL};
 
     private final WishRecordRepository wishRepository;
     private final AccountResourceRepository resourceRepository;
@@ -53,6 +56,52 @@ public class BackupService {
         backup.setResource(resourceRepository.findByUserIdAndGame(userId, gameKey).orElse(null));
         backup.setWishes(wishRepository.findByUserIdAndGameOrderByWishTimeAsc(userId, gameKey));
         return backup;
+    }
+
+    @Transactional(readOnly = true)
+    public FullBackupVO exportAll(Long userId) {
+        FullBackupVO backup = new FullBackupVO();
+        backup.setExportedAt(LocalDateTime.now());
+        for (String game : GAMES) {
+            backup.getGames().put(game, export(userId, game));
+        }
+        return backup;
+    }
+
+    /**
+     * 全量导入：按游戏分别写入，结果合并统计。
+     */
+    @Transactional
+    public ImportResultVO importAll(Long userId, FullBackupVO backup, String mode) {
+        if (backup == null || backup.getGames() == null || backup.getGames().isEmpty()) {
+            throw new BusinessException("全量备份文件中没有可导入的数据");
+        }
+        if (backup.getVersion() > FULL_BACKUP_VERSION) {
+            throw new BusinessException("备份文件版本过新，请升级应用后再导入");
+        }
+
+        ImportResultVO total = new ImportResultVO();
+        total.setMode("replace".equalsIgnoreCase(mode) ? "replace" : "merge");
+        for (Map.Entry<String, BackupVO> entry : backup.getGames().entrySet()) {
+            String raw = entry.getKey() == null ? "" : entry.getKey().trim().toLowerCase();
+            if (!GameType.GENSHIN.equals(raw) && !GameType.STAR_RAIL.equals(raw)) {
+                throw new BusinessException("备份文件中包含未知游戏：" + entry.getKey());
+            }
+            BackupVO gameBackup = entry.getValue();
+            if (gameBackup == null) {
+                continue;
+            }
+            // 空游戏（既没有资源也没有抽卡记录）直接跳过，不视为错误
+            if (gameBackup.getResource() == null
+                    && (gameBackup.getWishes() == null || gameBackup.getWishes().isEmpty())) {
+                continue;
+            }
+            ImportResultVO result = importData(userId, raw, gameBackup, mode);
+            total.setWishes(total.getWishes() + result.getWishes());
+            total.setSkipped(total.getSkipped() + result.getSkipped());
+            total.setResourceUpdated(total.isResourceUpdated() || result.isResourceUpdated());
+        }
+        return total;
     }
 
     @Transactional

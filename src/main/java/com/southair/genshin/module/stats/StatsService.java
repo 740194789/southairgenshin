@@ -72,7 +72,7 @@ public class StatsService {
      */
     private void applyPoolStats(OverviewVO vo, List<WishRecord> all, String game) {
         String[][] pools = GameType.isStarRail(game)
-                ? new String[][]{{"角色活动", "90"}, {"光锥活动", "80"}, {"常驻", "90"}}
+                ? new String[][]{{"角色活动", "90"}, {"光锥活动", "80"}, {"联动", "90"}, {"常驻", "90"}}
                 : new String[][]{{"角色活动", "90"}, {"武器活动", "80"}, {"集录祈愿", "90"}, {"常驻", "90"}};
 
         List<OverviewVO.PoolStat> stats = new ArrayList<>();

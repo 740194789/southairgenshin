@@ -19,7 +19,7 @@ import javax.validation.Valid;
 /**
  * 图像识别接口。
  *
- * <p>视觉模型与本地 Tesseract 由后端直接处理图片；浏览器 tesseract.js
+ * <p>本地 Tesseract 由后端直接处理图片；浏览器 tesseract.js
  * 在前端识别后，把纯文本提交到 {@code /api/ocr/parse} 由后端统一解析。</p>
  */
 @RestController
@@ -41,7 +41,7 @@ public class OcrController {
     /** 识别账号资源截图。 */
     @PostMapping("/resource")
     public R<OcrResourceResult> resource(@RequestParam("file") MultipartFile file,
-                                         @RequestParam(defaultValue = "vision") String engine,
+                                         @RequestParam(defaultValue = "tesseract") String engine,
                                          @RequestParam(defaultValue = "genshin") String game) {
         return R.ok(ocrService.recognizeResource(file, engine, game));
     }
@@ -49,7 +49,7 @@ public class OcrController {
     /** 识别抽卡记录截图。 */
     @PostMapping("/wishes")
     public R<OcrWishResult> wishes(@RequestParam("file") MultipartFile file,
-                                   @RequestParam(defaultValue = "vision") String engine,
+                                   @RequestParam(defaultValue = "tesseract") String engine,
                                    @RequestParam(defaultValue = "genshin") String game) {
         return R.ok(ocrService.recognizeWishes(file, engine, game));
     }

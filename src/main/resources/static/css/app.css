@@ -589,6 +589,56 @@ body.game-starrail {
     gap: 10px;
 }
 
+.settings-group {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--line);
+}
+
+.settings-group:first-of-type {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+}
+
+.settings-label {
+    display: block;
+    margin-bottom: 10px;
+    font-size: 12px;
+    letter-spacing: 0.6px;
+    color: var(--muted);
+}
+
+.choice-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.choice-actions .btn {
+    width: 100%;
+    justify-content: center;
+}
+
+.profile-fields {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    margin-bottom: 14px;
+}
+
+.profile-fields input[readonly] {
+    color: var(--muted);
+    border-style: dashed;
+    cursor: default;
+}
+
+@media (max-width: 760px) {
+    .profile-fields {
+        grid-template-columns: 1fr;
+    }
+}
+
 .section-head {
     display: flex;
     align-items: center;
@@ -1640,6 +1690,13 @@ body.game-starrail {
     letter-spacing: 1px;
 }
 
+.pull-col .char-avatar {
+    width: 26px;
+    height: 26px;
+    margin: 0 0 2px;
+    vertical-align: 0;
+}
+
 .batch-row select,
 .batch-row input[type="text"],
 .batch-row input[type="number"],
@@ -2330,3 +2387,21 @@ body.game-starrail {
     }
 }
 
+
+/* 角色头像（列表与最近出货） */
+.char-avatar {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    object-fit: cover;
+    vertical-align: -6px;
+    margin-right: 6px;
+    background: rgba(255, 255, 255, .06);
+}
+
+.mini-item .char-avatar {
+    width: 18px;
+    height: 18px;
+    vertical-align: -5px;
+    margin-right: 5px;
+}

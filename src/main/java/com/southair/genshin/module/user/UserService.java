@@ -64,6 +64,22 @@ public class UserService {
         return UserVO.from(user);
     }
 
+    /**
+     * 只修改用户名（昵称），登录账号与密码保持不变。
+     */
+    @Transactional
+    public UserVO updateNickname(Long userId, String nickname) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(404, "用户不存在"));
+        String name = nickname == null ? "" : nickname.trim();
+        if (!StringUtils.hasText(name)) {
+            throw new BusinessException("用户名不能为空");
+        }
+        user.setNickname(name.length() > 32 ? name.substring(0, 32) : name);
+        userRepository.save(user);
+        return UserVO.from(user);
+    }
+
     private AuthResponse buildAuthResponse(User user) {
         String token = jwtUtil.generate(user.getId(), user.getUsername());
         return new AuthResponse(token, UserVO.from(user));
