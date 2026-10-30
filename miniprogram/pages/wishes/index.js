@@ -365,7 +365,38 @@ Page({
     file.exportFile('southair-wishes-' + this.data.game + '.json', JSON.stringify(records, null, 2));
   },
 
+  downloadTemplate: function () {
+    wx.showActionSheet({
+      itemList: ['下载 CSV 模板', '下载 JSON 模板'],
+      success: function (res) {
+        if (res.tapIndex === 0) {
+          file.exportFile('southair-wishes-template.csv', csv.template());
+        } else {
+          file.exportFile('southair-wishes-template.json', csv.templateJson());
+        }
+      }
+    });
+  },
+
   importRecords: function () {
+    var that = this;
+    wx.showActionSheet({
+      itemList: ['下载 CSV 模板', '下载 JSON 模板', '直接导入'],
+      success: function (res) {
+        if (res.tapIndex === 0) {
+          file.exportFile('southair-wishes-template.csv', csv.template());
+          return;
+        }
+        if (res.tapIndex === 1) {
+          file.exportFile('southair-wishes-template.json', csv.templateJson());
+          return;
+        }
+        that.pickWishFile();
+      }
+    });
+  },
+
+  pickWishFile: function () {
     var that = this;
     file.chooseFile(['csv', 'json']).then(function (picked) {
       var records = [];

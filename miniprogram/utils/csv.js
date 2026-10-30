@@ -50,6 +50,36 @@ function write(records) {
   return BOM + lines.join('\r\n') + '\r\n';
 }
 
+/** 导入模板：表头 + 一条三星示例行（三星不记录，示例行导入时会被忽略）。 */
+function template() {
+  var sample = [{
+    wishTime: '2026-01-01 12:00:00',
+    itemName: '示例物品',
+    rarity: 3,
+    itemType: '武器',
+    pool: '常驻',
+    isUp: false,
+    pityCount: 1,
+    note: '示例行可删除，导入时会被忽略',
+    captureTriggered: false
+  }];
+  return write(sample);
+}
+
+/** 导入模板的 JSON 版本：一条三星示例记录。 */
+function templateJson() {
+  return JSON.stringify([{
+    wishTime: '2026-01-01 12:00:00',
+    itemName: '示例物品',
+    rarity: 3,
+    itemType: '武器',
+    pool: '常驻',
+    isUp: false,
+    pityCount: 1,
+    note: '示例行可删除，导入时会被忽略'
+  }], null, 2);
+}
+
 function readRows(text) {
   var rows = [];
   var row = [];
@@ -219,6 +249,8 @@ function parse(text) {
 module.exports = {
   write: write,
   parse: parse,
+  template: template,
+  templateJson: templateJson,
   formatTime: formatTime,
   normalizeTime: normalizeTime
 };

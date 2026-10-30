@@ -615,6 +615,63 @@ function importBackup(game, payload, mode) {
   return importRecords(game, wishes, mode || 'merge');
 }
 
+function exportAllBackup() {
+  // 与网页端 /api/backup/export-all 的结构一致：两个游戏一次打包
+  var games = {};
+  ['genshin', 'starrail'].forEach(function (game) {
+    games[game] = {
+      resource: getResource(game),
+      wishes: exportRecords(game)
+    };
+  });
+  return {
+    app: 'SouthAir Genshin',
+    version: 5,
+    exportedAt: nowStr(),
+    games: games
+  };
+}
+
+function importAllBackup(payload, mode) {
+  var result = {
+    mode: mode === 'replace' ? 'replace' : 'merge',
+    imported: 0,
+    skipped: 0,
+    filtered: 0
+  };
+  if (!payload || typeof payload !== 'object' || !payload.games) {
+    return result;
+  }
+  ['genshin', 'starrail'].forEach(function (game) {
+    var item = payload.games[game];
+    if (!item || typeof item !== 'object') {
+      return;
+    }
+    if (item.resource && typeof item.resource === 'object') {
+      saveResource(game, item.resource);
+    }
+    var wishes = Array.isArray(item.wishes) ? item.wishes : [];
+    if (wishes.length) {
+      var one = importRecords(game, wishes, mode);
+      result.imported += one.imported;
+      result.skipped += one.skipped;
+      result.filtered += one.filtered;
+    }
+  });
+  return result;
+}
+
+function importResource(game, resource) {
+  var patch = {};
+  ['primogems', 'mora', 'intertwinedFates', 'acquaintedFates'].forEach(function (key) {
+    if (resource && resource[key] !== undefined && resource[key] !== null) {
+      patch[key] = resource[key];
+    }
+  });
+  updateResource(game, patch);
+  return getResource(game);
+}
+
 module.exports = {
   PER_PULL: PER_PULL,
   getWishes: getWishes,
@@ -626,11 +683,14 @@ module.exports = {
   exportRecords: exportRecords,
   getResource: getResource,
   updateResource: updateResource,
+  importResource: importResource,
   resourceVO: resourceVO,
   overview: overview,
   importRecords: importRecords,
   exportBackup: exportBackup,
   importBackup: importBackup,
+  exportAllBackup: exportAllBackup,
+  importAllBackup: importAllBackup,
   normalizeItemName: normalizeItemName,
   nowStr: nowStr,
   fmt: fmt

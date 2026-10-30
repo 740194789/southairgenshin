@@ -170,12 +170,24 @@
   </view>
 
   <view class="panel">
-    <view class="panel-title">数据备份 · {{g.fullName}}</view>
-    <view class="panel-desc">导出当前游戏的抽卡记录与账号资源为 JSON 文件，或从备份文件恢复数据。备份文件可发送到微信好友或「文件传输助手」再保存到电脑。</view>
+    <view class="panel-title">账号资源导入导出 · {{g.fullName}}</view>
+    <view class="panel-desc">导出或导入当前游戏的账号资源（{{g.currency}}、{{g.credit}}、{{g.fateLimited}}、{{g.fateStandard}}）；抽卡记录请到「抽卡」页导入导出。</view>
     <view class="toolbar">
-      <view class="btn btn-primary" bindtap="exportBackup">导出备份</view>
-      <view class="btn btn-outline" bindtap="importBackup">导入备份</view>
+      <view class="btn btn-primary btn-sm" bindtap="exportResourceCsv">导出 CSV</view>
+      <view class="btn btn-outline btn-sm" bindtap="exportResourceJson">导出 JSON</view>
+      <view class="btn btn-text btn-sm" bindtap="downloadResourceTemplate">下载模板</view>
+      <view class="btn btn-outline btn-sm" bindtap="importResource">导入资源</view>
     </view>
-    <view class="foot-tip">离线版数据只存在本机缓存；卸载、清理缓存或换机会丢失，建议每次抽卡后导出一次备份。</view>
+    <view class="foot-tip">导入只覆盖文件里填写的数值，空着的字段保持原值。</view>
+  </view>
+
+  <view class="panel">
+    <view class="panel-title">全量备份 · 换设备</view>
+    <view class="panel-desc">把原神与星穹铁道的全部抽卡记录、账号资源打包成一个 JSON 文件；新设备导入即可恢复。</view>
+    <view class="toolbar">
+      <view class="btn btn-primary" bindtap="exportAllBackup">导出全部数据</view>
+      <view class="btn btn-outline" bindtap="importAllBackup">导入全部数据</view>
+    </view>
+    <view class="foot-tip">离线版数据只存在本机缓存；卸载、清理缓存或换机会丢失，建议定期导出备份。</view>
   </view>
 </view>

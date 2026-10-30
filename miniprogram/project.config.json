@@ -1,18 +1,37 @@
 {
   "description": "SouthAir Genshin 离线版小程序",
   "packOptions": {
-    "ignore": []
+    "ignore": [],
+    "include": []
   },
   "setting": {
     "urlCheck": false,
     "es6": true,
     "postcss": true,
     "minified": true,
-    "enhance": true
+    "enhance": true,
+    "compileWorklet": false,
+    "uglifyFileName": false,
+    "uploadWithSourceMap": true,
+    "packNpmManually": false,
+    "packNpmRelationList": [],
+    "minifyWXSS": true,
+    "minifyWXML": true,
+    "localPlugins": false,
+    "disableUseStrict": false,
+    "useCompilerPlugins": false,
+    "condition": false,
+    "babelSetting": {
+      "ignore": [],
+      "disablePlugins": [],
+      "outputPath": ""
+    }
   },
   "compileType": "miniprogram",
   "libVersion": "2.32.3",
-  "appid": "touristappid",
+  "appid": "wx5b8aba02be73f4b6",
   "projectname": "southair-genshin-offline",
-  "miniprogramRoot": "./"
+  "miniprogramRoot": "./",
+  "simulatorPluginLibVersion": {},
+  "editorSetting": {}
 }

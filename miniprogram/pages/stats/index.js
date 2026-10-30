@@ -2,6 +2,7 @@ var app = getApp();
 var store = require('../../utils/store');
 var gameLib = require('../../utils/game');
 var file = require('../../utils/file');
+var resourceCsv = require('../../utils/resourceCsv');
 
 function starText(rarity) {
   var count = Math.max(0, Math.min(5, Number(rarity) || 0));
@@ -208,14 +209,107 @@ Page({
     });
   },
 
-  exportBackup: function () {
+  /* ---------------- 账号资源导入导出 ---------------- */
+
+  exportResourceCsv: function () {
     var game = this.data.game;
-    var payload = store.exportBackup(game);
-    var fileName = 'SouthAir-' + game + '-backup-' + store.nowStr().slice(0, 10).replace(/-/g, '') + '.json';
-    file.exportFile(fileName, JSON.stringify(payload, null, 2));
+    var res = store.getResource(game);
+    file.exportFile('southair-' + game + '-resources.csv', resourceCsv.write(res));
   },
 
-  importBackup: function () {
+  exportResourceJson: function () {
+    var game = this.data.game;
+    var res = store.getResource(game);
+    file.exportFile('southair-' + game + '-resources.json', JSON.stringify({
+      primogems: res.primogems,
+      mora: res.mora,
+      intertwinedFates: res.intertwinedFates,
+      acquaintedFates: res.acquaintedFates
+    }, null, 2));
+  },
+
+  downloadResourceTemplate: function () {
+    wx.showActionSheet({
+      itemList: ['下载 CSV 模板', '下载 JSON 模板'],
+      success: function (res) {
+        if (res.tapIndex === 0) {
+          file.exportFile('southair-resources-template.csv', resourceCsv.template());
+        } else {
+          file.exportFile('southair-resources-template.json', resourceCsv.templateJson());
+        }
+      }
+    });
+  },
+
+  importResource: function () {
+    var that = this;
+    wx.showActionSheet({
+      itemList: ['下载 CSV 模板', '下载 JSON 模板', '直接导入'],
+      success: function (res) {
+        if (res.tapIndex === 0) {
+          file.exportFile('southair-resources-template.csv', resourceCsv.template());
+          return;
+        }
+        if (res.tapIndex === 1) {
+          file.exportFile('southair-resources-template.json', resourceCsv.templateJson());
+          return;
+        }
+        that.pickResourceFile();
+      }
+    });
+  },
+
+  pickResourceFile: function () {
+    var that = this;
+    file.chooseFile(['csv', 'json']).then(function (picked) {
+      var values;
+      if (/\.json$/i.test(picked.name)) {
+        try {
+          values = JSON.parse(picked.content);
+        } catch (e) {
+          wx.showToast({ title: '不是有效的 JSON 文件', icon: 'none' });
+          return;
+        }
+      } else {
+        values = resourceCsv.parse(picked.content);
+      }
+      if (!values || typeof values !== 'object') {
+        wx.showToast({ title: '文件里没有资源数据', icon: 'none' });
+        return;
+      }
+      var filled = ['primogems', 'mora', 'intertwinedFates', 'acquaintedFates'].filter(function (key) {
+        return values[key] !== undefined && values[key] !== null;
+      });
+      if (!filled.length) {
+        wx.showToast({ title: '请先在模板里填写数值', icon: 'none' });
+        return;
+      }
+      wx.showModal({
+        title: '导入资源',
+        content: '导入会覆盖当前游戏已填写的资源数值，确定继续吗？',
+        success: function (confirm) {
+          if (!confirm.confirm) {
+            return;
+          }
+          store.importResource(that.data.game, values);
+          that.load(that.data.game);
+          wx.showToast({ title: '资源已导入', icon: 'success' });
+        }
+      });
+    }).catch(function (err) {
+      wx.showToast({ title: err && err.message ? err.message : '导入失败', icon: 'none' });
+    });
+  },
+
+  /* ---------------- 全量备份 ---------------- */
+
+  exportAllBackup: function () {
+    var payload = store.exportAllBackup();
+    file.exportFile('southair-all-backup-' + store.nowStr().slice(0, 10).replace(/-/g, '') + '.json',
+      JSON.stringify(payload, null, 2));
+  },
+
+  importAllBackup: function () {
     var that = this;
     file.chooseFile(['json']).then(function (picked) {
       var payload;
@@ -225,18 +319,44 @@ Page({
         wx.showToast({ title: '不是有效的 JSON 备份文件', icon: 'none' });
         return;
       }
+      if (!payload || typeof payload !== 'object' || !payload.games) {
+        wx.showToast({ title: '这不是全量备份文件', icon: 'none' });
+        return;
+      }
       wx.showActionSheet({
-        itemList: ['合并导入（按名称+卡池+时间去重）', '覆盖导入（清空当前游戏记录）'],
+        itemList: ['合并导入（按名称+卡池+时间去重）', '覆盖导入（清空两个游戏的记录）'],
         success: function (res) {
           var mode = res.tapIndex === 1 ? 'replace' : 'merge';
-          var payloadForImport = Array.isArray(payload) ? { wishes: payload } : payload;
-          var result = store.importBackup(that.data.game, payloadForImport, mode);
-          that.load(that.data.game);
-          wx.showToast({ title: '导入 ' + result.imported + ' 条', icon: 'none' });
+          if (mode === 'replace') {
+            wx.showModal({
+              title: '覆盖导入',
+              content: '覆盖导入会清空两个游戏的全部抽卡记录，确定继续吗？',
+              confirmColor: '#ff6b6b',
+              success: function (confirm) {
+                if (!confirm.confirm) {
+                  return;
+                }
+                that.applyAllImport(payload, mode);
+              }
+            });
+            return;
+          }
+          that.applyAllImport(payload, mode);
         }
       });
     }).catch(function (err) {
       wx.showToast({ title: err && err.message ? err.message : '导入失败', icon: 'none' });
+    });
+  },
+
+  applyAllImport: function (payload, mode) {
+    var result = store.importAllBackup(payload, mode);
+    this.load(this.data.game);
+    wx.showToast({
+      title: '导入 ' + result.imported + ' 条'
+        + (result.skipped ? '，跳过 ' + result.skipped + ' 条' : '')
+        + (result.filtered ? '，忽略 ' + result.filtered + ' 条' : ''),
+      icon: 'none'
     });
   }
 });

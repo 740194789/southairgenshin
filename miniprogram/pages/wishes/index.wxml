@@ -26,6 +26,7 @@
     <view class="btn btn-danger btn-sm {{selectedCount ? '' : 'disabled'}}" bindtap="deleteSelected">批量删除{{selectedCount ? '（' + selectedCount + '）' : ''}}</view>
     <view class="btn btn-outline btn-sm" bindtap="exportCsv">导出 CSV</view>
     <view class="btn btn-outline btn-sm" bindtap="exportJson">导出 JSON</view>
+    <view class="btn btn-text btn-sm" bindtap="downloadTemplate">下载模板</view>
     <view class="btn btn-outline btn-sm" bindtap="importRecords">导入记录</view>
   </view>
 

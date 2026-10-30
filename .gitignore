@@ -1,6 +1,7 @@
 ﻿target/
 data/
 dist/
+project.private.config.json
 *.log
 .idea/
 .vscode/
