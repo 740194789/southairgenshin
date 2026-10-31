@@ -175,7 +175,7 @@
     </view>
     <view class="modal-body" style="height:auto; padding-bottom:16rpx;">
       <view class="text-tip">粘贴米游社抽卡记录链接，或抽卡记录 JSON / CSV 的公网直链、云存储文件 ID：</view>
-      <input class="link-input" value="{{linkUrl}}" bindinput="onLinkInput"
+      <input class="link-input" value="{{linkUrl}}" bindinput="onLinkInput" maxlength="-1"
              placeholder="米游社抽卡记录链接 / https://example.com/southair-wishes.json"/>
       <view class="foot-tip">米游社链接会自动读取全部卡池并推算保底、判定 UP；文件链接支持 JSON / CSV 与 cloud://。链接含账号凭证，请勿分享。</view>
     </view>
