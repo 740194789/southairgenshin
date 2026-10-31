@@ -26,8 +26,9 @@
     <view class="btn btn-danger btn-sm {{selectedCount ? '' : 'disabled'}}" bindtap="deleteSelected">批量删除{{selectedCount ? '（' + selectedCount + '）' : ''}}</view>
     <view class="btn btn-outline btn-sm" bindtap="exportCsv">导出 CSV</view>
     <view class="btn btn-outline btn-sm" bindtap="exportJson">导出 JSON</view>
-    <view class="btn btn-text btn-sm" bindtap="downloadTemplate">下载模板</view>
-    <view class="btn btn-outline btn-sm" bindtap="importRecords">导入记录</view>
+    <view class="btn btn-text btn-sm" bindtap="downloadTemplate">JSON 模板</view>
+    <view class="btn btn-text btn-sm" bindtap="openTextImport">文本导入</view>
+    <view class="btn btn-outline btn-sm" bindtap="importRecords">文件导入</view>
   </view>
 
   <block wx:if="{{rows.length}}">
@@ -129,6 +130,28 @@
     <view class="modal-foot">
       <view class="btn btn-text" bindtap="closeEditor">取消</view>
       <view class="btn btn-primary" bindtap="saveEditor">保存</view>
+    </view>
+  </view>
+</view>
+
+<!-- 文本导入：手机直接填写，不需要生成 / 编辑文件 -->
+<view wx:if="{{textVisible}}" class="mask" bindtap="closeTextImport">
+  <view class="modal" catchtap="noop">
+    <view class="modal-head">
+      <text class="modal-title">文本导入 · {{g.fullName}}</text>
+      <view class="modal-close" bindtap="closeTextImport">×</view>
+    </view>
+    <view class="modal-body" style="height:auto; padding-bottom:16rpx;">
+      <view class="text-tip">每行一条，字段用英文逗号分隔：</view>
+      <view class="text-tip">时间, 名称, 星级, 类型, 卡池, 是否UP, 保底计数, 备注</view>
+      <view class="text-tip">也可以粘贴 JSON 文本（记录数组、单游戏备份或全量备份内容）。</view>
+      <textarea class="text-area" value="{{textContent}}" bindinput="onTextInput" maxlength="-1"
+                placeholder="2026-10-31 12:30,神里绫华,5,角色,角色活动,UP,78"></textarea>
+      <view class="foot-tip">示例行是三星物品，导入时会被忽略；时间写成 2026-10-31 12:30 即可，备注可留空。</view>
+    </view>
+    <view class="modal-foot">
+      <view class="btn btn-text" bindtap="closeTextImport">取消</view>
+      <view class="btn btn-primary" bindtap="applyTextImport">导入</view>
     </view>
   </view>
 </view>

@@ -7,11 +7,6 @@ function header() {
   return BOM + HEADERS.join(',') + '\r\n';
 }
 
-/** 导入模板：只有表头，填入数值后再导入。 */
-function template() {
-  return header();
-}
-
 function write(res) {
   var source = res || {};
   var row = [
@@ -21,16 +16,6 @@ function write(res) {
     source.acquaintedFates === undefined || source.acquaintedFates === null ? '' : source.acquaintedFates
   ];
   return header() + row.join(',') + '\r\n';
-}
-
-/** 导入模板的 JSON 版本：字段为空，导入时会被拒绝。 */
-function templateJson() {
-  return JSON.stringify({
-    primogems: null,
-    mora: null,
-    intertwinedFates: null,
-    acquaintedFates: null
-  }, null, 2);
 }
 
 /**
@@ -74,10 +59,19 @@ function parse(text) {
     }
   });
 
-  if (lines.length < 2) {
-    return result;
+  var mapped = index.primogems >= 0 || index.mora >= 0
+    || index.intertwinedFates >= 0 || index.acquaintedFates >= 0;
+  var dataLine = 0;
+  if (mapped) {
+    if (lines.length < 2) {
+      return result;
+    }
+    dataLine = 1;
+  } else {
+    // 手机粘贴时可以不写表头：按「原石, 摩拉, 纠缠, 相遇」顺序解析。
+    index = { primogems: 0, mora: 1, intertwinedFates: 2, acquaintedFates: 3 };
   }
-  var row = lines[1].split(',');
+  var row = lines[dataLine].split(',');
   ['primogems', 'mora', 'intertwinedFates', 'acquaintedFates'].forEach(function (key) {
     var at = index[key];
     if (at < 0 || at >= row.length) {
@@ -97,7 +91,5 @@ function parse(text) {
 
 module.exports = {
   write: write,
-  parse: parse,
-  template: template,
-  templateJson: templateJson
+  parse: parse
 };

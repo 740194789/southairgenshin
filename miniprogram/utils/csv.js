@@ -50,23 +50,15 @@ function write(records) {
   return BOM + lines.join('\r\n') + '\r\n';
 }
 
-/** 导入模板：表头 + 一条三星示例行（三星不记录，示例行导入时会被忽略）。 */
-function template() {
-  var sample = [{
-    wishTime: '2026-01-01 12:00:00',
-    itemName: '示例物品',
-    rarity: 3,
-    itemType: '武器',
-    pool: '常驻',
-    isUp: false,
-    pityCount: 1,
-    note: '示例行可删除，导入时会被忽略',
-    captureTriggered: false
-  }];
-  return write(sample);
+/**
+ * 手机文本录入模板：一行三星示例（三星不会被记录），不含表头，
+ * 用户可在下面直接续写自己的记录。
+ */
+function templateText() {
+  return '2026-01-01 12:00:00,示例物品,3,武器,常驻,否,1,示例行（三星会被忽略）\n';
 }
 
-/** 导入模板的 JSON 版本：一条三星示例记录。 */
+/** 下载用的 JSON 模板：一条三星示例记录（导入时会被过滤）。 */
 function templateJson() {
   return JSON.stringify([{
     wishTime: '2026-01-01 12:00:00',
@@ -76,8 +68,16 @@ function templateJson() {
     pool: '常驻',
     isUp: false,
     pityCount: 1,
-    note: '示例行可删除，导入时会被忽略'
+    note: '示例行（三星会被忽略）'
   }], null, 2);
+}
+
+function defaultIndex() {
+  return { time: 0, name: 1, rarity: 2, type: 3, pool: 4, isup: 5, pity: 6, note: 7, capture: 8 };
+}
+
+function hasKnownHeader(index) {
+  return index.time !== undefined || index.name !== undefined || index.rarity !== undefined;
 }
 
 function readRows(text) {
@@ -222,11 +222,20 @@ function parse(text) {
 
   var index = {};
   rows[0].forEach(function (header, i) {
-    index[normalizeHeader(header)] = i;
+    var key = normalizeHeader(header);
+    if (index[key] === undefined) {
+      index[key] = i;
+    }
   });
 
+  // 粘贴文本时可以不写表头：按「时间,名称,星级,类型,卡池,是否UP,保底,备注」顺序解析。
+  var start = hasKnownHeader(index) ? 1 : 0;
+  if (start === 0) {
+    index = defaultIndex();
+  }
+
   var records = [];
-  for (var r = 1; r < rows.length; r++) {
+  for (var r = start; r < rows.length; r++) {
     var row = rows[r];
     if (isBlankRow(row)) {
       continue;
@@ -249,7 +258,7 @@ function parse(text) {
 module.exports = {
   write: write,
   parse: parse,
-  template: template,
+  templateText: templateText,
   templateJson: templateJson,
   formatTime: formatTime,
   normalizeTime: normalizeTime

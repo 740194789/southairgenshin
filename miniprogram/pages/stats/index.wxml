@@ -33,6 +33,65 @@
     <view class="pity-note">规则：小保底基础 50%，含捕获明光综合 55%；连续 3 次歪后，下次五星必定 UP（连歪 1 / 2 次按 55% / 75% 估算）。</view>
   </view>
 
+  <view wx:if="{{expect}}" class="panel expect-panel">
+    <view class="panel-title">抽卡期望<text class="pool-tag inline">目标模拟</text></view>
+    <view class="expect-modes">
+      <view class="expect-mode {{expect.historyOn ? '' : 'is-on'}}" bindtap="onExpectMode" data-mode="theory">理论模型</view>
+      <view class="expect-mode {{expect.historyOn ? 'is-on' : ''}} {{expect.historyReady ? '' : 'is-disabled'}}"
+            bindtap="onExpectMode" data-mode="history">往期数据</view>
+    </view>
+
+    <view class="expect-targets">
+      <view class="expect-target">
+        <view class="expect-target-label">角色命座</view>
+        <view class="expect-stepper">
+          <view class="expect-step {{expect.c <= 0 ? 'is-disabled' : ''}}" bindtap="onExpectStep"
+                data-step="c" data-dir="-1">−</view>
+          <view class="expect-step-value">{{expect.c}}<text class="expect-unit">命</text></view>
+          <view class="expect-step {{expect.c >= 6 ? 'is-disabled' : ''}}" bindtap="onExpectStep"
+                data-step="c" data-dir="1">＋</view>
+        </view>
+        <view class="expect-target-note">{{expect.charNote}}</view>
+      </view>
+      <view class="expect-target">
+        <view class="expect-target-label">{{g.weaponPool === '光锥活动' ? '光锥精炼' : '武器精炼'}}</view>
+        <view class="expect-stepper">
+          <view class="expect-step {{expect.r <= 0 ? 'is-disabled' : ''}}" bindtap="onExpectStep"
+                data-step="r" data-dir="-1">−</view>
+          <view class="expect-step-value">{{expect.r}}<text class="expect-unit">精</text></view>
+          <view class="expect-step {{expect.r >= 5 ? 'is-disabled' : ''}}" bindtap="onExpectStep"
+                data-step="r" data-dir="1">＋</view>
+        </view>
+        <view class="expect-target-note">{{expect.weaponNote}}</view>
+      </view>
+    </view>
+
+    <view class="expect-readout">
+      <view class="expect-kicker">目标 {{expect.targetName}} · 期望抽数</view>
+      <view class="expect-number">{{expect.totalText}}<text class="expect-unit">抽</text></view>
+      <view class="expect-compare">{{expect.compareText}}</view>
+      <view class="expect-bar">
+        <view class="expect-bar-fill {{expect.enough ? 'done' : ''}}" style="width:{{expect.percent}}%"></view>
+      </view>
+    </view>
+
+    <view class="expect-split">
+      <view class="expect-part">
+        <view class="expect-part-label">{{expect.charLabel}}</view>
+        <view class="expect-part-value">{{expect.charCostText}}</view>
+        <view class="expect-part-note">{{expect.charUpText}}</view>
+      </view>
+      <view class="expect-part">
+        <view class="expect-part-label">{{expect.weaponLabel}}</view>
+        <view class="expect-part-value">{{expect.weaponCostText}}</view>
+        <view class="expect-part-note">{{expect.weaponUpText}}</view>
+      </view>
+    </view>
+
+    <view class="expect-note">{{expect.sourceNote}}</view>
+    <view class="expect-note">{{expect.pityNote}}期望值为平均情况，约一半概率在期望抽数内达成。</view>
+  </view>
+
   <view class="panel">
     <view class="panel-title">抽卡统计<text class="pool-tag inline">角色活动 · {{g.weaponPool}}</text></view>
     <view class="stat-grid">
@@ -171,14 +230,15 @@
 
   <view class="panel">
     <view class="panel-title">账号资源导入导出 · {{g.fullName}}</view>
-    <view class="panel-desc">导出或导入当前游戏的账号资源（{{g.currency}}、{{g.credit}}、{{g.fateLimited}}、{{g.fateStandard}}）；抽卡记录请到「抽卡」页导入导出。</view>
+    <view class="panel-desc">手机上可直接手动填写，或粘贴 JSON / CSV 文本（{{g.currency}}、{{g.credit}}、{{g.fateLimited}}、{{g.fateStandard}}），也可以导入电脑端导出的文件。抽卡记录请到「抽卡」页处理。</view>
     <view class="toolbar">
-      <view class="btn btn-primary btn-sm" bindtap="exportResourceCsv">导出 CSV</view>
+      <view class="btn btn-primary btn-sm" bindtap="openResourceForm">手动填写</view>
+      <view class="btn btn-text btn-sm" bindtap="openResourceText">粘贴导入</view>
+      <view class="btn btn-outline btn-sm" bindtap="exportResourceCsv">导出 CSV</view>
       <view class="btn btn-outline btn-sm" bindtap="exportResourceJson">导出 JSON</view>
-      <view class="btn btn-text btn-sm" bindtap="downloadResourceTemplate">下载模板</view>
-      <view class="btn btn-outline btn-sm" bindtap="importResource">导入资源</view>
+      <view class="btn btn-text btn-sm" bindtap="importResource">文件导入</view>
     </view>
-    <view class="foot-tip">导入只覆盖文件里填写的数值，空着的字段保持原值。</view>
+    <view class="foot-tip">手动填写会覆盖当前数值；文件导入只覆盖文件里填写的字段，空着的保持原值。</view>
   </view>
 
   <view class="panel">
@@ -189,5 +249,58 @@
       <view class="btn btn-outline" bindtap="importAllBackup">导入全部数据</view>
     </view>
     <view class="foot-tip">离线版数据只存在本机缓存；卸载、清理缓存或换机会丢失，建议定期导出备份。</view>
+  </view>
+</view>
+
+<!-- 手动填写资源：手机直接输入，不需要模板文件 -->
+<view wx:if="{{resourceEditing}}" class="mask" bindtap="closeResourceForm">
+  <view class="modal" catchtap="noop">
+    <view class="modal-head">
+      <text class="modal-title">填写资源 · {{g.fullName}}</text>
+      <view class="modal-close" bindtap="closeResourceForm">×</view>
+    </view>
+    <view class="modal-body" style="height:auto; padding-bottom:16rpx;">
+      <view class="form-row">
+        <text class="form-label">{{g.currency}}</text>
+        <input class="form-input" type="number" value="{{resourceForm.primogems}}" data-key="primogems" bindinput="onResourceInput" placeholder="0"/>
+      </view>
+      <view class="form-row">
+        <text class="form-label">{{g.credit}}</text>
+        <input class="form-input" type="number" value="{{resourceForm.mora}}" data-key="mora" bindinput="onResourceInput" placeholder="0"/>
+      </view>
+      <view class="form-row">
+        <text class="form-label">{{g.fateLimited}}</text>
+        <input class="form-input" type="number" value="{{resourceForm.intertwinedFates}}" data-key="intertwinedFates" bindinput="onResourceInput" placeholder="0"/>
+      </view>
+      <view class="form-row">
+        <text class="form-label">{{g.fateStandard}}</text>
+        <input class="form-input" type="number" value="{{resourceForm.acquaintedFates}}" data-key="acquaintedFates" bindinput="onResourceInput" placeholder="0"/>
+      </view>
+      <view class="foot-tip">留空按 0 处理；只填数量，不需要单位。</view>
+    </view>
+    <view class="modal-foot">
+      <view class="btn btn-text" bindtap="closeResourceForm">取消</view>
+      <view class="btn btn-primary" bindtap="saveResourceForm">保存</view>
+    </view>
+  </view>
+</view>
+
+<!-- 粘贴导入资源：JSON 或 CSV 文本直接粘贴，不需要文件 -->
+<view wx:if="{{resourceTextVisible}}" class="mask" bindtap="closeResourceText">
+  <view class="modal" catchtap="noop">
+    <view class="modal-head">
+      <text class="modal-title">粘贴导入资源 · {{g.fullName}}</text>
+      <view class="modal-close" bindtap="closeResourceText">×</view>
+    </view>
+    <view class="modal-body" style="height:auto; padding-bottom:16rpx;">
+      <view class="text-tip">粘贴网页端导出的 JSON，或「表头 + 一行数值」的 CSV：</view>
+      <textarea class="text-area" value="{{resourceText}}" bindinput="onResourceTextInput" maxlength="-1"
+                placeholder='{"primogems":4335,"mora":22760028,"intertwinedFates":200,"acquaintedFates":5}'></textarea>
+      <view class="foot-tip">只覆盖文本里出现的字段，没有出现的字段保持原值。</view>
+    </view>
+    <view class="modal-foot">
+      <view class="btn btn-text" bindtap="closeResourceText">取消</view>
+      <view class="btn btn-primary" bindtap="applyResourceText">导入</view>
+    </view>
   </view>
 </view>

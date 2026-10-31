@@ -56,7 +56,9 @@ Page({
     typeOptions: gameLib.config('genshin').itemTypes,
     editorVisible: false,
     editorId: null,
-    editor: editorDefaults(gameLib.config('genshin'), 0)
+    editor: editorDefaults(gameLib.config('genshin'), 0),
+    textVisible: false,
+    textContent: ''
   },
 
   onLoad: function () {
@@ -81,7 +83,8 @@ Page({
       selected: [],
       selectedCount: 0,
       typeOptions: g.itemTypes,
-      editorVisible: false
+      editorVisible: false,
+      textVisible: false
     });
     this.load();
   },
@@ -365,35 +368,68 @@ Page({
     file.exportFile('southair-wishes-' + this.data.game + '.json', JSON.stringify(records, null, 2));
   },
 
+  /** 下载 JSON 模板：可先发给电脑编辑，或直接复制文本粘贴回「文本导入」。 */
   downloadTemplate: function () {
-    wx.showActionSheet({
-      itemList: ['下载 CSV 模板', '下载 JSON 模板'],
-      success: function (res) {
-        if (res.tapIndex === 0) {
-          file.exportFile('southair-wishes-template.csv', csv.template());
-        } else {
-          file.exportFile('southair-wishes-template.json', csv.templateJson());
-        }
-      }
+    file.exportFile('southair-wishes-template.json', csv.templateJson());
+  },
+
+  /** 手机文本录入：直接在弹窗里按行填写，不需要生成 / 编辑文件。 */
+  openTextImport: function () {
+    this.setData({
+      textVisible: true,
+      textContent: csv.templateText()
     });
   },
 
-  importRecords: function () {
-    var that = this;
-    wx.showActionSheet({
-      itemList: ['下载 CSV 模板', '下载 JSON 模板', '直接导入'],
-      success: function (res) {
-        if (res.tapIndex === 0) {
-          file.exportFile('southair-wishes-template.csv', csv.template());
-          return;
-        }
-        if (res.tapIndex === 1) {
-          file.exportFile('southair-wishes-template.json', csv.templateJson());
-          return;
-        }
-        that.pickWishFile();
+  closeTextImport: function () {
+    this.setData({ textVisible: false });
+  },
+
+  onTextInput: function (event) {
+    this.setData({ textContent: event.detail.value });
+  },
+
+  applyTextImport: function () {
+    var text = (this.data.textContent || '').trim();
+    if (!text) {
+      wx.showToast({ title: '请先填写内容', icon: 'none' });
+      return;
+    }
+    var records;
+    var first = text.charAt(0);
+    if (first === '[' || first === '{') {
+      var payload;
+      try {
+        payload = JSON.parse(text);
+      } catch (e) {
+        wx.showToast({ title: '不是有效的 JSON', icon: 'none' });
+        return;
       }
-    });
+      if (Array.isArray(payload)) {
+        records = payload;
+      } else if (payload && Array.isArray(payload.wishes)) {
+        records = payload.wishes;
+      } else if (payload && payload.games && payload.games[this.data.game]
+          && Array.isArray(payload.games[this.data.game].wishes)) {
+        records = payload.games[this.data.game].wishes;
+      } else {
+        wx.showToast({ title: 'JSON 里没有抽卡记录', icon: 'none' });
+        return;
+      }
+    } else {
+      records = csv.parse(text);
+    }
+    if (!records.length) {
+      wx.showToast({ title: '没有可导入的记录', icon: 'none' });
+      return;
+    }
+    this.setData({ textVisible: false });
+    this.chooseImportMode(records);
+  },
+
+  /** 从聊天记录里选择电脑端导出的 CSV / JSON 文件。 */
+  importRecords: function () {
+    this.pickWishFile();
   },
 
   pickWishFile: function () {
@@ -417,29 +453,34 @@ Page({
         return;
       }
 
-      wx.showActionSheet({
-        itemList: ['合并导入（按名称+卡池+时间去重）', '覆盖导入（清空当前游戏记录）'],
-        success: function (res) {
-          var mode = res.tapIndex === 1 ? 'replace' : 'merge';
-          if (mode === 'replace') {
-            wx.showModal({
-              title: '覆盖导入',
-              content: '覆盖导入会清空当前游戏的全部抽卡记录，确定继续吗？',
-              confirmColor: '#ff6b6b',
-              success: function (confirm) {
-                if (!confirm.confirm) {
-                  return;
-                }
-                that.applyImport(records, mode);
-              }
-            });
-            return;
-          }
-          that.applyImport(records, mode);
-        }
-      });
+      that.chooseImportMode(records);
     }).catch(function (err) {
       wx.showToast({ title: err && err.message ? err.message : '导入失败', icon: 'none' });
+    });
+  },
+
+  chooseImportMode: function (records) {
+    var that = this;
+    wx.showActionSheet({
+      itemList: ['合并导入（按名称+卡池+时间去重）', '覆盖导入（清空当前游戏记录）'],
+      success: function (res) {
+        var mode = res.tapIndex === 1 ? 'replace' : 'merge';
+        if (mode === 'replace') {
+          wx.showModal({
+            title: '覆盖导入',
+            content: '覆盖导入会清空当前游戏的全部抽卡记录，确定继续吗？',
+            confirmColor: '#ff6b6b',
+            success: function (confirm) {
+              if (!confirm.confirm) {
+                return;
+              }
+              that.applyImport(records, mode);
+            }
+          });
+          return;
+        }
+        that.applyImport(records, mode);
+      }
     });
   },
 

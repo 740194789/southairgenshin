@@ -74,6 +74,156 @@ function buildChart(list, real) {
   };
 }
 
+/* ---------------- 抽卡期望 ---------------- */
+
+var EXPECT_KEY = 'sg_expect_';
+
+/* 官方 / 社区通行估算值，与网页端保持一致 */
+var EXPECT_MODEL = {
+  fiveStarAvg: 62.5,
+  weaponFiveStarAvg: 53.3,
+  genshinCharUpRate: 0.55,
+  starrailCharUpRate: 0.5,
+  starrailWeaponUpRate: 0.75,
+  genshinWeaponFives: 2
+};
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function expectPrefs(game) {
+  var raw = null;
+  try {
+    raw = wx.getStorageSync(EXPECT_KEY + game);
+  } catch (e) {
+    raw = null;
+  }
+  raw = raw && typeof raw === 'object' ? raw : {};
+  return {
+    c: clamp(Number(raw.c) || 0, 0, 6),
+    r: clamp(Number(raw.r) || 0, 0, 5),
+    mode: raw.mode === 'history' ? 'history' : 'theory'
+  };
+}
+
+function saveExpectPrefs(game, prefs) {
+  try {
+    wx.setStorageSync(EXPECT_KEY + game, prefs);
+  } catch (e) {
+    /* 忽略存储失败 */
+  }
+}
+
+function poolStatOf(list, pool) {
+  var items = list || [];
+  for (var i = 0; i < items.length; i++) {
+    if (items[i].pool === pool) {
+      return items[i];
+    }
+  }
+  return null;
+}
+
+/**
+ * 目标（角色 c 命 + 武器 r 精炼）的抽数期望。
+ * theory：按平均五星抽数与 UP 概率推算；history：用账号历史 UP 周期平均抽数。
+ * 首个 UP 会先抵扣当前保底进度；已有大保底时首个 UP 只需一个五星。
+ */
+function buildExpectation(data, game, prefs) {
+  var g = gameLib.config(game);
+  var isSR = game === 'starrail';
+  var charPool = poolStatOf(data.poolStats, g.charPool);
+  var weaponPool = poolStatOf(data.poolStats, g.weaponPool);
+  var charPity = charPool ? Math.max(0, charPool.currentPity || 0) : 0;
+  var weaponPity = weaponPool ? Math.max(0, weaponPool.currentPity || 0) : 0;
+  var charGuaranteed = !!(charPool && charPool.upGuaranteed);
+  var weaponGuaranteed = !!(weaponPool && weaponPool.upGuaranteed);
+
+  var charRate = isSR ? EXPECT_MODEL.starrailCharUpRate : EXPECT_MODEL.genshinCharUpRate;
+  var charUnitTheory = EXPECT_MODEL.fiveStarAvg * (1 + (1 - charRate));
+  var weaponUnitTheory = isSR
+    ? EXPECT_MODEL.weaponFiveStarAvg * (1 + (1 - EXPECT_MODEL.starrailWeaponUpRate))
+    : EXPECT_MODEL.weaponFiveStarAvg * EXPECT_MODEL.genshinWeaponFives;
+
+  var charSamples = Number(data.characterUpSamples) || 0;
+  var weaponSamples = Number(data.weaponUpSamples) || 0;
+  var historyReady = charSamples >= 2 && data.characterUpAvgPity > 0;
+  var useHistory = prefs.mode === 'history' && historyReady;
+  var weaponHistory = useHistory && weaponSamples >= 2 && data.weaponUpAvgPity > 0;
+
+  var charUnit = useHistory ? data.characterUpAvgPity : charUnitTheory;
+  var weaponUnit = weaponHistory ? data.weaponUpAvgPity : weaponUnitTheory;
+
+  var charFirst = Math.max(1, (charGuaranteed ? EXPECT_MODEL.fiveStarAvg : charUnit) - charPity);
+  var charCost = charFirst + prefs.c * charUnit;
+
+  var weaponCost = 0;
+  if (prefs.r > 0) {
+    var weaponFirst = Math.max(1, (weaponGuaranteed ? EXPECT_MODEL.weaponFiveStarAvg : weaponUnit)
+      - weaponPity);
+    weaponCost = weaponFirst + (prefs.r - 1) * weaponUnit;
+  }
+
+  var total = Math.max(1, Math.round(charCost + weaponCost));
+  var available = data.resource.totalPulls || 0;
+  var currencyPerPull = data.resource.primogemsPerPull || 160;
+  var gap = total - available;
+  var enough = gap <= 0;
+  var percent = Math.min(100, Math.round(available / total * 100));
+  var weaponWord = isSR ? '光锥' : '武器';
+
+  var compareText = enough
+    ? '当前可抽 ' + store.fmt(available) + ' 抽 · 已足够，余 ' + store.fmt(-gap) + ' 抽'
+    : '当前可抽 ' + store.fmt(available) + ' 抽 · 还差 ' + store.fmt(gap)
+      + ' 抽（约 ' + store.fmt(gap * currencyPerPull) + ' ' + g.currency + '）';
+
+  var sourceNote;
+  if (useHistory) {
+    sourceNote = '往期数据：角色 UP 平均 ' + data.characterUpAvgPity + ' 抽（'
+      + charSamples + ' 次样本）';
+    if (prefs.r > 0) {
+      sourceNote += weaponHistory
+        ? ' · 武器 UP 平均 ' + data.weaponUpAvgPity + ' 抽（' + weaponSamples + ' 次样本）'
+        : ' · 武器样本不足 2 次，改用理论值';
+    }
+  } else {
+    sourceNote = isSR
+      ? '理论模型：角色池五星平均 62.5 抽、UP 基础 50%；光锥池五星平均 53.3 抽、UP 75%，歪后大保底。'
+      : '理论模型：角色池五星平均 62.5 抽、UP 综合 55%（含捕获明光）；'
+        + '武器池五星平均 53.3 抽、定轨约需 2 个五星。';
+  }
+
+  var pityNote = '已扣除当前保底进度：' + g.charPool + ' ' + charPity + ' / '
+    + (charPool ? charPool.cap : 90)
+    + (prefs.r > 0 ? '，' + g.weaponPool + ' ' + weaponPity + ' / '
+      + (weaponPool ? weaponPool.cap : 80) : '')
+    + (charGuaranteed ? ' · 角色池大保底' : '')
+    + (weaponGuaranteed && prefs.r > 0 ? ' · 武器池大保底' : '') + '。';
+
+  return {
+    c: prefs.c,
+    r: prefs.r,
+    historyOn: useHistory,
+    historyReady: historyReady,
+    targetName: 'C' + prefs.c + (prefs.r > 0 ? ' + R' + prefs.r : ''),
+    totalText: store.fmt(total),
+    enough: enough,
+    percent: percent,
+    compareText: compareText,
+    charLabel: '角色 C' + prefs.c,
+    charCostText: store.fmt(Math.round(charCost)) + ' 抽',
+    charUpText: (prefs.c + 1) + ' 个 UP',
+    charNote: prefs.c === 0 ? '仅本体，不追命座' : '本体 + ' + prefs.c + ' 命',
+    weaponLabel: prefs.r > 0 ? weaponWord + ' R' + prefs.r : weaponWord,
+    weaponCostText: prefs.r > 0 ? store.fmt(Math.round(weaponCost)) + ' 抽' : '—',
+    weaponUpText: prefs.r > 0 ? prefs.r + ' 把 UP' : '未选择',
+    weaponNote: prefs.r === 0 ? '不抽' + weaponWord : '本体 + ' + (prefs.r - 1) + ' 把精炼',
+    sourceNote: sourceNote,
+    pityNote: pityNote
+  };
+}
+
 Page({
   data: {
     statusBarHeight: 20,
@@ -84,8 +234,18 @@ Page({
     dist: [],
     recent: [],
     capture: null,
+    expect: null,
     chartReal: false,
-    chart: { points: [], summary: '' }
+    chart: { points: [], summary: '' },
+    resourceEditing: false,
+    resourceForm: {
+      primogems: '',
+      mora: '',
+      intertwinedFates: '',
+      acquaintedFates: ''
+    },
+    resourceTextVisible: false,
+    resourceText: ''
   },
 
   onLoad: function () {
@@ -100,6 +260,7 @@ Page({
   load: function (game) {
     var data = store.overview(game);
     var g = gameLib.config(game);
+    this.expectSource = data;
     this.fiveStars = data.fiveStarHistory || [];
     var chart = buildChart(this.fiveStars, this.data.chartReal);
 
@@ -190,6 +351,7 @@ Page({
       dist: dist,
       recent: recent,
       capture: capture,
+      expect: buildExpectation(data, game, expectPrefs(game)),
       chart: chart
     });
   },
@@ -197,7 +359,7 @@ Page({
   onSwitchGame: function (event) {
     var game = event.detail.game;
     app.setGame(game);
-    this.setData({ chartReal: false });
+    this.setData({ chartReal: false, resourceEditing: false, resourceTextVisible: false });
     this.load(game);
   },
 
@@ -206,6 +368,42 @@ Page({
     this.setData({
       chartReal: real,
       chart: buildChart(this.fiveStars || [], real)
+    });
+  },
+
+  /* ---------------- 抽卡期望 ---------------- */
+
+  onExpectStep: function (event) {
+    var step = event.currentTarget.dataset.step;
+    var dir = Number(event.currentTarget.dataset.dir) || 0;
+    var prefs = expectPrefs(this.data.game);
+    if (step === 'c') {
+      prefs.c = clamp(prefs.c + dir, 0, 6);
+    } else if (step === 'r') {
+      prefs.r = clamp(prefs.r + dir, 0, 5);
+    }
+    saveExpectPrefs(this.data.game, prefs);
+    this.refreshExpectation();
+  },
+
+  onExpectMode: function (event) {
+    var mode = event.currentTarget.dataset.mode;
+    var prefs = expectPrefs(this.data.game);
+    if (mode === 'history' && !(this.data.expect && this.data.expect.historyReady)) {
+      wx.showToast({ title: '往期 UP 样本不足 2 次', icon: 'none' });
+      return;
+    }
+    prefs.mode = mode === 'history' ? 'history' : 'theory';
+    saveExpectPrefs(this.data.game, prefs);
+    this.refreshExpectation();
+  },
+
+  refreshExpectation: function () {
+    if (!this.expectSource) {
+      return;
+    }
+    this.setData({
+      expect: buildExpectation(this.expectSource, this.data.game, expectPrefs(this.data.game))
     });
   },
 
@@ -228,35 +426,108 @@ Page({
     }, null, 2));
   },
 
-  downloadResourceTemplate: function () {
-    wx.showActionSheet({
-      itemList: ['下载 CSV 模板', '下载 JSON 模板'],
-      success: function (res) {
-        if (res.tapIndex === 0) {
-          file.exportFile('southair-resources-template.csv', resourceCsv.template());
-        } else {
-          file.exportFile('southair-resources-template.json', resourceCsv.templateJson());
-        }
+  /** 手机手动填写资源：不下载模板，直接在弹窗里改 4 个数值。 */
+  openResourceForm: function () {
+    var res = store.getResource(this.data.game);
+    this.setData({
+      resourceEditing: true,
+      resourceForm: {
+        primogems: String(res.primogems),
+        mora: String(res.mora),
+        intertwinedFates: String(res.intertwinedFates),
+        acquaintedFates: String(res.acquaintedFates)
       }
     });
   },
 
-  importResource: function () {
+  closeResourceForm: function () {
+    this.setData({ resourceEditing: false });
+  },
+
+  onResourceInput: function (event) {
+    var key = event.currentTarget.dataset.key;
+    var patch = {};
+    patch['resourceForm.' + key] = event.detail.value;
+    this.setData(patch);
+  },
+
+  noop: function () {
+  },
+
+  saveResourceForm: function () {
+    store.updateResource(this.data.game, this.data.resourceForm);
+    this.setData({ resourceEditing: false });
+    this.load(this.data.game);
+    wx.showToast({ title: '资源已保存', icon: 'success' });
+  },
+
+  /** 粘贴导入：支持网页端导出的 JSON，也支持表头 + 一行数值的 CSV。 */
+  openResourceText: function () {
+    this.setData({ resourceTextVisible: true, resourceText: '' });
+  },
+
+  closeResourceText: function () {
+    this.setData({ resourceTextVisible: false });
+  },
+
+  onResourceTextInput: function (event) {
+    this.setData({ resourceText: event.detail.value });
+  },
+
+  applyResourceText: function () {
+    var text = (this.data.resourceText || '').trim();
+    if (!text) {
+      wx.showToast({ title: '请先粘贴内容', icon: 'none' });
+      return;
+    }
+    var values;
+    if (text.charAt(0) === '{') {
+      try {
+        values = JSON.parse(text);
+      } catch (e) {
+        wx.showToast({ title: '不是有效的 JSON', icon: 'none' });
+        return;
+      }
+    } else {
+      values = resourceCsv.parse(text);
+    }
+    if (values && values.resource && typeof values.resource === 'object') {
+      values = values.resource;
+    }
+    if (!values || typeof values !== 'object') {
+      wx.showToast({ title: '没有识别到资源数值', icon: 'none' });
+      return;
+    }
+    this.setData({ resourceTextVisible: false });
+    this.applyResourceValues(values);
+  },
+
+  applyResourceValues: function (values) {
     var that = this;
-    wx.showActionSheet({
-      itemList: ['下载 CSV 模板', '下载 JSON 模板', '直接导入'],
-      success: function (res) {
-        if (res.tapIndex === 0) {
-          file.exportFile('southair-resources-template.csv', resourceCsv.template());
+    var filled = ['primogems', 'mora', 'intertwinedFates', 'acquaintedFates'].filter(function (key) {
+      return values[key] !== undefined && values[key] !== null;
+    });
+    if (!filled.length) {
+      wx.showToast({ title: '没有识别到资源数值', icon: 'none' });
+      return;
+    }
+    wx.showModal({
+      title: '导入资源',
+      content: '导入会覆盖当前游戏已填写的资源数值，确定继续吗？',
+      success: function (confirm) {
+        if (!confirm.confirm) {
           return;
         }
-        if (res.tapIndex === 1) {
-          file.exportFile('southair-resources-template.json', resourceCsv.templateJson());
-          return;
-        }
-        that.pickResourceFile();
+        store.importResource(that.data.game, values);
+        that.load(that.data.game);
+        wx.showToast({ title: '资源已导入', icon: 'success' });
       }
     });
+  },
+
+  /** 从聊天记录选择电脑端导出的资源 CSV / JSON 文件。 */
+  importResource: function () {
+    this.pickResourceFile();
   },
 
   pickResourceFile: function () {
@@ -277,25 +548,10 @@ Page({
         wx.showToast({ title: '文件里没有资源数据', icon: 'none' });
         return;
       }
-      var filled = ['primogems', 'mora', 'intertwinedFates', 'acquaintedFates'].filter(function (key) {
-        return values[key] !== undefined && values[key] !== null;
-      });
-      if (!filled.length) {
-        wx.showToast({ title: '请先在模板里填写数值', icon: 'none' });
-        return;
+      if (values.resource && typeof values.resource === 'object') {
+        values = values.resource;
       }
-      wx.showModal({
-        title: '导入资源',
-        content: '导入会覆盖当前游戏已填写的资源数值，确定继续吗？',
-        success: function (confirm) {
-          if (!confirm.confirm) {
-            return;
-          }
-          store.importResource(that.data.game, values);
-          that.load(that.data.game);
-          wx.showToast({ title: '资源已导入', icon: 'success' });
-        }
-      });
+      that.applyResourceValues(values);
     }).catch(function (err) {
       wx.showToast({ title: err && err.message ? err.message : '导入失败', icon: 'none' });
     });
