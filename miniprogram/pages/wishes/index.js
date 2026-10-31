@@ -53,6 +53,8 @@ Page({
     total: 0,
     selected: [],
     selectedCount: 0,
+    allChecked: false,
+    pityChips: [],
     typeOptions: gameLib.config('genshin').itemTypes,
     editorVisible: false,
     editorId: null,
@@ -82,6 +84,7 @@ Page({
       page: 1,
       selected: [],
       selectedCount: 0,
+      allChecked: false,
       typeOptions: g.itemTypes,
       editorVisible: false,
       textVisible: false
@@ -112,8 +115,26 @@ Page({
       };
     });
 
+    var overview = store.overview(game);
+    var pityChips = (overview.poolStats || []).map(function (item) {
+      var cap = Number(item.cap) || 90;
+      var pity = Math.max(0, Number(item.currentPity) || 0);
+      return {
+        pool: item.pool,
+        currentPity: pity,
+        cap: cap,
+        left: Math.max(0, cap - pity),
+        guaranteed: item.upGuaranteed === true,
+        manual: item.pityManual === true
+      };
+    });
+
     this.setData({
       rows: rows,
+      pityChips: pityChips,
+      allChecked: rows.length > 0 && rows.every(function (row) {
+        return row.checked;
+      }),
       page: result.page,
       pages: result.pages,
       total: result.total
@@ -125,7 +146,8 @@ Page({
       poolIndex: Number(event.detail.value),
       page: 1,
       selected: [],
-      selectedCount: 0
+      selectedCount: 0,
+      allChecked: false
     });
     this.load();
   },
@@ -137,7 +159,8 @@ Page({
     this.setData({
       page: this.data.page - 1,
       selected: [],
-      selectedCount: 0
+      selectedCount: 0,
+      allChecked: false
     });
     this.load();
   },
@@ -149,9 +172,60 @@ Page({
     this.setData({
       page: this.data.page + 1,
       selected: [],
-      selectedCount: 0
+      selectedCount: 0,
+      allChecked: false
     });
     this.load();
+  },
+
+  editPity: function (event) {
+    var that = this;
+    var pool = event.currentTarget.dataset.pool;
+    var cap = Number(event.currentTarget.dataset.cap) || 90;
+    var pity = Number(event.currentTarget.dataset.pity) || 0;
+    wx.showModal({
+      title: pool + ' 已垫抽数',
+      editable: true,
+      content: '当前 ' + pity + ' 抽，可填 0–' + (cap - 1) + '（0 表示清除手动值）',
+      placeholderText: '输入新的已垫抽数',
+      success: function (res) {
+        if (!res.confirm) {
+          return;
+        }
+        var text = String(res.content || '').trim();
+        if (!text) {
+          return;
+        }
+        var value = Math.floor(Number(text));
+        if (!isFinite(value) || value < 0 || value > cap - 1) {
+          wx.showToast({ title: '需在 0–' + (cap - 1) + ' 之间', icon: 'none' });
+          return;
+        }
+        store.setPityOverride(that.data.game, pool, value);
+        that.load();
+        wx.showToast({
+          title: value > 0 ? '已更新为 ' + value + ' 抽' : '已清除手动已垫',
+          icon: 'none'
+        });
+      }
+    });
+  },
+
+  toggleAll: function () {
+    var allChecked = !this.data.allChecked;
+    var selected = allChecked ? this.data.rows.map(function (row) {
+      return row.id;
+    }) : [];
+    var rows = this.data.rows.map(function (row) {
+      row.checked = allChecked;
+      return row;
+    });
+    this.setData({
+      selected: selected,
+      selectedCount: selected.length,
+      allChecked: allChecked,
+      rows: rows
+    });
   },
 
   toggleSelect: function (event) {
@@ -172,6 +246,9 @@ Page({
     this.setData({
       selected: selected,
       selectedCount: selected.length,
+      allChecked: rows.length > 0 && rows.every(function (row) {
+        return row.checked;
+      }),
       rows: rows
     });
   },
@@ -191,7 +268,7 @@ Page({
           return;
         }
         store.deleteWishes(that.data.game, that.data.selected);
-        that.setData({ selected: [], selectedCount: 0, page: 1 });
+        that.setData({ selected: [], selectedCount: 0, allChecked: false, page: 1 });
         that.load();
         wx.showToast({ title: '已删除 ' + count + ' 条', icon: 'none' });
       }
@@ -219,7 +296,7 @@ Page({
         var selected = that.data.selected.filter(function (item) {
           return item !== id;
         });
-        that.setData({ selected: selected, selectedCount: selected.length });
+        that.setData({ selected: selected, selectedCount: selected.length, allChecked: false });
         that.load();
         wx.showToast({ title: '已删除', icon: 'success' });
       }
@@ -486,7 +563,7 @@ Page({
 
   applyImport: function (records, mode) {
     var result = store.importRecords(this.data.game, records, mode);
-    this.setData({ page: 1, selected: [], selectedCount: 0 });
+    this.setData({ page: 1, selected: [], selectedCount: 0, allChecked: false });
     this.load();
     wx.showToast({
       title: '导入 ' + result.imported + ' 条'

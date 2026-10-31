@@ -38,7 +38,7 @@
     <view class="expect-modes">
       <view class="expect-mode {{expect.historyOn ? '' : 'is-on'}}" bindtap="onExpectMode" data-mode="theory">理论模型</view>
       <view class="expect-mode {{expect.historyOn ? 'is-on' : ''}} {{expect.historyReady ? '' : 'is-disabled'}}"
-            bindtap="onExpectMode" data-mode="history">往期数据</view>
+            bindtap="onExpectMode" data-mode="history">往期区间</view>
     </view>
 
     <view class="expect-targets">
@@ -67,8 +67,8 @@
     </view>
 
     <view class="expect-readout">
-      <view class="expect-kicker">目标 {{expect.targetName}} · 期望抽数</view>
-      <view class="expect-number">{{expect.totalText}}<text class="expect-unit">抽</text></view>
+      <view class="expect-kicker">目标 {{expect.targetName}} · {{expect.historyOn ? '往期区间' : '理论期望'}}</view>
+      <view class="expect-number {{expect.isRange ? 'is-range' : ''}}">{{expect.totalText}}<text class="expect-unit">抽</text></view>
       <view class="expect-compare">{{expect.compareText}}</view>
       <view class="expect-bar">
         <view class="expect-bar-fill {{expect.enough ? 'done' : ''}}" style="width:{{expect.percent}}%"></view>
@@ -89,7 +89,7 @@
     </view>
 
     <view class="expect-note">{{expect.sourceNote}}</view>
-    <view class="expect-note">{{expect.pityNote}}期望值为平均情况，约一半概率在期望抽数内达成。</view>
+    <view class="expect-note">{{expect.pityNote}}{{expect.rangeNote}}</view>
   </view>
 
   <view class="panel">
@@ -149,15 +149,15 @@
       <view class="pull-toggle {{chartReal ? 'active' : ''}}" bindtap="onToggleReal">{{chartReal ? '显示原始抽数' : '显示真实抽数'}}</view>
     </view>
     <view class="pull-summary">{{chart.summary}}</view>
-    <scroll-view class="pull-scroll" scroll-x wx:if="{{chart.points.length}}">
-      <view class="pull-chart">
-        <view class="pull-col {{item.up ? '' : 'lost'}}" wx:for="{{chart.points}}" wx:key="index">
-          <text class="pull-val">{{item.value}}</text>
-          <view class="pull-bar" style="height:{{item.height}}rpx"></view>
-          <text class="pull-name">{{item.name}}</text>
+    <view class="pull-chart" wx:if="{{chart.points.length}}">
+      <view class="pull-row {{item.up ? '' : 'lost'}}" wx:for="{{chart.points}}" wx:key="index">
+        <text class="pull-name">{{item.name}}</text>
+        <view class="pull-track">
+          <view class="pull-bar" style="width:{{item.percent}}%"></view>
         </view>
+        <text class="pull-val">{{item.value}}</text>
       </view>
-    </scroll-view>
+    </view>
     <view wx:else class="empty">还没有五星记录</view>
   </view>
 
@@ -166,7 +166,7 @@
     <view class="pool-stat" wx:for="{{pools}}" wx:key="pool">
       <view class="pool-stat-head">
         <text class="pool-tag">{{item.pool}}</text>
-        <text class="pool-pity">当前 {{item.currentPity}} / {{item.cap}} 抽</text>
+        <text class="pool-pity">已垫 {{item.currentPity}} / {{item.cap}} 抽{{item.pityManual ? ' · 手动' : ''}}</text>
       </view>
       <view class="pity-bar">
         <view class="pity-bar-fill" style="width:{{item.percent}}%"></view>
@@ -247,7 +247,9 @@
     <view class="toolbar">
       <view class="btn btn-primary" bindtap="exportAllBackup">导出全部数据</view>
       <view class="btn btn-outline" bindtap="importAllBackup">导入全部数据</view>
+      <view class="btn btn-text" bindtap="openLinkImport">链接导入</view>
     </view>
+    <view class="foot-tip">链接导入需要开通云开发：粘贴全量备份 JSON 的公网链接（或云存储文件 ID），由云函数下载后导入。</view>
     <view class="foot-tip">离线版数据只存在本机缓存；卸载、清理缓存或换机会丢失，建议定期导出备份。</view>
   </view>
 </view>
@@ -301,6 +303,26 @@
     <view class="modal-foot">
       <view class="btn btn-text" bindtap="closeResourceText">取消</view>
       <view class="btn btn-primary" bindtap="applyResourceText">导入</view>
+    </view>
+  </view>
+</view>
+
+<!-- 链接导入：云函数下载公网 JSON 备份 -->
+<view wx:if="{{linkImportVisible}}" class="mask" bindtap="closeLinkImport">
+  <view class="modal" catchtap="noop">
+    <view class="modal-head">
+      <text class="modal-title">链接导入 · 全量备份</text>
+      <view class="modal-close" bindtap="closeLinkImport">×</view>
+    </view>
+    <view class="modal-body" style="height:auto; padding-bottom:16rpx;">
+      <view class="text-tip">粘贴全量备份 JSON 的公网直链，或云存储文件 ID：</view>
+      <input class="link-input" value="{{linkUrl}}" bindinput="onLinkInput"
+             placeholder="https://example.com/southair-all-backup.json"/>
+      <view class="foot-tip">支持 https / http 链接与 cloud:// 文件 ID；由云函数 fetchLink 下载，需先开通云开发并部署该云函数。</view>
+    </view>
+    <view class="modal-foot">
+      <view class="btn btn-text" bindtap="closeLinkImport">取消</view>
+      <view class="btn btn-primary" bindtap="applyLinkImport">下载并导入</view>
     </view>
   </view>
 </view>

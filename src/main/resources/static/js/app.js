@@ -455,7 +455,8 @@
                 return '<div class="pool-stat">'
                     + '<div class="pool-stat-head">'
                     + '<span class="pool-tag">' + esc(item.pool) + '</span>'
-                    + '<span class="pool-stat-pity">当前 ' + item.currentPity + ' / ' + item.cap + ' 抽</span>'
+                    + '<span class="pool-stat-pity">已垫 ' + item.currentPity + ' / ' + item.cap + ' 抽'
+                    + (item.pityManual ? ' · 手动' : '') + '</span>'
                     + '</div>'
                     + '<div class="pity-bar"><span style="width:' + percent + '%"></span></div>'
                     + '<div class="pool-stat-meta">'
@@ -490,7 +491,7 @@
         return {
             c: Math.max(0, Math.min(6, Number(raw.c) || 0)),
             r: Math.max(0, Math.min(5, Number(raw.r) || 0)),
-            mode: raw.mode === 'history' ? 'history' : 'theory'
+            mode: raw.mode === 'theory' ? 'theory' : 'history'
         };
     }
 
@@ -513,8 +514,49 @@
     }
 
     /**
+     * 把五星记录按卡池累计成「UP 周期」样本：从上次 UP 到这次 UP 一共花了多少抽
+     * （含中间歪掉的五星），与后端口径一致。
+     */
+    function upCycleSamples(records, pools) {
+        var cycles = [];
+        var acc = 0;
+        (records || []).forEach(function (record) {
+            if (Number(record.rarity) !== 5 || pools.indexOf(record.pool) < 0) {
+                return;
+            }
+            acc += Number(record.pityCount) || 0;
+            if (record.isUp === true) {
+                if (acc > 0) {
+                    cycles.push(acc);
+                }
+                acc = 0;
+            }
+        });
+        return cycles;
+    }
+
+    /** 线性插值分位数，用于从往期样本得到区间。 */
+    function percentile(values, p) {
+        if (!values.length) {
+            return 0;
+        }
+        var sorted = values.slice().sort(function (a, b) {
+            return a - b;
+        });
+        if (sorted.length === 1) {
+            return sorted[0];
+        }
+        var index = (sorted.length - 1) * p;
+        var low = Math.floor(index);
+        var high = Math.ceil(index);
+        var weight = index - low;
+        return sorted[low] * (1 - weight) + sorted[high] * weight;
+    }
+
+    /**
      * 目标（角色 c 命 + 武器 r 精炼）的抽数期望。
-     * theory：按平均五星抽数与 UP 概率推算；history：用账号历史 UP 周期平均抽数。
+     * theory：按平均五星抽数与 UP 概率推算单点期望；
+     * history：用往期 UP 周期样本的 25%–75% 分位得到区间。
      * 首个 UP 会先抵扣当前保底进度；已有大保底时首个 UP 只需一个五星。
      */
     function expectationPlan(data, prefs) {
@@ -535,29 +577,59 @@
 
         var charSamples = Number(data.characterUpSamples) || 0;
         var weaponSamples = Number(data.weaponUpSamples) || 0;
-        var historyReady = charSamples >= 2 && data.characterUpAvgPity > 0;
+        var charCycles = upCycleSamples(data.fiveStarRecords, [g.charPool]);
+        var weaponCycles = upCycleSamples(data.fiveStarRecords, [g.weaponPool]);
+        var historyReady = charCycles.length >= 2 && data.characterUpAvgPity > 0;
         var useHistory = prefs.mode === 'history' && historyReady;
-        var weaponHistory = useHistory && weaponSamples >= 2 && data.weaponUpAvgPity > 0;
+        var weaponHistory = useHistory && weaponCycles.length >= 2 && data.weaponUpAvgPity > 0;
 
-        var charUnit = useHistory ? data.characterUpAvgPity : charUnitTheory;
-        var weaponUnit = weaponHistory ? data.weaponUpAvgPity : weaponUnitTheory;
+        var charUnitLow;
+        var charUnitHigh;
+        if (useHistory) {
+            charUnitLow = percentile(charCycles, 0.25);
+            charUnitHigh = percentile(charCycles, 0.75);
+        } else {
+            charUnitLow = charUnitTheory;
+            charUnitHigh = charUnitTheory;
+        }
 
-        var charFirst = Math.max(1, (charGuaranteed ? EXPECT_MODEL.fiveStarAvg : charUnit) - charPity);
-        var charCost = charFirst + prefs.c * charUnit;
+        var weaponUnitLow;
+        var weaponUnitHigh;
+        if (weaponHistory) {
+            weaponUnitLow = percentile(weaponCycles, 0.25);
+            weaponUnitHigh = percentile(weaponCycles, 0.75);
+        } else {
+            weaponUnitLow = weaponUnitTheory;
+            weaponUnitHigh = weaponUnitTheory;
+        }
 
-        var weaponCost = 0;
+        var charFirstLow = Math.max(1, (charGuaranteed ? EXPECT_MODEL.fiveStarAvg : charUnitLow) - charPity);
+        var charFirstHigh = Math.max(1, (charGuaranteed ? EXPECT_MODEL.fiveStarAvg : charUnitHigh) - charPity);
+        var charCostLow = charFirstLow + prefs.c * charUnitLow;
+        var charCostHigh = charFirstHigh + prefs.c * charUnitHigh;
+
+        var weaponCostLow = 0;
+        var weaponCostHigh = 0;
         if (prefs.r > 0) {
-            var weaponFirst = Math.max(1, (weaponGuaranteed ? EXPECT_MODEL.weaponFiveStarAvg : weaponUnit)
+            var weaponFirstLow = Math.max(1, (weaponGuaranteed ? EXPECT_MODEL.weaponFiveStarAvg : weaponUnitLow)
                 - weaponPity);
-            weaponCost = weaponFirst + (prefs.r - 1) * weaponUnit;
+            var weaponFirstHigh = Math.max(1, (weaponGuaranteed ? EXPECT_MODEL.weaponFiveStarAvg : weaponUnitHigh)
+                - weaponPity);
+            weaponCostLow = weaponFirstLow + (prefs.r - 1) * weaponUnitLow;
+            weaponCostHigh = weaponFirstHigh + (prefs.r - 1) * weaponUnitHigh;
         }
 
         return {
-            total: charCost + weaponCost,
-            charCost: charCost,
-            weaponCost: weaponCost,
-            charUnit: charUnit,
-            weaponUnit: weaponUnit,
+            totalLow: Math.max(1, Math.round(charCostLow + weaponCostLow)),
+            totalHigh: Math.max(1, Math.round(charCostHigh + weaponCostHigh)),
+            charCostLow: charCostLow,
+            charCostHigh: charCostHigh,
+            weaponCostLow: weaponCostLow,
+            weaponCostHigh: weaponCostHigh,
+            charUnitLow: charUnitLow,
+            charUnitHigh: charUnitHigh,
+            weaponUnitLow: weaponUnitLow,
+            weaponUnitHigh: weaponUnitHigh,
             charPity: charPity,
             weaponPity: weaponPity,
             charGuaranteed: charGuaranteed,
@@ -582,31 +654,53 @@
             + '</div>';
     }
 
+    /** 把上下限渲染成「A–B」或单个数（上下限相同时）。 */
+    function rangeText(low, high) {
+        var lo = Math.max(0, Math.round(low));
+        var hi = Math.max(lo, Math.round(high));
+        return hi > lo ? fmt(lo) + '–' + fmt(hi) : fmt(lo);
+    }
+
     function expectationPanelHtml(data) {
         var g = gameConfig();
         var prefs = expectPrefs();
         var plan = expectationPlan(data, prefs);
         var historyOn = plan.useHistory;
         var targetName = 'C' + prefs.c + (prefs.r > 0 ? ' + R' + prefs.r : '');
-        var total = Math.max(1, Math.round(plan.total));
+        var totalLow = plan.totalLow;
+        var totalHigh = plan.totalHigh;
+        var isRange = totalHigh > totalLow;
         var available = plan.available;
-        var gap = total - available;
-        var enough = gap <= 0;
-        var percent = Math.min(100, Math.round(available / total * 100));
+        var enough = available >= totalHigh;
+        var percent = Math.min(100, Math.round(available / totalHigh * 100));
 
-        var compareText = enough
-            ? '当前可抽 <strong>' + fmt(available) + '</strong> 抽 · 已足够，余 <strong>'
-                + fmt(-gap) + '</strong> 抽'
-            : '当前可抽 <strong>' + fmt(available) + '</strong> 抽 · 还差 <strong>' + fmt(gap)
-                + '</strong> 抽（约 ' + fmt(gap * plan.currencyPerPull) + ' ' + esc(g.currency) + '）';
+        var compareText;
+        if (enough) {
+            compareText = '当前可抽 <strong>' + fmt(available) + '</strong> 抽 · 已足够（按区间上限），余 <strong>'
+                + fmt(available - totalHigh) + '</strong> 抽';
+        } else if (available >= totalLow) {
+            compareText = '当前可抽 <strong>' + fmt(available) + '</strong> 抽 · 已达到区间下限，按上限还差 <strong>'
+                + fmt(totalHigh - available) + '</strong> 抽（约 '
+                + fmt((totalHigh - available) * plan.currencyPerPull) + ' ' + esc(g.currency) + '）';
+        } else {
+            var gapLow = totalLow - available;
+            var gapHigh = totalHigh - available;
+            compareText = '当前可抽 <strong>' + fmt(available) + '</strong> 抽 · 还差 <strong>'
+                + (isRange ? fmt(gapLow) + '–' + fmt(gapHigh) : fmt(gapLow)) + '</strong> 抽（约 '
+                + (isRange
+                    ? fmt(gapLow * plan.currencyPerPull) + '–' + fmt(gapHigh * plan.currencyPerPull)
+                    : fmt(gapLow * plan.currencyPerPull))
+                + ' ' + esc(g.currency) + '）';
+        }
 
         var sourceNote;
         if (historyOn) {
-            sourceNote = '往期数据：角色 UP 平均 ' + num(data.characterUpAvgPity) + ' 抽（'
-                + plan.charSamples + ' 次样本）';
+            sourceNote = '往期区间：角色 UP 共 ' + plan.charSamples + ' 次，单次 UP '
+                + rangeText(plan.charUnitLow, plan.charUnitHigh) + ' 抽（25%–75% 分位）';
             if (prefs.r > 0) {
                 sourceNote += plan.weaponHistory
-                    ? ' · 武器 UP 平均 ' + num(data.weaponUpAvgPity) + ' 抽（' + plan.weaponSamples + ' 次样本）'
+                    ? ' · 武器 UP 共 ' + plan.weaponSamples + ' 次，单次 '
+                        + rangeText(plan.weaponUnitLow, plan.weaponUnitHigh) + ' 抽'
                     : ' · 武器样本不足 2 次，改用理论值';
             }
         } else {
@@ -630,7 +724,7 @@
             + '<button class="expect-mode' + (historyOn ? ' is-on' : '')
             + '" type="button" data-mode="history"'
             + (plan.historyReady ? '' : ' disabled title="往期 UP 样本不足 2 次"')
-            + '>往期数据</button>'
+            + '>往期区间</button>'
             + '</div>'
             + '</div>'
 
@@ -650,8 +744,10 @@
             + '</div>'
 
             + '<div class="expect-readout">'
-            + '<span class="expect-kicker">目标 ' + esc(targetName) + ' · 期望抽数</span>'
-            + '<div class="expect-number">' + fmt(total) + '<span class="unit">抽</span></div>'
+            + '<span class="expect-kicker">目标 ' + esc(targetName) + ' · '
+            + (historyOn ? '往期区间' : '理论期望') + '</span>'
+            + '<div class="expect-number' + (isRange ? ' is-range' : '') + '">'
+            + rangeText(totalLow, totalHigh) + '<span class="unit">抽</span></div>'
             + '<p class="expect-compare">' + compareText + '</p>'
             + '<div class="expect-bar' + (enough ? ' done' : '') + '">'
             + '<span style="width:' + percent + '%"></span></div>'
@@ -660,18 +756,22 @@
             + '<div class="expect-split">'
             + '<div class="expect-part">'
             + '<span class="expect-part-label">角色 C' + prefs.c + '</span>'
-            + '<strong>' + fmt(Math.round(plan.charCost)) + ' 抽</strong>'
+            + '<strong>' + rangeText(plan.charCostLow, plan.charCostHigh) + ' 抽</strong>'
             + '<em>' + (prefs.c + 1) + ' 个 UP</em>'
             + '</div>'
             + '<div class="expect-part">'
             + '<span class="expect-part-label">' + (prefs.r > 0 ? '武器 R' + prefs.r : '武器') + '</span>'
-            + '<strong>' + (prefs.r > 0 ? fmt(Math.round(plan.weaponCost)) + ' 抽' : '—') + '</strong>'
+            + '<strong>' + (prefs.r > 0 ? rangeText(plan.weaponCostLow, plan.weaponCostHigh) + ' 抽' : '—') + '</strong>'
             + '<em>' + (prefs.r > 0 ? prefs.r + ' 把 UP' : '未选择') + '</em>'
             + '</div>'
             + '</div>'
 
             + '<p class="expect-note">' + esc(sourceNote) + '</p>'
-            + '<p class="expect-note">' + esc(pityNote) + '期望值为平均情况，约一半概率在期望抽数内达成。</p>'
+            + '<p class="expect-note">' + esc(pityNote)
+            + (historyOn
+                ? '区间取往期 UP 周期的 25%–75% 分位，约一半情况落在此范围。'
+                : '理论值为单点估算，约一半概率在期望抽数内达成。')
+            + '</p>'
             + '</section>';
     }
 
@@ -735,6 +835,7 @@
         el.innerHTML = '<div class="loading">加载中…</div>';
 
         return api('/api/stats/overview').then(function (data) {
+            applyPityOverrides(data);
             var resource = data.resource;
             var total = resource.totalPulls || 0;
             var currencyPulls = resource.pullsFromPrimogems || 0;
@@ -897,13 +998,14 @@
             max = Math.max(max, point.value);
         });
         return '<div class="pull-chart">' + points.map(function (point) {
-            var height = Math.max(8, Math.round(point.value / max * 168));
-            return '<div class="pull-col' + (point.up ? '' : ' lost') + '" title="' + esc(point.pool) + ' · '
+            var width = Math.max(4, Math.round(point.value / max * 100));
+            return '<div class="pull-row' + (point.up ? '' : ' lost') + '" title="' + esc(point.pool) + ' · '
                 + (point.up ? 'UP' : '歪') + ' · 用了 ' + point.value + ' 抽">'
+                + '<div class="pull-label">'
                 + avatarHtml({ itemName: point.name, itemType: point.type })
+                + '<span class="pull-name">' + esc(point.name) + '</span></div>'
+                + '<div class="pull-track"><span class="pull-bar" style="width:' + width + '%"></span></div>'
                 + '<span class="pull-val">' + point.value + '</span>'
-                + '<div class="pull-bar" style="height:' + height + 'px"></div>'
-                + '<span class="pull-name">' + esc(point.name) + '</span>'
                 + '</div>';
         }).join('') + '</div>';
     }
@@ -966,6 +1068,7 @@
         el.innerHTML = '<div class="loading">加载中…</div>';
 
         return api('/api/stats/overview').then(function (data) {
+            applyPityOverrides(data);
             var resource = data.resource;
             var name = (state.user && (state.user.nickname || state.user.username)) || '旅行者';
             cache.stats = data;
@@ -1056,6 +1159,7 @@
             + '<select id="wish-pool" class="input">' + poolOptions + '</select>'
             + '<div class="toolbar-actions">'
             + '<button class="btn btn-text btn-sm" id="wish-batch-edit" type="button">批量编辑本页</button>'
+            + '<button class="btn btn-text btn-sm" id="wish-select-all" type="button">全选本页</button>'
             + '<button class="btn btn-outline btn-sm" id="wish-ocr" type="button">截图导入</button>'
             + '<button class="btn btn-text btn-sm btn-danger" id="wish-batch-del" type="button" disabled>批量删除</button>'
             + '<button class="btn btn-outline btn-sm" id="wish-export-csv" type="button">导出 CSV</button>'
@@ -1066,6 +1170,7 @@
             + '<input id="wish-file" type="file" accept=".csv,.json,text/csv,application/json" hidden/>'
             + '</div>'
             + '</div>'
+            + '<div id="wish-pity" class="wish-pity"></div>'
             + '<div id="wish-list"><div class="loading">加载中…</div></div>'
             + '<div id="wish-pager" class="pager"></div>';
 
@@ -1079,6 +1184,30 @@
             guard(function () {
                 return openOcrDialog('wishes');
             });
+        });
+
+        $('#wish-select-all').addEventListener('click', function () {
+            var ids = cache.wishes.map(function (item) {
+                return Number(item.id);
+            });
+            var allSelected = ids.length > 0 && ids.every(function (id) {
+                return state.wishSelected.has(id);
+            });
+            ids.forEach(function (id) {
+                if (allSelected) {
+                    state.wishSelected.delete(id);
+                } else {
+                    state.wishSelected.add(id);
+                }
+            });
+            $$('.record-check', $('#wish-list')).forEach(function (cb) {
+                var row = cb.closest('.record-row');
+                if (row) {
+                    cb.checked = state.wishSelected.has(Number(row.dataset.id));
+                }
+            });
+            updateBatchDelBtn();
+            updateSelectAllBtn();
         });
 
         $('#wish-batch-del').addEventListener('click', function () {
@@ -1118,11 +1247,150 @@
         btn.textContent = n > 0 ? '批量删除（' + n + '）' : '批量删除';
     }
 
+    function updateSelectAllBtn() {
+        var btn = $('#wish-select-all');
+        if (!btn) {
+            return;
+        }
+        var ids = cache.wishes.map(function (item) {
+            return Number(item.id);
+        });
+        var allSelected = ids.length > 0 && ids.every(function (id) {
+            return state.wishSelected.has(id);
+        });
+        btn.disabled = ids.length === 0;
+        btn.textContent = allSelected ? '取消全选' : '全选本页';
+    }
+
+    function pityStorageKey() {
+        var uid = (state.user && (state.user.id || state.user.username)) || 'guest';
+        return 'sg_pity_' + uid + '_' + state.game;
+    }
+
+    function loadPityOverrides() {
+        var parsed = safeParse(localStorage.getItem(pityStorageKey()));
+        return parsed && typeof parsed === 'object' ? parsed : {};
+    }
+
+    function savePityOverrides(map) {
+        localStorage.setItem(pityStorageKey(), JSON.stringify(map));
+    }
+
+    function setPityOverride(pool, value) {
+        var map = loadPityOverrides();
+        if (!value) {
+            delete map[pool];
+        } else {
+            map[pool] = { value: Number(value), at: Date.now() };
+        }
+        savePityOverrides(map);
+    }
+
+    function parseWishTime(value) {
+        if (!value) {
+            return 0;
+        }
+        var ms = Date.parse(String(value).trim().replace(' ', 'T'));
+        return isNaN(ms) ? 0 : ms;
+    }
+
+    /* 手动已垫优先，但一旦导入 / 录入更晚的五星，自动失效并回到记录推导值 */
+    function applyPityOverrides(data) {
+        if (!data || !data.poolStats) {
+            return data;
+        }
+        var latestFive = {};
+        (data.fiveStarRecords || []).forEach(function (record) {
+            if (Number(record.rarity) !== 5) {
+                return;
+            }
+            var time = parseWishTime(record.wishTime);
+            if (!latestFive[record.pool] || time > latestFive[record.pool]) {
+                latestFive[record.pool] = time;
+            }
+        });
+        var map = loadPityOverrides();
+        var dirty = false;
+        data.poolStats.forEach(function (item) {
+            var override = map[item.pool];
+            if (!override) {
+                return;
+            }
+            if ((latestFive[item.pool] || 0) > (Number(override.at) || 0)) {
+                delete map[item.pool];
+                dirty = true;
+                return;
+            }
+            var cap = Number(item.cap) || 90;
+            var pity = Math.max(0, Math.min(cap - 1, Number(override.value) || 0));
+            item.currentPity = pity;
+            item.pullsToPity = Math.max(cap - pity, 0);
+            item.pityManual = true;
+        });
+        if (dirty) {
+            savePityOverrides(map);
+        }
+        return data;
+    }
+
+    function renderWishPity() {
+        var host = $('#wish-pity');
+        if (!host) {
+            return;
+        }
+        host.innerHTML = '';
+        api('/api/stats/overview').then(function (data) {
+            applyPityOverrides(data);
+            var g = gameConfig();
+            var stats = (data && data.poolStats) || [];
+            host.innerHTML = stats.map(function (item) {
+                var cap = Number(item.cap) || (item.pool === g.weaponPool ? 80 : 90);
+                var pity = Math.max(0, Number(item.currentPity) || 0);
+                var left = Math.max(0, cap - pity);
+                return '<button type="button" class="wish-pity-chip'
+                    + (item.upGuaranteed ? ' guaranteed' : '')
+                    + '" data-pool="' + esc(item.pool) + '" data-cap="' + cap + '" data-pity="' + pity
+                    + '" title="点击手动修正已垫">'
+                    + esc(item.pool) + ' 已垫 <strong>' + pity + '</strong> / ' + cap + ' 抽'
+                    + ' · 距保底 ' + left + ' 抽'
+                    + (item.upGuaranteed ? ' · 大保底' : '')
+                    + (item.pityManual ? '<span class="wish-pity-manual">手动</span>' : '')
+                    + '</button>';
+            }).join('');
+
+            host.onclick = function (event) {
+                var chip = event.target.closest ? event.target.closest('.wish-pity-chip') : null;
+                if (!chip) {
+                    return;
+                }
+                var cap = Number(chip.dataset.cap) || 90;
+                var pool = chip.dataset.pool;
+                var input = window.prompt('输入「' + pool + '」当前已垫抽数（0–' + (cap - 1) + '，0 表示清除手动值）',
+                    chip.dataset.pity);
+                if (input === null) {
+                    return;
+                }
+                var value = Math.floor(Number(input));
+                if (!isFinite(value) || value < 0 || value > cap - 1) {
+                    toast('已垫需在 0–' + (cap - 1) + ' 之间', 'error');
+                    return;
+                }
+                setPityOverride(pool, value);
+                renderWishPity();
+                toast(value > 0 ? '已更新「' + pool + '」已垫为 ' + value + ' 抽' : '已清除「' + pool + '」手动已垫');
+            };
+        }).catch(function () {
+            host.innerHTML = '';
+        });
+    }
+
     function refreshWishList() {
         var box = $('#wish-list');
         var pager = $('#wish-pager');
         state.wishSelected.clear();
         updateBatchDelBtn();
+        updateSelectAllBtn();
+        renderWishPity();
         var params = new URLSearchParams();
         params.set('page', state.pages.wishes);
         params.set('size', '10');
@@ -1160,6 +1428,7 @@
                     state.wishSelected.delete(cbId);
                 }
                 updateBatchDelBtn();
+                updateSelectAllBtn();
             };
             box.onclick = function (event) {
                 var btn = event.target.closest('[data-act]');
@@ -1183,6 +1452,7 @@
                     });
                 }
             };
+            updateSelectAllBtn();
         }).catch(function (err) {
             box.innerHTML = errorHtml(err);
         });

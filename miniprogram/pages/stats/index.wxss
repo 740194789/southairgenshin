@@ -196,46 +196,55 @@
 
 .pull-chart {
   display: flex;
-  align-items: flex-end;
+  flex-direction: column;
   padding: 0 4rpx;
 }
 
-.pull-col {
-  display: inline-flex;
-  flex-direction: column;
+.pull-row {
+  display: flex;
   align-items: center;
-  justify-content: flex-end;
-  width: 64rpx;
-  flex-shrink: 0;
+  margin-bottom: 12rpx;
 }
 
-.pull-val {
-  height: 26rpx;
-  line-height: 26rpx;
-  font-size: 18rpx;
-  color: #f2e2bd;
-}
-
-.pull-bar {
-  width: 28rpx;
-  border-radius: 8rpx 8rpx 2rpx 2rpx;
-  background: linear-gradient(180deg, #f2e2bd, #9f8b5f);
-}
-
-.pull-col.lost .pull-bar {
-  background: linear-gradient(180deg, #6b7185, #444a5e);
+.pull-row:last-child {
+  margin-bottom: 0;
 }
 
 .pull-name {
-  width: 60rpx;
-  height: 84rpx;
+  width: 150rpx;
+  flex-shrink: 0;
   overflow: hidden;
-  margin-top: 8rpx;
-  font-size: 18rpx;
-  line-height: 1.2;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 20rpx;
   color: #8b90a6;
-  text-align: center;
-  word-break: break-all;
+}
+
+.pull-track {
+  flex: 1;
+  height: 18rpx;
+  margin: 0 14rpx;
+  border-radius: 999rpx;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+.pull-bar {
+  height: 100%;
+  border-radius: 999rpx;
+  background: linear-gradient(90deg, #9f8b5f, #f2e2bd);
+}
+
+.pull-row.lost .pull-bar {
+  background: linear-gradient(90deg, #444a5e, #6b7185);
+}
+
+.pull-val {
+  width: 56rpx;
+  flex-shrink: 0;
+  text-align: right;
+  font-size: 20rpx;
+  color: #f2e2bd;
 }
 
 /* ---------- 抽卡期望 ---------- */
@@ -346,6 +355,12 @@
   font-weight: 700;
   line-height: 1.1;
   color: #d3bc8e;
+}
+
+.expect-number.is-range {
+  font-size: 44rpx;
+  letter-spacing: -0.5rpx;
+  white-space: nowrap;
 }
 
 .expect-number .expect-unit {

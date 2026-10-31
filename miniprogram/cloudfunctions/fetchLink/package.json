@@ -1,0 +1,7 @@
+{
+  "name": "fetchLink",
+  "version": "1.0.0",
+  "description": "代小程序下载公网 JSON / 文本，供链接导入使用",
+  "main": "index.js",
+  "private": true
+}

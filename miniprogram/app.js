@@ -6,6 +6,13 @@ App({
   },
 
   onLaunch: function () {
+    if (wx.cloud) {
+      try {
+        wx.cloud.init({ traceUser: true });
+      } catch (e) {
+        /* 未开通云开发时忽略，链接导入会给出提示 */
+      }
+    }
     var saved = wx.getStorageSync('sg_game');
     if (saved && gameLib.GAMES[saved]) {
       this.globalData.game = saved;

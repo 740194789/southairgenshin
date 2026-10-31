@@ -6,6 +6,7 @@ var PER_PULL = 160;
 var WISH_KEY = 'sg_wishes_';
 var RES_KEY = 'sg_resource_';
 var SEQ_KEY = 'sg_seq_';
+var PITY_KEY = 'sg_pity_';
 
 /* ---------------- 基础工具 ---------------- */
 
@@ -359,9 +360,50 @@ function luckStats(asc) {
   };
 }
 
+/* ---------------- 手动已垫 ---------------- */
+
+function loadPityOverrides(game) {
+  try {
+    var map = wx.getStorageSync(PITY_KEY + game);
+    return map && typeof map === 'object' ? map : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function savePityOverrides(game, map) {
+  try {
+    wx.setStorageSync(PITY_KEY + game, map);
+  } catch (e) {
+    // 存储失败时保持当前会话可用
+  }
+}
+
+/** 手动设置某卡池已垫抽数；传 0 表示清除 */
+function setPityOverride(game, pool, value) {
+  var map = loadPityOverrides(game);
+  var n = toInt(value);
+  if (n <= 0) {
+    delete map[pool];
+  } else {
+    map[pool] = { value: n, at: Date.now() };
+  }
+  savePityOverrides(game, map);
+}
+
+function timeValue(text) {
+  if (!text) {
+    return 0;
+  }
+  var ms = Date.parse(String(text).trim().replace(' ', 'T'));
+  return isFinite(ms) ? ms : 0;
+}
+
 function overview(game) {
   var defs = POOL_DEFS[game] || POOL_DEFS.genshin;
   var asc = getWishes(game).slice().sort(ascCompare);
+  var pityOverrides = loadPityOverrides(game);
+  var pityDirty = false;
   var resource = resourceVO(getResource(game));
   var wishCount = asc.length;
   var fiveStarWishes = 0;
@@ -404,6 +446,18 @@ function overview(game) {
       currentPity = latest.rarity === 5 ? 0 : (latest.pityCount || 0);
     }
 
+    var pityManual = false;
+    var override = pityOverrides[pool];
+    if (override) {
+      if (latestFive && timeValue(latestFive.wishTime) > (Number(override.at) || 0)) {
+        delete pityOverrides[pool];
+        pityDirty = true;
+      } else {
+        currentPity = clamp(override.value, 0, cap - 1, currentPity);
+        pityManual = true;
+      }
+    }
+
     return {
       pool: pool,
       cap: cap,
@@ -413,9 +467,14 @@ function overview(game) {
       fiveStarCount: five,
       avgFiveStarPity: five === 0 ? 0 : round1(poolPitySum / five),
       upGuaranteed: pool !== '常驻' && latestFive !== null && latestFive.isUp !== true,
-      percent: cap > 0 ? Math.min(100, Math.round(currentPity / cap * 100)) : 0
+      percent: cap > 0 ? Math.min(100, Math.round(currentPity / cap * 100)) : 0,
+      pityManual: pityManual
     };
   });
+
+  if (pityDirty) {
+    savePityOverrides(game, pityOverrides);
+  }
 
   var distribution = [];
   defs.forEach(function (def) {
@@ -686,6 +745,7 @@ module.exports = {
   importResource: importResource,
   resourceVO: resourceVO,
   overview: overview,
+  setPityOverride: setPityOverride,
   importRecords: importRecords,
   exportBackup: exportBackup,
   importBackup: importBackup,

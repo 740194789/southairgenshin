@@ -57,7 +57,7 @@ function buildChart(list, real) {
     max = Math.max(max, point.value);
   });
   points.forEach(function (point) {
-    point.height = Math.max(10, Math.round(point.value / max * 250));
+    point.percent = Math.max(4, Math.round(point.value / max * 100));
     total += point.value;
   });
 
@@ -92,6 +92,53 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
+/**
+ * 把五星记录按卡池累计成「UP 周期」样本：从上次 UP 到这次 UP 一共花了多少抽
+ * （含中间歪掉的五星），与网页端、后端口径一致。
+ */
+function upCycleSamples(records, pools) {
+  var cycles = [];
+  var acc = 0;
+  (records || []).forEach(function (record) {
+    if (pools.indexOf(record.pool) < 0) {
+      return;
+    }
+    acc += Number(record.pityCount) || 0;
+    if (record.isUp === true) {
+      if (acc > 0) {
+        cycles.push(acc);
+      }
+      acc = 0;
+    }
+  });
+  return cycles;
+}
+
+/** 线性插值分位数，用于从往期样本得到区间。 */
+function percentile(values, p) {
+  if (!values.length) {
+    return 0;
+  }
+  var sorted = values.slice().sort(function (a, b) {
+    return a - b;
+  });
+  if (sorted.length === 1) {
+    return sorted[0];
+  }
+  var index = (sorted.length - 1) * p;
+  var low = Math.floor(index);
+  var high = Math.ceil(index);
+  var weight = index - low;
+  return sorted[low] * (1 - weight) + sorted[high] * weight;
+}
+
+/** 把上下限渲染成「A–B」或单个数（上下限相同时）。 */
+function rangeText(low, high) {
+  var lo = Math.max(0, Math.round(low));
+  var hi = Math.max(lo, Math.round(high));
+  return hi > lo ? store.fmt(lo) + '–' + store.fmt(hi) : store.fmt(lo);
+}
+
 function expectPrefs(game) {
   var raw = null;
   try {
@@ -103,7 +150,7 @@ function expectPrefs(game) {
   return {
     c: clamp(Number(raw.c) || 0, 0, 6),
     r: clamp(Number(raw.r) || 0, 0, 5),
-    mode: raw.mode === 'history' ? 'history' : 'theory'
+    mode: raw.mode === 'theory' ? 'theory' : 'history'
   };
 }
 
@@ -127,7 +174,8 @@ function poolStatOf(list, pool) {
 
 /**
  * 目标（角色 c 命 + 武器 r 精炼）的抽数期望。
- * theory：按平均五星抽数与 UP 概率推算；history：用账号历史 UP 周期平均抽数。
+ * theory：按平均五星抽数与 UP 概率推算单点期望；
+ * history：用往期 UP 周期样本的 25%–75% 分位得到区间。
  * 首个 UP 会先抵扣当前保底进度；已有大保底时首个 UP 只需一个五星。
  */
 function buildExpectation(data, game, prefs) {
@@ -148,44 +196,85 @@ function buildExpectation(data, game, prefs) {
 
   var charSamples = Number(data.characterUpSamples) || 0;
   var weaponSamples = Number(data.weaponUpSamples) || 0;
-  var historyReady = charSamples >= 2 && data.characterUpAvgPity > 0;
+  var charCycles = upCycleSamples(data.fiveStarHistory, [g.charPool]);
+  var weaponCycles = upCycleSamples(data.fiveStarHistory, [g.weaponPool]);
+  var historyReady = charCycles.length >= 2 && data.characterUpAvgPity > 0;
   var useHistory = prefs.mode === 'history' && historyReady;
-  var weaponHistory = useHistory && weaponSamples >= 2 && data.weaponUpAvgPity > 0;
+  var weaponHistory = useHistory && weaponCycles.length >= 2 && data.weaponUpAvgPity > 0;
 
-  var charUnit = useHistory ? data.characterUpAvgPity : charUnitTheory;
-  var weaponUnit = weaponHistory ? data.weaponUpAvgPity : weaponUnitTheory;
-
-  var charFirst = Math.max(1, (charGuaranteed ? EXPECT_MODEL.fiveStarAvg : charUnit) - charPity);
-  var charCost = charFirst + prefs.c * charUnit;
-
-  var weaponCost = 0;
-  if (prefs.r > 0) {
-    var weaponFirst = Math.max(1, (weaponGuaranteed ? EXPECT_MODEL.weaponFiveStarAvg : weaponUnit)
-      - weaponPity);
-    weaponCost = weaponFirst + (prefs.r - 1) * weaponUnit;
+  var charUnitLow;
+  var charUnitHigh;
+  if (useHistory) {
+    charUnitLow = percentile(charCycles, 0.25);
+    charUnitHigh = percentile(charCycles, 0.75);
+  } else {
+    charUnitLow = charUnitTheory;
+    charUnitHigh = charUnitTheory;
   }
 
-  var total = Math.max(1, Math.round(charCost + weaponCost));
+  var weaponUnitLow;
+  var weaponUnitHigh;
+  if (weaponHistory) {
+    weaponUnitLow = percentile(weaponCycles, 0.25);
+    weaponUnitHigh = percentile(weaponCycles, 0.75);
+  } else {
+    weaponUnitLow = weaponUnitTheory;
+    weaponUnitHigh = weaponUnitTheory;
+  }
+
+  var charFirstLow = Math.max(1, (charGuaranteed ? EXPECT_MODEL.fiveStarAvg : charUnitLow) - charPity);
+  var charFirstHigh = Math.max(1, (charGuaranteed ? EXPECT_MODEL.fiveStarAvg : charUnitHigh) - charPity);
+  var charCostLow = charFirstLow + prefs.c * charUnitLow;
+  var charCostHigh = charFirstHigh + prefs.c * charUnitHigh;
+
+  var weaponCostLow = 0;
+  var weaponCostHigh = 0;
+  if (prefs.r > 0) {
+    var weaponFirstLow = Math.max(1, (weaponGuaranteed ? EXPECT_MODEL.weaponFiveStarAvg : weaponUnitLow)
+      - weaponPity);
+    var weaponFirstHigh = Math.max(1, (weaponGuaranteed ? EXPECT_MODEL.weaponFiveStarAvg : weaponUnitHigh)
+      - weaponPity);
+    weaponCostLow = weaponFirstLow + (prefs.r - 1) * weaponUnitLow;
+    weaponCostHigh = weaponFirstHigh + (prefs.r - 1) * weaponUnitHigh;
+  }
+
+  var totalLow = Math.max(1, Math.round(charCostLow + weaponCostLow));
+  var totalHigh = Math.max(1, Math.round(charCostHigh + weaponCostHigh));
+  var isRange = totalHigh > totalLow;
   var available = data.resource.totalPulls || 0;
   var currencyPerPull = data.resource.primogemsPerPull || 160;
-  var gap = total - available;
-  var enough = gap <= 0;
-  var percent = Math.min(100, Math.round(available / total * 100));
+  var enough = available >= totalHigh;
+  var percent = Math.min(100, Math.round(available / totalHigh * 100));
   var weaponWord = isSR ? '光锥' : '武器';
 
-  var compareText = enough
-    ? '当前可抽 ' + store.fmt(available) + ' 抽 · 已足够，余 ' + store.fmt(-gap) + ' 抽'
-    : '当前可抽 ' + store.fmt(available) + ' 抽 · 还差 ' + store.fmt(gap)
-      + ' 抽（约 ' + store.fmt(gap * currencyPerPull) + ' ' + g.currency + '）';
+  var compareText;
+  if (enough) {
+    compareText = '当前可抽 ' + store.fmt(available) + ' 抽 · 已足够（按区间上限），余 '
+      + store.fmt(available - totalHigh) + ' 抽';
+  } else if (available >= totalLow) {
+    compareText = '当前可抽 ' + store.fmt(available) + ' 抽 · 已达到区间下限，按上限还差 '
+      + store.fmt(totalHigh - available) + ' 抽（约 '
+      + store.fmt((totalHigh - available) * currencyPerPull) + ' ' + g.currency + '）';
+  } else {
+    var gapLow = totalLow - available;
+    var gapHigh = totalHigh - available;
+    compareText = '当前可抽 ' + store.fmt(available) + ' 抽 · 还差 '
+      + (isRange ? store.fmt(gapLow) + '–' + store.fmt(gapHigh) : store.fmt(gapLow)) + ' 抽（约 '
+      + (isRange
+        ? store.fmt(gapLow * currencyPerPull) + '–' + store.fmt(gapHigh * currencyPerPull)
+        : store.fmt(gapLow * currencyPerPull))
+      + ' ' + g.currency + '）';
+  }
 
   var sourceNote;
   if (useHistory) {
-    sourceNote = '往期数据：角色 UP 平均 ' + data.characterUpAvgPity + ' 抽（'
-      + charSamples + ' 次样本）';
+    sourceNote = '往期区间：角色 UP 共 ' + charSamples + ' 次，单次 UP '
+      + rangeText(charUnitLow, charUnitHigh) + ' 抽（25%–75% 分位）';
     if (prefs.r > 0) {
       sourceNote += weaponHistory
-        ? ' · 武器 UP 平均 ' + data.weaponUpAvgPity + ' 抽（' + weaponSamples + ' 次样本）'
-        : ' · 武器样本不足 2 次，改用理论值';
+        ? ' · ' + weaponWord + ' UP 共 ' + weaponSamples + ' 次，单次 '
+          + rangeText(weaponUnitLow, weaponUnitHigh) + ' 抽'
+        : ' · ' + weaponWord + '样本不足 2 次，改用理论值';
     }
   } else {
     sourceNote = isSR
@@ -207,20 +296,24 @@ function buildExpectation(data, game, prefs) {
     historyOn: useHistory,
     historyReady: historyReady,
     targetName: 'C' + prefs.c + (prefs.r > 0 ? ' + R' + prefs.r : ''),
-    totalText: store.fmt(total),
+    totalText: rangeText(totalLow, totalHigh),
+    isRange: isRange,
     enough: enough,
     percent: percent,
     compareText: compareText,
     charLabel: '角色 C' + prefs.c,
-    charCostText: store.fmt(Math.round(charCost)) + ' 抽',
+    charCostText: rangeText(charCostLow, charCostHigh) + ' 抽',
     charUpText: (prefs.c + 1) + ' 个 UP',
     charNote: prefs.c === 0 ? '仅本体，不追命座' : '本体 + ' + prefs.c + ' 命',
     weaponLabel: prefs.r > 0 ? weaponWord + ' R' + prefs.r : weaponWord,
-    weaponCostText: prefs.r > 0 ? store.fmt(Math.round(weaponCost)) + ' 抽' : '—',
+    weaponCostText: prefs.r > 0 ? rangeText(weaponCostLow, weaponCostHigh) + ' 抽' : '—',
     weaponUpText: prefs.r > 0 ? prefs.r + ' 把 UP' : '未选择',
     weaponNote: prefs.r === 0 ? '不抽' + weaponWord : '本体 + ' + (prefs.r - 1) + ' 把精炼',
     sourceNote: sourceNote,
-    pityNote: pityNote
+    pityNote: pityNote,
+    rangeNote: useHistory
+      ? '区间取往期 UP 周期的 25%–75% 分位，约一半情况落在此范围。'
+      : '理论值为单点估算，约一半概率在期望抽数内达成。'
   };
 }
 
@@ -245,7 +338,9 @@ Page({
       acquaintedFates: ''
     },
     resourceTextVisible: false,
-    resourceText: ''
+    resourceText: '',
+    linkImportVisible: false,
+    linkUrl: ''
   },
 
   onLoad: function () {
@@ -299,6 +394,7 @@ Page({
         avgFiveStarPity: item.avgFiveStarPity,
         pullsToPity: item.pullsToPity,
         upGuaranteed: item.upGuaranteed,
+        pityManual: item.pityManual === true,
         guaranteeText: guaranteeText(item.pool)
       };
     });
@@ -579,29 +675,35 @@ Page({
         wx.showToast({ title: '这不是全量备份文件', icon: 'none' });
         return;
       }
-      wx.showActionSheet({
-        itemList: ['合并导入（按名称+卡池+时间去重）', '覆盖导入（清空两个游戏的记录）'],
-        success: function (res) {
-          var mode = res.tapIndex === 1 ? 'replace' : 'merge';
-          if (mode === 'replace') {
-            wx.showModal({
-              title: '覆盖导入',
-              content: '覆盖导入会清空两个游戏的全部抽卡记录，确定继续吗？',
-              confirmColor: '#ff6b6b',
-              success: function (confirm) {
-                if (!confirm.confirm) {
-                  return;
-                }
-                that.applyAllImport(payload, mode);
-              }
-            });
-            return;
-          }
-          that.applyAllImport(payload, mode);
-        }
-      });
+      that.confirmAllImport(payload);
     }).catch(function (err) {
       wx.showToast({ title: err && err.message ? err.message : '导入失败', icon: 'none' });
+    });
+  },
+
+  /** 弹出合并 / 覆盖选择并执行，文件导入与链接导入共用。 */
+  confirmAllImport: function (payload) {
+    var that = this;
+    wx.showActionSheet({
+      itemList: ['合并导入（按名称+卡池+时间去重）', '覆盖导入（清空两个游戏的记录）'],
+      success: function (res) {
+        var mode = res.tapIndex === 1 ? 'replace' : 'merge';
+        if (mode === 'replace') {
+          wx.showModal({
+            title: '覆盖导入',
+            content: '覆盖导入会清空两个游戏的全部抽卡记录，确定继续吗？',
+            confirmColor: '#ff6b6b',
+            success: function (confirm) {
+              if (!confirm.confirm) {
+                return;
+              }
+              that.applyAllImport(payload, mode);
+            }
+          });
+          return;
+        }
+        that.applyAllImport(payload, mode);
+      }
     });
   },
 
@@ -613,6 +715,87 @@ Page({
         + (result.skipped ? '，跳过 ' + result.skipped + ' 条' : '')
         + (result.filtered ? '，忽略 ' + result.filtered + ' 条' : ''),
       icon: 'none'
+    });
+  },
+
+  /* ---------------- 链接导入（云开发） ---------------- */
+
+  openLinkImport: function () {
+    this.setData({ linkImportVisible: true });
+  },
+
+  closeLinkImport: function () {
+    this.setData({ linkImportVisible: false });
+  },
+
+  onLinkInput: function (event) {
+    this.setData({ linkUrl: event.detail.value });
+  },
+
+  applyLinkImport: function () {
+    var that = this;
+    var url = String(this.data.linkUrl || '').trim();
+    if (!url) {
+      wx.showToast({ title: '请填写链接', icon: 'none' });
+      return;
+    }
+    if (!/^(https?:\/\/|cloud:\/\/)/.test(url)) {
+      wx.showToast({ title: '只支持 https 链接或 cloud:// 文件 ID', icon: 'none' });
+      return;
+    }
+    if (!wx.cloud) {
+      wx.showToast({ title: '当前微信版本不支持云开发', icon: 'none' });
+      return;
+    }
+
+    function fail(message) {
+      wx.hideLoading();
+      wx.showToast({ title: message || '下载失败', icon: 'none' });
+    }
+
+    function done(text) {
+      wx.hideLoading();
+      var payload;
+      try {
+        payload = JSON.parse(text);
+      } catch (e) {
+        fail('链接内容不是有效的 JSON 备份');
+        return;
+      }
+      if (!payload || typeof payload !== 'object' || !payload.games) {
+        fail('链接不是全量备份 JSON');
+        return;
+      }
+      that.setData({ linkImportVisible: false });
+      that.confirmAllImport(payload);
+    }
+
+    wx.showLoading({ title: '下载中', mask: true });
+    if (url.indexOf('cloud://') === 0) {
+      wx.cloud.downloadFile({ fileID: url }).then(function (res) {
+        var text;
+        try {
+          text = wx.getFileSystemManager().readFileSync(res.tempFilePath, 'utf8');
+        } catch (e) {
+          fail('读取云文件失败');
+          return;
+        }
+        done(text);
+      }).catch(function () {
+        fail('云文件下载失败，请检查文件 ID');
+      });
+      return;
+    }
+
+    wx.cloud.callFunction({ name: 'fetchLink', data: { url: url } }).then(function (res) {
+      var result = res && res.result;
+      if (!result || !result.ok) {
+        fail((result && result.error) || '下载失败');
+        return;
+      }
+      done(result.text);
+    }).catch(function () {
+      fail('云函数调用失败，请先开通云开发并部署 fetchLink');
     });
   }
 });

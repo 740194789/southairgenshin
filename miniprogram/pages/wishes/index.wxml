@@ -23,12 +23,21 @@
 
   <view class="btn-row">
     <view class="btn btn-primary btn-sm" bindtap="openAdd">录入五星</view>
+    <view class="btn btn-text btn-sm {{rows.length ? '' : 'disabled'}}" bindtap="toggleAll">{{allChecked ? '取消全选' : '全选本页'}}</view>
     <view class="btn btn-danger btn-sm {{selectedCount ? '' : 'disabled'}}" bindtap="deleteSelected">批量删除{{selectedCount ? '（' + selectedCount + '）' : ''}}</view>
     <view class="btn btn-outline btn-sm" bindtap="exportCsv">导出 CSV</view>
     <view class="btn btn-outline btn-sm" bindtap="exportJson">导出 JSON</view>
     <view class="btn btn-text btn-sm" bindtap="downloadTemplate">JSON 模板</view>
     <view class="btn btn-text btn-sm" bindtap="openTextImport">文本导入</view>
     <view class="btn btn-outline btn-sm" bindtap="importRecords">文件导入</view>
+  </view>
+
+  <view class="wish-pity" wx:if="{{pityChips.length}}">
+    <view class="wish-pity-chip {{item.guaranteed ? 'guaranteed' : ''}}" wx:for="{{pityChips}}" wx:key="pool"
+      bindtap="editPity" data-pool="{{item.pool}}" data-cap="{{item.cap}}" data-pity="{{item.currentPity}}">
+      <text>{{item.pool}} 已垫 {{item.currentPity}} / {{item.cap}} 抽 · 距保底 {{item.left}} 抽{{item.guaranteed ? ' · 大保底' : ''}}</text>
+      <text class="wish-pity-manual" wx:if="{{item.manual}}">手动</text>
+    </view>
   </view>
 
   <block wx:if="{{rows.length}}">

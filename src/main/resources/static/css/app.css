@@ -1259,6 +1259,12 @@ body.game-starrail {
     filter: drop-shadow(0 8px 24px rgba(211, 188, 142, 0.2));
 }
 
+.expect-number.is-range {
+    font-size: clamp(30px, 3.8vw, 46px);
+    letter-spacing: -0.04em;
+    white-space: nowrap;
+}
+
 .expect-number .unit {
     margin-left: 9px;
     font-size: 0.26em;
@@ -1647,54 +1653,114 @@ body.game-starrail {
 
 .pull-chart {
     display: flex;
-    align-items: flex-end;
-    gap: 10px;
-    min-width: min-content;
+    flex-direction: column;
+    gap: 8px;
     padding: 8px 2px 0;
 }
 
-.pull-col {
-    flex: 0 0 46px;
+.pull-row {
     display: flex;
-    flex-direction: column;
     align-items: center;
-    justify-content: flex-end;
+    gap: 10px;
+}
+
+.pull-label {
+    display: flex;
+    align-items: center;
     gap: 6px;
+    flex: 0 0 150px;
+    min-width: 0;
+}
+
+.pull-label .char-avatar {
+    width: 24px;
+    height: 24px;
+    flex: 0 0 24px;
+    margin: 0;
+}
+
+.pull-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.pull-track {
+    flex: 1;
+    height: 12px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.06);
+    overflow: hidden;
+}
+
+.pull-bar {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--gold), var(--gold-2));
+}
+
+.pull-row.lost .pull-bar {
+    background: linear-gradient(90deg, #6b7185, #444a5e);
 }
 
 .pull-val {
-    height: 16px;
-    line-height: 16px;
-    font-size: 11px;
+    flex: 0 0 40px;
+    text-align: right;
+    font-size: 12px;
     color: var(--text);
     font-variant-numeric: tabular-nums;
 }
 
-.pull-bar {
-    width: 22px;
-    border-radius: 6px 6px 2px 2px;
-    background: linear-gradient(180deg, var(--gold), var(--gold-2));
+.wish-pity {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0 0 14px;
 }
 
-.pull-col.lost .pull-bar {
-    background: linear-gradient(180deg, #6b7185, #444a5e);
-}
-
-.pull-name {
-    writing-mode: vertical-rl;
-    text-orientation: upright;
-    height: 66px;
-    overflow: hidden;
-    font-size: 11px;
+.wish-pity-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 11px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: rgba(9, 11, 20, 0.6);
     color: var(--muted);
-    letter-spacing: 1px;
+    font-size: 12px;
+    font-family: inherit;
+    white-space: nowrap;
+    cursor: pointer;
 }
 
-.pull-col .char-avatar {
-    width: 26px;
-    height: 26px;
-    margin: 0 0 2px;
-    vertical-align: 0;
+.wish-pity-chip:hover {
+    border-color: var(--line-strong);
+    color: var(--text);
+}
+
+.wish-pity-manual {
+    margin-left: 4px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    border: 1px solid var(--line-strong);
+    color: var(--gold);
+    font-size: 10px;
+}
+
+.wish-pity-chip strong {
+    color: var(--gold-2);
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+}
+
+.wish-pity-chip.guaranteed {
+    border-color: var(--line-strong);
+    color: var(--gold);
 }
 
 .batch-row select,
@@ -2050,6 +2116,10 @@ body.game-starrail {
 
     .expect-number {
         font-size: 42px;
+    }
+
+    .expect-number.is-range {
+        font-size: 30px;
     }
 
     .expect-mode {
