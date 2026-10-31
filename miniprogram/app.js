@@ -8,7 +8,7 @@ App({
   onLaunch: function () {
     if (wx.cloud) {
       try {
-        wx.cloud.init({ traceUser: true });
+        wx.cloud.init({ env: 'qq740194789-d5ghcyv7x748499f9', traceUser: true });
       } catch (e) {
         /* 未开通云开发时忽略，链接导入会给出提示 */
       }
