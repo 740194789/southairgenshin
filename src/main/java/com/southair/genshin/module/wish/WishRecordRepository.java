@@ -18,6 +18,12 @@ public interface WishRecordRepository extends JpaRepository<WishRecord, Long> {
 
     Page<WishRecord> findByUserIdAndGameAndPool(Long userId, String game, String pool, Pageable pageable);
 
+    Page<WishRecord> findByUserIdAndGameAndRarity(
+            Long userId, String game, Integer rarity, Pageable pageable);
+
+    Page<WishRecord> findByUserIdAndGameAndPoolAndRarity(
+            Long userId, String game, String pool, Integer rarity, Pageable pageable);
+
     List<WishRecord> findTop5ByUserIdAndGameOrderByWishTimeDesc(Long userId, String game);
 
     List<WishRecord> findByUserIdAndGameOrderByWishTimeAsc(Long userId, String game);

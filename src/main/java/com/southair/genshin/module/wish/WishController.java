@@ -6,6 +6,7 @@ import com.southair.genshin.common.BusinessException;
 import com.southair.genshin.common.GameType;
 import com.southair.genshin.common.PageResult;
 import com.southair.genshin.common.R;
+import com.southair.genshin.module.wish.dto.CollectionItemVO;
 import com.southair.genshin.module.wish.dto.GachaLinkRequest;
 import com.southair.genshin.module.wish.dto.WishBatchRequest;
 import com.southair.genshin.module.wish.dto.WishImportResult;
@@ -49,10 +50,18 @@ public class WishController {
 
     @GetMapping
     public R<PageResult<WishRecord>> list(@RequestParam(required = false) String pool,
+                                          @RequestParam(required = false) Integer rarity,
                                           @RequestParam(defaultValue = "genshin") String game,
                                           @RequestParam(defaultValue = "1") int page,
                                           @RequestParam(defaultValue = "10") int size) {
-        return R.ok(wishService.page(UserContext.require(), game, pool, page, size));
+        return R.ok(wishService.page(UserContext.require(), game, pool, page, size, rarity));
+    }
+
+    /** 收藏图鉴：全部记录按名称 / 类型 / 星级聚合。 */
+    @GetMapping("/collection")
+    public R<List<CollectionItemVO>> collection(
+            @RequestParam(defaultValue = "genshin") String game) {
+        return R.ok(wishService.collection(UserContext.require(), game));
     }
 
     @GetMapping("/{id}")

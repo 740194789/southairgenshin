@@ -85,6 +85,7 @@ Page({
     selectedCount: 0,
     allChecked: false,
     pityChips: [],
+    onlyFive: false,
     typeOptions: gameLib.config('genshin').itemTypes,
     editorVisible: false,
     editorId: null,
@@ -129,7 +130,8 @@ Page({
   load: function () {
     var game = this.data.game;
     var pool = this.data.poolIndex === 0 ? '' : this.data.g.pools[this.data.poolIndex - 1];
-    var result = store.pageWishes(game, pool, this.data.page, PAGE_SIZE);
+    var result = store.pageWishes(game, pool, this.data.page, PAGE_SIZE,
+      this.data.onlyFive ? 5 : null);
     var selected = this.data.selected;
     var rows = result.records.map(function (record) {
       return {
@@ -241,6 +243,17 @@ Page({
         });
       }
     });
+  },
+
+  toggleOnlyFive: function () {
+    this.setData({
+      onlyFive: !this.data.onlyFive,
+      page: 1,
+      selected: [],
+      selectedCount: 0,
+      allChecked: false
+    });
+    this.load();
   },
 
   toggleAll: function () {

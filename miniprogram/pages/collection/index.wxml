@@ -1,0 +1,41 @@
+<view class="page">
+  <view class="topbar" style="padding-top: {{statusBarHeight + 36}}px">
+    <view class="brand">
+      <view class="brand-mark">SA</view>
+      <view class="brand-name">SouthAir Genshin</view>
+    </view>
+    <game-switch game="{{game}}" bind:change="onSwitchGame" />
+  </view>
+
+  <view class="hero">
+    <view class="hero-main">
+      <view class="hero-sub">Collection</view>
+      <view class="hero-title">收藏图鉴</view>
+      <view class="hero-desc">已收集 <text class="strong">{{characterCount}}</text> 名角色 · <text class="strong">{{weaponCount}}</text> 把五星武器 / 光锥</view>
+    </view>
+    <view class="btn btn-primary btn-sm" bindtap="addManual">补充已有</view>
+  </view>
+
+  <block wx:for="{{sections}}" wx:for-item="section" wx:for-index="si" wx:key="key">
+    <view class="panel">
+      <view class="panel-title">{{section.title}}<text class="pool-tag inline">{{section.items.length}}</text></view>
+      <view class="coll-grid" wx:if="{{section.items.length}}">
+        <view class="coll-card" wx:for="{{section.items}}" wx:for-item="item" wx:for-index="ii" wx:key="name">
+          <view class="coll-icon">
+            <text>{{item.initial}}</text>
+            <image wx:if="{{item.icon}}" src="{{item.icon}}" mode="aspectFill" data-si="{{si}}" data-ii="{{ii}}" binderror="onImageError" />
+          </view>
+          <view class="coll-name">{{item.name}}</view>
+          <view class="coll-meta">
+            <text class="coll-rank">{{item.badge}}</text>
+            <text>{{item.sub}}</text>
+          </view>
+          <view class="coll-remove" wx:if="{{item.manual}}" data-section="{{section.key}}" data-name="{{item.name}}" bindtap="removeManual">手动 +{{item.manual}} · 清除</view>
+        </view>
+      </view>
+      <view class="empty" wx:else>还没有{{section.title}}</view>
+    </view>
+  </block>
+
+  <view class="foot-tip">手动补充保存在本机缓存；导入新的抽卡记录后会自动更新命座与精炼。</view>
+</view>

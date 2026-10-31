@@ -54,6 +54,7 @@
         view: 'dashboard',
         pages: { wishes: 1 },
         wishPool: '',
+        wishOnlyFive: false,
         wishSelected: new Set()
     };
 
@@ -286,7 +287,7 @@
         $$('.tab-btn').forEach(function (btn) {
             btn.classList.toggle('active', btn.dataset.view === view);
         });
-        ['dashboard', 'stats', 'wishes', 'settings'].forEach(function (name) {
+        ['dashboard', 'stats', 'wishes', 'collection', 'settings'].forEach(function (name) {
             $('#view-' + name).hidden = name !== view;
         });
 
@@ -299,6 +300,7 @@
             dashboard: loadDashboard,
             stats: loadStats,
             wishes: loadWishes,
+            collection: loadCollection,
             settings: loadSettings
         };
         loaders[view]();
@@ -1157,6 +1159,8 @@
             + '</div>'
             + '<div class="toolbar">'
             + '<select id="wish-pool" class="input">' + poolOptions + '</select>'
+            + '<label class="filter-check"><input type="checkbox" id="wish-only-five"'
+            + (state.wishOnlyFive ? ' checked' : '') + '/>只看五星</label>'
             + '<div class="toolbar-actions">'
             + '<button class="btn btn-text btn-sm" id="wish-batch-edit" type="button">批量编辑本页</button>'
             + '<button class="btn btn-text btn-sm" id="wish-select-all" type="button">全选本页</button>'
@@ -1184,6 +1188,12 @@
             guard(function () {
                 return openOcrDialog('wishes');
             });
+        });
+
+        $('#wish-only-five').addEventListener('change', function (event) {
+            state.wishOnlyFive = event.target.checked;
+            state.pages.wishes = 1;
+            refreshWishList();
         });
 
         $('#wish-select-all').addEventListener('click', function () {
@@ -1394,6 +1404,9 @@
         var params = new URLSearchParams();
         params.set('page', state.pages.wishes);
         params.set('size', '10');
+        if (state.wishOnlyFive) {
+            params.set('rarity', '5');
+        }
         if (state.wishPool) {
             params.set('pool', state.wishPool);
         }
@@ -2318,6 +2331,239 @@
             + '</div></div>'
             + '</section>';
     }
+
+    /* ---------------- 收藏图鉴 ---------------- */
+
+    function ownedStorageKey() {
+        var uid = (state.user && (state.user.id || state.user.username)) || 'guest';
+        return 'sg_owned_' + uid + '_' + state.game;
+    }
+
+    function loadOwnedData() {
+        var raw = safeParse(localStorage.getItem(ownedStorageKey())) || {};
+        return {
+            characters4: raw.characters4 || {},
+            characters5: raw.characters5 || {},
+            weapons5: raw.weapons5 || {}
+        };
+    }
+
+    function saveOwnedData(data) {
+        localStorage.setItem(ownedStorageKey(), JSON.stringify(data));
+    }
+
+    function collectionDefs(g) {
+        return [
+            { key: 'characters4', title: '四星角色', kind: 'character', rarity: 4 },
+            { key: 'characters5', title: '五星角色', kind: 'character', rarity: 5 },
+            { key: 'weapons5', title: g.itemTypes[1] === '光锥' ? '五星光锥' : '五星武器',
+                kind: 'weapon', rarity: 5 }
+        ];
+    }
+
+    function collectionSectionOf(item, defs) {
+        if (Number(item.rarity) === 5 && item.itemType !== '角色') {
+            return 'weapons5';
+        }
+        if (item.itemType === '角色' && Number(item.rarity) === 4) {
+            return 'characters4';
+        }
+        if (item.itemType === '角色' && Number(item.rarity) === 5) {
+            return 'characters5';
+        }
+        return '';
+    }
+
+    function collectionCardHtml(game, sectionKey, kind, name, copies, manual, iconMap) {
+        var icon = iconMap[name] || '';
+        var badge;
+        var sub;
+        if (kind === 'character') {
+            badge = 'C' + Math.min(6, Math.max(0, copies - 1));
+            sub = '共 ' + copies + ' 份';
+        } else {
+            badge = 'R' + Math.min(5, Math.max(1, copies));
+            sub = '共 ' + copies + ' 把';
+        }
+        return '<div class="collection-card">'
+            + '<div class="collection-icon"><span>' + esc(name.charAt(0)) + '</span>'
+            + (icon ? '<img src="' + esc(icon) + '" alt="" loading="lazy" onerror="this.remove()">' : '')
+            + '</div>'
+            + '<div class="collection-name" title="' + esc(name) + '">' + esc(name) + '</div>'
+            + '<div class="collection-meta"><span class="collection-rank">' + badge + '</span>'
+            + '<span>' + sub + '</span></div>'
+            + (manual > 0
+                ? '<button class="collection-remove" type="button" data-section="' + esc(sectionKey)
+                    + '" data-name="' + esc(name) + '">手动 +' + manual + ' · 清除</button>'
+                : '')
+            + '</div>';
+    }
+
+    function collectionSectionsHtml(game, items, owned, g) {
+        var defs = collectionDefs(g);
+        var avatarMap = (window.SG_AVATARS || {})[game] || {};
+        var weaponMap = (window.SG_WEAPON_ICONS || {})[game] || {};
+        var sections = {};
+        defs.forEach(function (def) {
+            sections[def.key] = [];
+        });
+
+        items.forEach(function (item) {
+            var key = collectionSectionOf(item, defs);
+            if (!key) {
+                return;
+            }
+            var name = String(item.itemName || '').trim();
+            if (!name) {
+                return;
+            }
+            sections[key].push({
+                name: name,
+                count: Number(item.count) || 0,
+                manual: 0
+            });
+        });
+
+        defs.forEach(function (def) {
+            var manualMap = owned[def.key] || {};
+            Object.keys(manualMap).forEach(function (name) {
+                var copies = Math.floor(Number(manualMap[name]) || 0);
+                if (copies <= 0) {
+                    return;
+                }
+                var existing = sections[def.key].filter(function (entry) {
+                    return entry.name === name;
+                })[0];
+                if (existing) {
+                    existing.manual = copies;
+                } else {
+                    sections[def.key].push({ name: name, count: 0, manual: copies });
+                }
+            });
+            sections[def.key].sort(function (a, b) {
+                var totalA = a.count + a.manual;
+                var totalB = b.count + b.manual;
+                if (totalA !== totalB) {
+                    return totalB - totalA;
+                }
+                return a.name.localeCompare(b.name, 'zh-CN');
+            });
+        });
+
+        return defs.map(function (def) {
+            var iconMap = def.kind === 'character' ? avatarMap : weaponMap;
+            var cards = sections[def.key].map(function (entry) {
+                var copies = entry.count + entry.manual;
+                return collectionCardHtml(game, def.key, def.kind, entry.name, copies,
+                    entry.manual, iconMap);
+            }).join('');
+            return '<section class="panel collection-panel">'
+                + '<h3>' + esc(def.title) + '<span class="pool-tag">' + sections[def.key].length + '</span></h3>'
+                + (cards
+                    ? '<div class="collection-grid">' + cards + '</div>'
+                    : emptyHtml('还没有' + def.title))
+                + '</section>';
+        }).join('');
+    }
+
+    function openOwnedForm() {
+        var g = gameConfig();
+        return openForm('补充已有 · ' + g.fullName, [
+            {
+                key: 'category',
+                label: '类别',
+                type: 'select',
+                full: true,
+                options: [
+                    { value: 'characters4', label: '四星角色' },
+                    { value: 'characters5', label: '五星角色' },
+                    { value: 'weapons5', label: '五星' + (g.itemTypes[1] === '光锥' ? '光锥' : '武器') }
+                ]
+            },
+            {
+                key: 'name',
+                label: '名称',
+                full: true,
+                placeholder: '输入角色 / 武器名称'
+            },
+            {
+                key: 'copies',
+                label: '额外数量',
+                type: 'number',
+                full: true,
+                placeholder: '1–6'
+            }
+        ], null, {
+            hint: '额外数量会叠加到抽卡记录统计；角色按命座展示（最高 C6），武器按精炼展示（最高 R5）。',
+            submitText: '保存',
+            validate: function (values) {
+                if (!String(values.name || '').trim()) {
+                    return '请输入名称';
+                }
+                var copies = Number(values.copies);
+                if (!isFinite(copies) || copies < 1 || copies > 6) {
+                    return '额外数量需在 1–6 之间';
+                }
+                return null;
+            }
+        }).then(function (values) {
+            if (!values) {
+                return null;
+            }
+            var owned = loadOwnedData();
+            var name = String(values.name || '').trim();
+            var copies = Math.floor(Number(values.copies) || 0);
+            owned[values.category][name] = (Number(owned[values.category][name]) || 0) + copies;
+            saveOwnedData(owned);
+            toast('已补充 ' + name + ' ×' + copies);
+            loadCollection();
+            return null;
+        });
+    }
+
+    function loadCollection() {
+        var el = $('#view-collection');
+        var game = state.game;
+        var g = gameConfig();
+        el.innerHTML = '<div class="loading">加载中…</div>';
+        return api('/api/wishes/collection').then(function (items) {
+            var owned = loadOwnedData();
+            el.innerHTML =
+                '<div class="page-head">'
+                + '<div><h2>收藏图鉴</h2>'
+                + '<p class="sub">四星角色 · 五星角色 · 五星' + (g.itemTypes[1] === '光锥' ? '光锥' : '武器')
+                + ' · 角色最高 C6，武器最高 R5</p></div>'
+                + '<div class="head-actions">'
+                + '<button class="btn btn-primary" id="collection-add" type="button">+ 补充已有</button>'
+                + '</div></div>'
+                + collectionSectionsHtml(game, items || [], owned, g)
+                + '<p class="foot-tip">手动补充保存在本机浏览器，不写入账号备份；抽卡记录会随导入自动更新。</p>';
+
+            $('#collection-add').addEventListener('click', function () {
+                guard(openOwnedForm);
+            });
+
+            $$('.collection-remove', el).forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    var section = btn.dataset.section;
+                    var name = btn.dataset.name;
+                    if (!window.confirm('清除「' + name + '」的手动补充？')) {
+                        return;
+                    }
+                    var data = loadOwnedData();
+                    if (data[section]) {
+                        delete data[section][name];
+                    }
+                    saveOwnedData(data);
+                    toast('已清除 ' + name + ' 的手动补充');
+                    loadCollection();
+                });
+            });
+        }).catch(function (err) {
+            el.innerHTML = errorHtml(err);
+        });
+    }
+
 
     function loadSettings() {
         var el = $('#view-settings');

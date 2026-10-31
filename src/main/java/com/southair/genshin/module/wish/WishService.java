@@ -3,6 +3,7 @@ package com.southair.genshin.module.wish;
 import com.southair.genshin.common.BusinessException;
 import com.southair.genshin.common.GameType;
 import com.southair.genshin.common.PageResult;
+import com.southair.genshin.module.wish.dto.CollectionItemVO;
 import com.southair.genshin.module.wish.dto.WishBatchRequest;
 import com.southair.genshin.module.wish.dto.WishImportResult;
 import com.southair.genshin.module.wish.dto.WishRequest;
@@ -18,7 +19,9 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -39,14 +42,63 @@ public class WishService {
 
     @Transactional(readOnly = true)
     public PageResult<WishRecord> page(Long userId, String game, String pool, int page, int size) {
+        return page(userId, game, pool, page, size, null);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResult<WishRecord> page(Long userId, String game, String pool, int page, int size,
+                                       Integer rarity) {
         String gameKey = GameType.normalize(game);
         Pageable pageable = PageRequest.of(Math.max(page - 1, 0), normalizeSize(size),
                 Sort.by(Sort.Direction.DESC, "wishTime").and(Sort.by(Sort.Direction.DESC, "id")));
 
-        Page<WishRecord> result = StringUtils.hasText(pool)
-                ? repository.findByUserIdAndGameAndPool(userId, gameKey, pool.trim(), pageable)
-                : repository.findByUserIdAndGame(userId, gameKey, pageable);
+        boolean hasPool = StringUtils.hasText(pool);
+        boolean hasRarity = rarity != null;
+        Page<WishRecord> result;
+        if (hasPool && hasRarity) {
+            result = repository.findByUserIdAndGameAndPoolAndRarity(
+                    userId, gameKey, pool.trim(), rarity, pageable);
+        } else if (hasPool) {
+            result = repository.findByUserIdAndGameAndPool(userId, gameKey, pool.trim(), pageable);
+        } else if (hasRarity) {
+            result = repository.findByUserIdAndGameAndRarity(userId, gameKey, rarity, pageable);
+        } else {
+            result = repository.findByUserIdAndGame(userId, gameKey, pageable);
+        }
         return PageResult.of(result);
+    }
+
+    /** 收藏图鉴：按名称 / 类型 / 星级聚合全部记录的数量。 */
+    @Transactional(readOnly = true)
+    public List<CollectionItemVO> collection(Long userId, String game) {
+        String gameKey = GameType.normalize(game);
+        List<WishRecord> records = repository.findByUserIdAndGameOrderByWishTimeAsc(userId, gameKey);
+        Map<String, CollectionItemVO> grouped = new LinkedHashMap<>();
+        for (WishRecord record : records) {
+            String name = record.getItemName();
+            String type = record.getItemType();
+            Integer rarity = record.getRarity();
+            if (!StringUtils.hasText(name) || rarity == null) {
+                continue;
+            }
+            String key = name + '\u0000' + type + '\u0000' + rarity;
+            CollectionItemVO item = grouped.get(key);
+            if (item == null) {
+                item = new CollectionItemVO();
+                item.setItemName(name);
+                item.setItemType(type);
+                item.setRarity(rarity);
+                item.setCount(0);
+                grouped.put(key, item);
+            }
+            item.setCount(item.getCount() + 1);
+        }
+        List<CollectionItemVO> result = new ArrayList<>(grouped.values());
+        result.sort(Comparator
+                .comparing(CollectionItemVO::getRarity, Comparator.reverseOrder())
+                .thenComparing(CollectionItemVO::getCount, Comparator.reverseOrder())
+                .thenComparing(CollectionItemVO::getItemName));
+        return result;
     }
 
     @Transactional(readOnly = true)

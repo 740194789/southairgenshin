@@ -1,0 +1,131 @@
+.hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 30rpx 28rpx;
+  border-radius: 24rpx;
+  margin-bottom: 24rpx;
+  background:
+    radial-gradient(520rpx 260rpx at 8% -20%, rgba(211, 188, 142, 0.22), transparent 62%),
+    #171b2b;
+  border: 1rpx solid rgba(211, 188, 142, 0.32);
+}
+
+.hero-main {
+  flex: 1;
+  min-width: 0;
+  margin-right: 16rpx;
+}
+
+.hero-sub {
+  font-size: 22rpx;
+  letter-spacing: 2rpx;
+  color: #8b90a6;
+  text-transform: uppercase;
+}
+
+.pool-tag.inline {
+  margin-left: 12rpx;
+}
+
+.hero-title {
+  font-size: 36rpx;
+  font-weight: 700;
+  color: #f2e2bd;
+  margin: 4rpx 0 8rpx;
+}
+
+.hero-desc {
+  font-size: 22rpx;
+  color: #8b90a6;
+}
+
+.hero-desc .strong {
+  color: #f2e2bd;
+  font-weight: 700;
+}
+
+.coll-grid {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 8rpx -6rpx 0;
+}
+
+.coll-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: calc(25% - 12rpx);
+  margin: 6rpx;
+  padding: 16rpx 8rpx 14rpx;
+  box-sizing: border-box;
+  border-radius: 18rpx;
+  border: 1rpx solid rgba(211, 188, 142, 0.14);
+  background: rgba(9, 11, 20, 0.55);
+}
+
+.coll-icon {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 88rpx;
+  height: 88rpx;
+  border-radius: 50%;
+  overflow: hidden;
+  color: #f2e2bd;
+  font-size: 30rpx;
+  font-weight: 600;
+  background: linear-gradient(135deg, rgba(211, 188, 142, 0.25), rgba(90, 120, 255, 0.16));
+}
+
+.coll-icon image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.coll-name {
+  width: 100%;
+  margin-top: 10rpx;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: center;
+  font-size: 22rpx;
+  color: #ecebe7;
+}
+
+.coll-meta {
+  display: flex;
+  align-items: center;
+  margin-top: 6rpx;
+  font-size: 18rpx;
+  color: #8b90a6;
+}
+
+.coll-rank {
+  margin-right: 8rpx;
+  padding: 0 10rpx;
+  border-radius: 999rpx;
+  border: 1rpx solid rgba(211, 188, 142, 0.42);
+  color: #f2e2bd;
+  line-height: 1.6;
+}
+
+.coll-remove {
+  margin-top: 8rpx;
+  font-size: 17rpx;
+  color: #8b90a6;
+  text-decoration: underline;
+}
+
+.foot-tip {
+  margin: 6rpx 4rpx 24rpx;
+  font-size: 20rpx;
+  color: #5c6178;
+  line-height: 1.6;
+}

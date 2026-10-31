@@ -18,6 +18,7 @@
     <picker class="pool-picker" range="{{poolOptions}}" value="{{poolIndex}}" bindchange="onPoolChange">
       <view class="pool-picker-box">{{poolOptions[poolIndex]}} ▾</view>
     </picker>
+    <view class="filter-toggle {{onlyFive ? 'active' : ''}}" bindtap="toggleOnlyFive">只看五星</view>
     <view class="toolbar-title">共 {{total}} 条</view>
   </view>
 

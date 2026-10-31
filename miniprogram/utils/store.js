@@ -230,11 +230,16 @@ function ascCompare(a, b) {
   return a.id - b.id;
 }
 
-function pageWishes(game, pool, page, size) {
+function pageWishes(game, pool, page, size, rarity) {
   var list = getWishes(game);
   if (pool) {
     list = list.filter(function (record) {
       return record.pool === pool;
+    });
+  }
+  if (rarity) {
+    list = list.filter(function (record) {
+      return Number(record.rarity) === Number(rarity);
     });
   }
   list = list.slice().sort(descCompare);

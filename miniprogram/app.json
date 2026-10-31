@@ -2,7 +2,8 @@
   "pages": [
     "pages/resource/index",
     "pages/stats/index",
-    "pages/wishes/index"
+    "pages/wishes/index",
+    "pages/collection/index"
   ],
   "window": {
     "navigationStyle": "custom",
@@ -34,6 +35,12 @@
         "text": "抽卡",
         "iconPath": "assets/tabbar/wish.png",
         "selectedIconPath": "assets/tabbar/wish-active.png"
+      },
+      {
+        "pagePath": "pages/collection/index",
+        "text": "收藏",
+        "iconPath": "assets/tabbar/collection.png",
+        "selectedIconPath": "assets/tabbar/collection-active.png"
       }
     ]
   },
