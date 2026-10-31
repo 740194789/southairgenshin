@@ -338,9 +338,7 @@ Page({
       acquaintedFates: ''
     },
     resourceTextVisible: false,
-    resourceText: '',
-    linkImportVisible: false,
-    linkUrl: ''
+    resourceText: ''
   },
 
   onLoad: function () {
@@ -715,87 +713,6 @@ Page({
         + (result.skipped ? '，跳过 ' + result.skipped + ' 条' : '')
         + (result.filtered ? '，忽略 ' + result.filtered + ' 条' : ''),
       icon: 'none'
-    });
-  },
-
-  /* ---------------- 链接导入（云开发） ---------------- */
-
-  openLinkImport: function () {
-    this.setData({ linkImportVisible: true });
-  },
-
-  closeLinkImport: function () {
-    this.setData({ linkImportVisible: false });
-  },
-
-  onLinkInput: function (event) {
-    this.setData({ linkUrl: event.detail.value });
-  },
-
-  applyLinkImport: function () {
-    var that = this;
-    var url = String(this.data.linkUrl || '').trim();
-    if (!url) {
-      wx.showToast({ title: '请填写链接', icon: 'none' });
-      return;
-    }
-    if (!/^(https?:\/\/|cloud:\/\/)/.test(url)) {
-      wx.showToast({ title: '只支持 https 链接或 cloud:// 文件 ID', icon: 'none' });
-      return;
-    }
-    if (!wx.cloud) {
-      wx.showToast({ title: '当前微信版本不支持云开发', icon: 'none' });
-      return;
-    }
-
-    function fail(message) {
-      wx.hideLoading();
-      wx.showToast({ title: message || '下载失败', icon: 'none' });
-    }
-
-    function done(text) {
-      wx.hideLoading();
-      var payload;
-      try {
-        payload = JSON.parse(text);
-      } catch (e) {
-        fail('链接内容不是有效的 JSON 备份');
-        return;
-      }
-      if (!payload || typeof payload !== 'object' || !payload.games) {
-        fail('链接不是全量备份 JSON');
-        return;
-      }
-      that.setData({ linkImportVisible: false });
-      that.confirmAllImport(payload);
-    }
-
-    wx.showLoading({ title: '下载中', mask: true });
-    if (url.indexOf('cloud://') === 0) {
-      wx.cloud.downloadFile({ fileID: url }).then(function (res) {
-        var text;
-        try {
-          text = wx.getFileSystemManager().readFileSync(res.tempFilePath, 'utf8');
-        } catch (e) {
-          fail('读取云文件失败');
-          return;
-        }
-        done(text);
-      }).catch(function () {
-        fail('云文件下载失败，请检查文件 ID');
-      });
-      return;
-    }
-
-    wx.cloud.callFunction({ name: 'fetchLink', data: { url: url } }).then(function (res) {
-      var result = res && res.result;
-      if (!result || !result.ok) {
-        fail((result && result.error) || '下载失败');
-        return;
-      }
-      done(result.text);
-    }).catch(function () {
-      fail('云函数调用失败，请先开通云开发并部署 fetchLink');
     });
   }
 });

@@ -2,6 +2,7 @@ var app = getApp();
 var store = require('../../utils/store');
 var gameLib = require('../../utils/game');
 var csv = require('../../utils/csv');
+var gacha = require('../../utils/gacha');
 var file = require('../../utils/file');
 
 var PAGE_SIZE = 10;
@@ -14,6 +15,35 @@ function starText(rarity) {
     text += '★';
   }
   return text;
+}
+
+/** 解析文本导入 / 链接导入的内容：JSON（数组、单游戏备份、全量备份）或 CSV。 */
+function parseWishText(text, game) {
+  var content = String(text || '').trim();
+  if (!content) {
+    return { error: '内容为空' };
+  }
+  var first = content.charAt(0);
+  if (first === '[' || first === '{') {
+    var payload;
+    try {
+      payload = JSON.parse(content);
+    } catch (e) {
+      return { error: '不是有效的 JSON' };
+    }
+    if (Array.isArray(payload)) {
+      return { records: payload };
+    }
+    if (payload && Array.isArray(payload.wishes)) {
+      return { records: payload.wishes };
+    }
+    if (payload && payload.games && payload.games[game]
+        && Array.isArray(payload.games[game].wishes)) {
+      return { records: payload.games[game].wishes };
+    }
+    return { error: 'JSON 里没有抽卡记录' };
+  }
+  return { records: csv.parse(content) };
 }
 
 function nowParts() {
@@ -60,7 +90,9 @@ Page({
     editorId: null,
     editor: editorDefaults(gameLib.config('genshin'), 0),
     textVisible: false,
-    textContent: ''
+    textContent: '',
+    linkVisible: false,
+    linkUrl: ''
   },
 
   onLoad: function () {
@@ -472,36 +504,178 @@ Page({
       wx.showToast({ title: '请先填写内容', icon: 'none' });
       return;
     }
-    var records;
-    var first = text.charAt(0);
-    if (first === '[' || first === '{') {
-      var payload;
-      try {
-        payload = JSON.parse(text);
-      } catch (e) {
-        wx.showToast({ title: '不是有效的 JSON', icon: 'none' });
-        return;
-      }
-      if (Array.isArray(payload)) {
-        records = payload;
-      } else if (payload && Array.isArray(payload.wishes)) {
-        records = payload.wishes;
-      } else if (payload && payload.games && payload.games[this.data.game]
-          && Array.isArray(payload.games[this.data.game].wishes)) {
-        records = payload.games[this.data.game].wishes;
-      } else {
-        wx.showToast({ title: 'JSON 里没有抽卡记录', icon: 'none' });
-        return;
-      }
-    } else {
-      records = csv.parse(text);
+    var parsed = parseWishText(text, this.data.game);
+    if (parsed.error) {
+      wx.showToast({ title: parsed.error, icon: 'none' });
+      return;
     }
+    var records = parsed.records;
     if (!records.length) {
       wx.showToast({ title: '没有可导入的记录', icon: 'none' });
       return;
     }
     this.setData({ textVisible: false });
     this.chooseImportMode(records);
+  },
+
+  openLinkImport: function () {
+    this.setData({ linkVisible: true });
+  },
+
+  closeLinkImport: function () {
+    this.setData({ linkVisible: false });
+  },
+
+  onLinkInput: function (event) {
+    this.setData({ linkUrl: event.detail.value });
+  },
+
+  applyLinkImport: function () {
+    var that = this;
+    var url = String(this.data.linkUrl || '').trim();
+    if (!url) {
+      wx.showToast({ title: '请填写链接', icon: 'none' });
+      return;
+    }
+    if (!/^(https?:\/\/|cloud:\/\/)/.test(url)) {
+      wx.showToast({ title: '只支持 https 链接或 cloud:// 文件 ID', icon: 'none' });
+      return;
+    }
+    if (!wx.cloud) {
+      wx.showToast({ title: '当前微信版本不支持云开发', icon: 'none' });
+      return;
+    }
+
+    var info = gacha.validateLink(url, this.data.game);
+    if (info.isGacha) {
+      if (!info.ok) {
+        wx.showToast({ title: info.error, icon: 'none' });
+        return;
+      }
+      this.importGachaLink(url);
+      return;
+    }
+
+    function fail(message) {
+      wx.hideLoading();
+      wx.showToast({ title: message || '下载失败', icon: 'none' });
+    }
+
+    function done(text) {
+      wx.hideLoading();
+      var parsed = parseWishText(text, that.data.game);
+      if (parsed.error) {
+        wx.showToast({ title: parsed.error, icon: 'none' });
+        return;
+      }
+      if (!parsed.records.length) {
+        wx.showToast({ title: '链接里没有可导入的记录', icon: 'none' });
+        return;
+      }
+      that.setData({ linkVisible: false });
+      that.chooseImportMode(parsed.records);
+    }
+
+    wx.showLoading({ title: '下载中', mask: true });
+    if (url.indexOf('cloud://') === 0) {
+      wx.cloud.downloadFile({ fileID: url }).then(function (res) {
+        var text;
+        try {
+          text = wx.getFileSystemManager().readFileSync(res.tempFilePath, 'utf8');
+        } catch (e) {
+          fail('读取云文件失败');
+          return;
+        }
+        done(text);
+      }).catch(function () {
+        fail('云文件下载失败，请检查文件 ID');
+      });
+      return;
+    }
+
+    wx.cloud.callFunction({ name: 'fetchLink', data: { url: url } }).then(function (res) {
+      var result = res && res.result;
+      if (!result || !result.ok) {
+        fail((result && result.error) || '下载失败');
+        return;
+      }
+      done(result.text);
+    }).catch(function () {
+      fail('云函数调用失败，请确认已部署 fetchLink');
+    });
+  },
+
+  /** 米游社抽卡链接：按卡池分页抓取，客户端累计后统一推算保底与 UP。 */
+  importGachaLink: function (url) {
+    var that = this;
+    var game = this.data.game;
+    var defs = gacha.poolDefs(game);
+    var items = [];
+    var poolIndex = 0;
+
+    function fail(message) {
+      wx.hideLoading();
+      wx.showToast({ title: message || '读取抽卡记录失败', icon: 'none' });
+    }
+
+    function finish() {
+      wx.hideLoading();
+      var records = gacha.processItems(game, items);
+      if (!records.length) {
+        fail('链接中没有可导入的抽卡记录');
+        return;
+      }
+      that.setData({ linkVisible: false });
+      that.chooseImportMode(records);
+    }
+
+    function nextPool() {
+      if (poolIndex >= defs.length) {
+        finish();
+        return;
+      }
+      var def = defs[poolIndex];
+      var endId = '0';
+      var page = 1;
+
+      function nextPage() {
+        wx.showLoading({ title: '读取' + def.pool, mask: true });
+        wx.cloud.callFunction({
+          name: 'fetchLink',
+          data: {
+            mode: 'gacha',
+            url: url,
+            game: game,
+            gachaType: def.type,
+            endId: endId,
+            page: page
+          }
+        }).then(function (res) {
+          var result = res && res.result;
+          if (!result || !result.ok) {
+            fail((result && result.error) || '读取抽卡记录失败');
+            return;
+          }
+          if (result.items && result.items.length) {
+            items = items.concat(result.items);
+          }
+          if (result.hasMore) {
+            endId = result.lastId;
+            page = result.page;
+            nextPage();
+            return;
+          }
+          poolIndex += 1;
+          nextPool();
+        }).catch(function () {
+          fail('云函数调用失败，请确认已部署 fetchLink');
+        });
+      }
+
+      nextPage();
+    }
+
+    nextPool();
   },
 
   /** 从聊天记录里选择电脑端导出的 CSV / JSON 文件。 */

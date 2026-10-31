@@ -96,7 +96,7 @@ public class GachaLinkImporter {
     };
 
     private static final String[][] STARRAIL_TYPES = {
-            {"11", "角色活动"}, {"12", "光锥活动"}, {"1", "常驻"}
+            {"11", "角色活动"}, {"12", "光锥活动"}, {"21", "联动"}, {"22", "联动"}, {"1", "常驻"}
     };
 
     private static final int PAGE_SIZE = 20;

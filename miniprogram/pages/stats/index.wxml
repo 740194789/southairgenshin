@@ -247,9 +247,7 @@
     <view class="toolbar">
       <view class="btn btn-primary" bindtap="exportAllBackup">导出全部数据</view>
       <view class="btn btn-outline" bindtap="importAllBackup">导入全部数据</view>
-      <view class="btn btn-text" bindtap="openLinkImport">链接导入</view>
     </view>
-    <view class="foot-tip">链接导入需要开通云开发：粘贴全量备份 JSON 的公网链接（或云存储文件 ID），由云函数下载后导入。</view>
     <view class="foot-tip">离线版数据只存在本机缓存；卸载、清理缓存或换机会丢失，建议定期导出备份。</view>
   </view>
 </view>
@@ -303,26 +301,6 @@
     <view class="modal-foot">
       <view class="btn btn-text" bindtap="closeResourceText">取消</view>
       <view class="btn btn-primary" bindtap="applyResourceText">导入</view>
-    </view>
-  </view>
-</view>
-
-<!-- 链接导入：云函数下载公网 JSON 备份 -->
-<view wx:if="{{linkImportVisible}}" class="mask" bindtap="closeLinkImport">
-  <view class="modal" catchtap="noop">
-    <view class="modal-head">
-      <text class="modal-title">链接导入 · 全量备份</text>
-      <view class="modal-close" bindtap="closeLinkImport">×</view>
-    </view>
-    <view class="modal-body" style="height:auto; padding-bottom:16rpx;">
-      <view class="text-tip">粘贴全量备份 JSON 的公网直链，或云存储文件 ID：</view>
-      <input class="link-input" value="{{linkUrl}}" bindinput="onLinkInput"
-             placeholder="https://example.com/southair-all-backup.json"/>
-      <view class="foot-tip">支持 https / http 链接与 cloud:// 文件 ID；由云函数 fetchLink 下载，需先开通云开发并部署该云函数。</view>
-    </view>
-    <view class="modal-foot">
-      <view class="btn btn-text" bindtap="closeLinkImport">取消</view>
-      <view class="btn btn-primary" bindtap="applyLinkImport">下载并导入</view>
     </view>
   </view>
 </view>

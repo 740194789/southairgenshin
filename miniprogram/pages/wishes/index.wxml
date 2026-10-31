@@ -30,6 +30,7 @@
     <view class="btn btn-text btn-sm" bindtap="downloadTemplate">JSON 模板</view>
     <view class="btn btn-text btn-sm" bindtap="openTextImport">文本导入</view>
     <view class="btn btn-outline btn-sm" bindtap="importRecords">文件导入</view>
+    <view class="btn btn-outline btn-sm" bindtap="openLinkImport">链接导入</view>
   </view>
 
   <view class="wish-pity" wx:if="{{pityChips.length}}">
@@ -161,6 +162,26 @@
     <view class="modal-foot">
       <view class="btn btn-text" bindtap="closeTextImport">取消</view>
       <view class="btn btn-primary" bindtap="applyTextImport">导入</view>
+    </view>
+  </view>
+</view>
+
+<!-- 链接导入：云函数下载抽卡记录 JSON / CSV -->
+<view wx:if="{{linkVisible}}" class="mask" bindtap="closeLinkImport">
+  <view class="modal" catchtap="noop">
+    <view class="modal-head">
+      <text class="modal-title">链接导入 · {{g.fullName}}</text>
+      <view class="modal-close" bindtap="closeLinkImport">×</view>
+    </view>
+    <view class="modal-body" style="height:auto; padding-bottom:16rpx;">
+      <view class="text-tip">粘贴米游社抽卡记录链接，或抽卡记录 JSON / CSV 的公网直链、云存储文件 ID：</view>
+      <input class="link-input" value="{{linkUrl}}" bindinput="onLinkInput"
+             placeholder="米游社抽卡记录链接 / https://example.com/southair-wishes.json"/>
+      <view class="foot-tip">米游社链接会自动读取全部卡池并推算保底、判定 UP；文件链接支持 JSON / CSV 与 cloud://。链接含账号凭证，请勿分享。</view>
+    </view>
+    <view class="modal-foot">
+      <view class="btn btn-text" bindtap="closeLinkImport">取消</view>
+      <view class="btn btn-primary" bindtap="applyLinkImport">下载并导入</view>
     </view>
   </view>
 </view>
