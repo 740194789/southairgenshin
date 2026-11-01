@@ -2330,6 +2330,197 @@ body.game-starrail {
     margin-top: 4px;
 }
 
+/* ---------- 名称选择（头像 + 名字，一排 5 个） ---------- */
+
+.name-picker-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    text-align: left;
+    cursor: pointer;
+}
+
+.name-picker-value {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.name-picker-value b {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 500;
+    color: var(--text);
+}
+
+.name-picker-placeholder {
+    color: #5c6178 !important;
+    font-weight: 400 !important;
+}
+
+.name-picker-arrow {
+    flex: none;
+    color: var(--muted);
+    font-size: 11px;
+}
+
+.name-picker-icon {
+    position: relative;
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border-radius: 8px;
+    border: 1px solid rgba(211, 188, 142, 0.24);
+    background: rgba(211, 188, 142, 0.12);
+    color: var(--gold);
+    font-weight: 600;
+}
+
+.name-picker-icon.sm {
+    width: 26px;
+    height: 26px;
+    border-radius: 7px;
+    font-size: 12px;
+}
+
+.name-picker-icon.md {
+    width: 52px;
+    height: 52px;
+    border-radius: 10px;
+    font-size: 17px;
+}
+
+.name-picker-icon img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.name-picker-modal {
+    max-width: 640px;
+}
+
+.name-picker-tabs {
+    display: flex;
+    gap: 6px;
+    padding: 0 20px;
+}
+
+.name-picker-tab {
+    padding: 7px 14px;
+    border: 1px solid transparent;
+    border-radius: 9px;
+    background: rgba(9, 11, 20, 0.55);
+    color: var(--muted);
+    font-size: 12.5px;
+    cursor: pointer;
+    transition: color 0.2s, background 0.2s, border-color 0.2s;
+}
+
+.name-picker-tab:hover {
+    color: var(--text);
+}
+
+.name-picker-tab.active {
+    border-color: rgba(211, 188, 142, 0.34);
+    background: rgba(211, 188, 142, 0.16);
+    color: var(--gold-2);
+    font-weight: 600;
+}
+
+.name-picker-tab span {
+    margin-left: 6px;
+    font-size: 11px;
+    opacity: 0.7;
+}
+
+.name-picker-body {
+    padding: 14px 20px 20px;
+    overflow-y: auto;
+}
+
+.name-picker-grid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.name-picker-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    padding: 10px 6px 8px;
+    border: 1px solid transparent;
+    border-radius: 12px;
+    background: rgba(9, 11, 20, 0.5);
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s, transform 0.2s;
+}
+
+.name-picker-cell:hover {
+    border-color: rgba(211, 188, 142, 0.3);
+    background: rgba(211, 188, 142, 0.08);
+}
+
+.name-picker-cell.active {
+    border-color: rgba(211, 188, 142, 0.6);
+    background: rgba(211, 188, 142, 0.13);
+}
+
+.name-picker-name {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text);
+    font-size: 11.5px;
+}
+
+.name-picker-empty {
+    grid-column: 1 / -1;
+    padding: 24px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.ocr-name-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    text-align: left;
+    cursor: pointer;
+}
+
+.ocr-name-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ocr-name-trigger.empty .ocr-name-label {
+    color: #5c6178;
+}
+
+.ocr-name-trigger i {
+    flex: none;
+    color: var(--muted);
+    font-style: normal;
+    font-size: 11px;
+}
+
 /* ---------- Toast ---------- */
 
 .toast {
@@ -2977,6 +3168,27 @@ body.game-starrail {
 }
 
 @media (max-width: 760px) {
+    .name-picker-tabs {
+        padding: 0 16px;
+    }
+
+    .name-picker-body {
+        padding: 12px 16px 16px;
+    }
+
+    .name-picker-grid {
+        gap: 8px;
+    }
+
+    .name-picker-icon.md {
+        width: 42px;
+        height: 42px;
+    }
+
+    .name-picker-cell {
+        padding: 8px 4px 6px;
+    }
+
     .ocr-modes {
         margin: 12px 18px 0;
     }

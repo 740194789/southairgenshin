@@ -1621,36 +1621,139 @@
         };
     }
 
-    function namePickerHtml(field, current) {
+    /** 名称图标：角色取头像、武器 / 光锥取图标，缺失时回退首字 */
+    function itemIconUrl(name) {
+        var lists = nameLists(state.game);
+        var avatarMap = (window.SG_AVATARS || {})[state.game] || {};
+        var weaponMap = (window.SG_WEAPON_ICONS || {})[state.game] || {};
+        return lists.characters.indexOf(name) >= 0
+            ? (avatarMap[name] || '')
+            : (weaponMap[name] || '');
+    }
+
+    function nameIconHtml(name, sizeClass) {
+        var url = itemIconUrl(name);
+        return '<span class="name-picker-icon' + (sizeClass ? ' ' + sizeClass : '') + '">'
+            + '<span>' + esc((name || '?').charAt(0)) + '</span>'
+            + (url ? '<img src="' + esc(url) + '" alt="" loading="lazy" onerror="this.remove()"/>' : '')
+            + '</span>';
+    }
+
+    /** 头像 + 名字的网格选择弹窗，一排 5 个 */
+    function openNamePicker(currentName, onPick) {
         var g = gameConfig();
         var lists = nameLists(state.game);
-        var currentName = String(current === undefined || current === null ? '' : current);
-        var known = lists.characters.indexOf(currentName) >= 0 || lists.weapons.indexOf(currentName) >= 0;
         var groups = [
-            { label: g.itemTypes[0], list: lists.characters },
-            { label: g.itemTypes[1], list: lists.weapons }
-        ];
-        var body = groups.map(function (group) {
-            if (!group.list.length) {
-                return '';
-            }
-            return '<optgroup label="' + esc(group.label) + '">'
-                + group.list.map(function (name) {
-                    return '<option value="' + esc(name) + '"'
-                        + (name === currentName ? ' selected' : '') + '>' + esc(name) + '</option>';
-                }).join('')
-                + '</optgroup>';
-        }).join('');
-
-        if (currentName && !known) {
-            body = '<option value="' + esc(currentName) + '" selected>' + esc(currentName)
-                + '（原记录）</option>' + body;
-        } else if (!currentName) {
-            body = '<option value="" selected disabled>请选择角色 / 物品</option>' + body;
+            { key: 'characters', label: g.itemTypes[0], list: lists.characters },
+            { key: 'weapons', label: g.itemTypes[1], list: lists.weapons }
+        ].filter(function (group) {
+            return group.list.length > 0;
+        });
+        var active = groups[0] ? groups[0].key : '';
+        if (currentName && lists.weapons.indexOf(currentName) >= 0) {
+            active = 'weapons';
         }
 
+        var mask = document.createElement('div');
+        mask.className = 'modal-mask name-picker-mask';
+        mask.innerHTML = '<div class="modal name-picker-modal">'
+            + '<header><h3>选择角色 / 物品</h3>'
+            + '<button class="modal-close" type="button" aria-label="关闭">×</button></header>'
+            + '<div class="name-picker-tabs">' + groups.map(function (group) {
+                return '<button type="button" class="name-picker-tab'
+                    + (group.key === active ? ' active' : '') + '" data-key="' + group.key + '">'
+                    + esc(group.label) + '<span>' + group.list.length + '</span></button>';
+            }).join('') + '</div>'
+            + '<div class="name-picker-body"><div class="name-picker-grid"></div></div>'
+            + '</div>';
+
+        var grid = $('.name-picker-grid', mask);
+        var tabs = $$('.name-picker-tab', mask);
+
+        function renderGrid() {
+            var group = groups.filter(function (item) {
+                return item.key === active;
+            })[0] || groups[0];
+            if (!group) {
+                grid.innerHTML = '<div class="name-picker-empty">暂无可选名称</div>';
+                return;
+            }
+            /* 原记录名称不在名单时，在当前分组置顶保留，避免改名后无法还原 */
+            var list = group.list.slice();
+            if (currentName && lists.characters.indexOf(currentName) < 0
+                    && lists.weapons.indexOf(currentName) < 0) {
+                list.unshift(currentName);
+            }
+            grid.innerHTML = list.map(function (name) {
+                return '<button type="button" class="name-picker-cell'
+                    + (name === currentName ? ' active' : '') + '" data-name="' + esc(name) + '">'
+                    + nameIconHtml(name, 'md')
+                    + '<span class="name-picker-name">' + esc(name) + '</span></button>';
+            }).join('');
+        }
+
+        function close() {
+            mask.remove();
+        }
+
+        tabs.forEach(function (tab) {
+            tab.addEventListener('click', function () {
+                active = tab.dataset.key;
+                tabs.forEach(function (item) {
+                    item.classList.toggle('active', item === tab);
+                });
+                renderGrid();
+            });
+        });
+
+        grid.addEventListener('click', function (event) {
+            var cell = event.target.closest('.name-picker-cell');
+            if (!cell) {
+                return;
+            }
+            var name = cell.dataset.name;
+            close();
+            if (typeof onPick === 'function') {
+                onPick(name);
+            }
+        });
+
+        $('.modal-close', mask).addEventListener('click', close);
+        mask.addEventListener('click', function (event) {
+            if (event.target === mask) {
+                close();
+            }
+        });
+
+        renderGrid();
+        document.body.appendChild(mask);
+    }
+
+    function nameTriggerHtml(key, name) {
+        return '<button type="button" class="input name-picker-trigger" data-picker-key="' + esc(key) + '">'
+            + '<span class="name-picker-value">' + nameTriggerValueHtml(name) + '</span>'
+            + '<span class="name-picker-arrow">▾</span></button>';
+    }
+
+    function nameTriggerValueHtml(name) {
+        return name
+            ? nameIconHtml(name, 'sm') + '<b>' + esc(name) + '</b>'
+            : '<b class="name-picker-placeholder">请选择角色 / 物品</b>';
+    }
+
+    function updateNameTrigger(btn, name) {
+        var valueEl = $('.name-picker-value', btn);
+        if (valueEl) {
+            valueEl.innerHTML = nameTriggerValueHtml(name);
+        }
+    }
+
+    function namePickerHtml(field, current) {
+        var currentName = String(current === undefined || current === null ? '' : current);
         return '<label class="field field-full"><span>' + esc(field.label) + '</span>'
-            + '<select name="' + field.key + '" class="name-picker">' + body + '</select></label>';
+            + '<input type="hidden" name="' + field.key + '" value="' + esc(currentName) + '"/>'
+            + nameTriggerHtml(field.key, currentName)
+            + '</label>';
     }
 
     function fieldHtml(field, value) {
@@ -1734,6 +1837,20 @@
             if (opts.onMount) {
                 opts.onMount(mask, form);
             }
+
+            $$('.name-picker-trigger', form).forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    var key = btn.dataset.pickerKey;
+                    var input = form.querySelector('[name="' + key + '"]');
+                    if (!input) {
+                        return;
+                    }
+                    openNamePicker(input.value, function (name) {
+                        input.value = name;
+                        updateNameTrigger(btn, name);
+                    });
+                });
+            });
 
             function close(result) {
                 mask.remove();
@@ -3836,29 +3953,38 @@
             + '</select>';
     }
 
-    function ocrNameSelectHtml(item, lists) {
-        var g = gameConfig();
+    function ocrNameSelectHtml(item) {
         var current = String(item.itemName || '');
-        var known = lists.characters.indexOf(current) >= 0 || lists.weapons.indexOf(current) >= 0;
-        var body = '<option value=""' + (current ? '' : ' selected') + '>请选择角色 / 物品</option>';
-        if (current && !known) {
-            body += '<option value="' + esc(current) + '" selected>原文：' + esc(current) + '</option>';
+        return '<input type="hidden" data-w="itemName" value="' + esc(current) + '"/>'
+            + '<button type="button" class="input ocr-name-trigger' + (current ? '' : ' empty') + '">'
+            + '<span class="ocr-name-label">' + (current ? esc(current) : '请选择角色 / 物品') + '</span>'
+            + '<i>▾</i></button>';
+    }
+
+    function updateOcrNameTrigger(btn, name) {
+        btn.classList.toggle('empty', !name);
+        var label = $('.ocr-name-label', btn);
+        if (label) {
+            label.textContent = name || '请选择角色 / 物品';
         }
-        [
-            { label: g.itemTypes[0], list: lists.characters },
-            { label: g.itemTypes[1], list: lists.weapons }
-        ].forEach(function (group) {
-            if (!group.list.length) {
-                return;
-            }
-            body += '<optgroup label="' + esc(group.label) + '">'
-                + group.list.map(function (name) {
-                    return '<option value="' + esc(name) + '"'
-                        + (name === current ? ' selected' : '') + '>' + esc(name) + '</option>';
-                }).join('')
-                + '</optgroup>';
+    }
+
+    /** 把 OCR 结果里每行的名称按钮接到头像网格弹窗 */
+    function bindOcrNamePickers(box) {
+        $$('.ocr-name-trigger', box).forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var row = btn.closest('.ocr-wish-row');
+                var input = $('[data-w=itemName]', row);
+                openNamePicker(input.value, function (name) {
+                    input.value = name;
+                    updateOcrNameTrigger(btn, name);
+                    var icon = $('.ocr-item-icon', row);
+                    if (icon) {
+                        icon.outerHTML = ocrItemIconHtml(name);
+                    }
+                });
+            });
         });
-        return '<select class="input" data-w="itemName">' + body + '</select>';
     }
 
     function ocrItemIconHtml(name) {
@@ -3887,7 +4013,6 @@
 
     function renderOcrWishes(result, box, close) {
         var g = gameConfig();
-        var lists = nameLists(state.game);
         var candidates = (result && result.candidates) || [];
         if (!candidates.length) {
             box.innerHTML = ocrWarningsHtml(result.warnings) + ocrRawHtml(result.rawText);
@@ -3906,7 +4031,7 @@
                     + ocrItemIconHtml(item.itemName)
                     + '<div class="ocr-wish-main">'
                     + '<div class="ocr-wish-fields">'
-                    + ocrNameSelectHtml(item, lists)
+                    + ocrNameSelectHtml(item)
                     + '<select class="input" data-w="rarity">'
                     + '<option value="5"' + (item.rarity === 5 ? ' selected' : '') + '>五星</option>'
                     + '<option value="4"' + (item.rarity === 4 ? ' selected' : '') + '>四星</option>'
@@ -3925,6 +4050,8 @@
             + '<div class="ocr-foot"><button class="btn btn-primary btn-sm" id="ocr-import" type="button">'
             + '导入勾选记录</button></div>'
             + ocrRawHtml(result.rawText);
+
+        bindOcrNamePickers(box);
 
         var importBtn = $('#ocr-import', box);
         importBtn.addEventListener('click', function () {
@@ -3971,7 +4098,6 @@
 
     function renderOcrHistory(result, box, close) {
         var g = gameConfig();
-        var lists = nameLists(state.game);
         var candidates = (result && result.candidates) || [];
         if (!candidates.length) {
             box.innerHTML = ocrWarningsHtml(result.warnings) + ocrRawHtml(result.rawText);
@@ -3996,7 +4122,7 @@
                     + ocrItemIconHtml(item.itemName)
                     + '<div class="ocr-wish-main">'
                     + '<div class="ocr-wish-fields">'
-                    + ocrNameSelectHtml(item, lists)
+                    + ocrNameSelectHtml(item)
                     + ocrIsUpSelectHtml(item)
                     + '<select class="input" data-w="pool">' + poolOptions + '</select>'
                     + '<input class="input" type="number" min="1" max="200" data-w="pityCount" value="'
@@ -4012,6 +4138,8 @@
             + '<div class="ocr-foot"><button class="btn btn-primary btn-sm" id="ocr-import" type="button">'
             + '导入勾选记录</button></div>'
             + ocrRawHtml(result.rawText);
+
+        bindOcrNamePickers(box);
 
         var importBtn = $('#ocr-import', box);
         importBtn.addEventListener('click', function () {
