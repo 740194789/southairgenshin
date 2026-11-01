@@ -2694,6 +2694,37 @@ body.game-starrail {
     padding: 0 20px 18px;
 }
 
+.ocr-modes {
+    display: inline-flex;
+    gap: 4px;
+    margin: 14px 20px 0;
+    padding: 3px;
+    border-radius: 11px;
+    border: 1px solid var(--line);
+    background: rgba(9, 11, 20, 0.55);
+}
+
+.ocr-mode {
+    padding: 7px 16px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 12.5px;
+    cursor: pointer;
+    transition: color 0.2s, background 0.2s;
+}
+
+.ocr-mode:hover {
+    color: var(--text);
+}
+
+.ocr-mode.active {
+    background: rgba(211, 188, 142, 0.18);
+    color: var(--gold-2);
+    font-weight: 600;
+}
+
 .ocr-engines {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2946,6 +2977,14 @@ body.game-starrail {
 }
 
 @media (max-width: 760px) {
+    .ocr-modes {
+        margin: 12px 18px 0;
+    }
+
+    .ocr-mode {
+        padding: 7px 13px;
+    }
+
     .ocr-engines {
         grid-template-columns: 1fr;
         margin: 12px 18px 0;

@@ -2,6 +2,7 @@ package com.southair.genshin.module.ocr;
 
 import com.southair.genshin.common.BusinessException;
 import com.southair.genshin.module.ocr.dto.OcrEngineStatus;
+import com.southair.genshin.module.ocr.dto.OcrRawResult;
 import com.southair.genshin.module.ocr.dto.OcrWishResult;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -46,21 +47,8 @@ public class OcrService {
 
     public OcrWishResult recognizeWishes(MultipartFile file, String engine, String game) {
         validate(file);
-        String normalized = engine == null ? "" : engine.trim().toLowerCase(Locale.ROOT);
-        if (normalized.isEmpty()) {
-            normalized = ENGINE_TESSERACT;
-        }
-        if (!ENGINE_TESSERACT.equals(normalized)) {
-            throw new BusinessException("浏览器识别请在本地完成，仅把文本提交到 /api/ocr/parse");
-        }
-        byte[] bytes;
-        try {
-            bytes = file.getBytes();
-        } catch (IOException e) {
-            throw new BusinessException("读取图片失败：" + e.getMessage());
-        }
-        String ext = resolveExtension(file);
-        TesseractEngine.OcrOutput output = tesseractEngine.recognizeWithTsv(bytes, ext);
+        requireTesseract(engine);
+        TesseractEngine.OcrOutput output = recognize(file);
         OcrWishResult result = parser.parseWishes(output.getText(), output.getTsv(), game);
         result.setEngine(ENGINE_TESSERACT);
         return result;
@@ -70,6 +58,35 @@ public class OcrService {
         OcrWishResult result = parser.parseWishes(text, tsv, game);
         result.setEngine(ENGINE_BROWSER);
         return result;
+    }
+
+    /** 只做文字 + 坐标识别，具体解析交给前端（出金历史等非原生截图格式） */
+    public OcrRawResult recognizeRaw(MultipartFile file, String engine) {
+        validate(file);
+        requireTesseract(engine);
+        TesseractEngine.OcrOutput output = recognize(file);
+        OcrRawResult result = new OcrRawResult();
+        result.setEngine(ENGINE_TESSERACT);
+        result.setText(output.getText());
+        result.setTsv(output.getTsv());
+        return result;
+    }
+
+    private void requireTesseract(String engine) {
+        String normalized = engine == null ? "" : engine.trim().toLowerCase(Locale.ROOT);
+        if (!normalized.isEmpty() && !ENGINE_TESSERACT.equals(normalized)) {
+            throw new BusinessException("浏览器识别请在本地完成，仅把文本提交到 /api/ocr/parse");
+        }
+    }
+
+    private TesseractEngine.OcrOutput recognize(MultipartFile file) {
+        byte[] bytes;
+        try {
+            bytes = file.getBytes();
+        } catch (IOException e) {
+            throw new BusinessException("读取图片失败：" + e.getMessage());
+        }
+        return tesseractEngine.recognizeWithTsv(bytes, resolveExtension(file));
     }
 
     private void validate(MultipartFile file) {

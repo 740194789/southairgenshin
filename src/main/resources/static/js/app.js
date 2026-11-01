@@ -2886,8 +2886,15 @@
     /* ---------------- 截图识别 ---------------- */
 
     var OCR_ENGINE_KEY = 'sg_ocr_engine';
+    var OCR_MODE_KEY = 'sg_ocr_mode';
     var TESSERACT_SRC = 'https://cdn.jsdelivr.net/npm/tesseract.js@4.1.4/dist/tesseract.min.js';
     var tesseractLoading = null;
+
+    var OCR_MODE_HINTS = {
+        wishes: '上传游戏内抽卡记录截图，按文字与角色 / 武器头像识别候选记录；核对名称、星级与卡池后再导入。',
+        history: '上传提瓦特小助手「出金历史」截图：每行只认「N抽」次数与左侧头像，'
+            + '卡池按顶部标签推断，时间默认当前且可逐条修改。'
+    };
 
     /** 带图片上传的请求：不能设置 Content-Type，交给浏览器生成 boundary */
     function apiUpload(path, formData) {
@@ -2956,7 +2963,8 @@
         return tesseractLoading;
     }
 
-    function runBrowserOcr(file, onStatus) {
+    /** 浏览器 OCR：只取文字与坐标，原生截图与出金历史各自解析 */
+    function browserRecognize(file, onStatus) {
         return loadTesseract().then(function (Tesseract) {
             return Tesseract.recognize(file, 'chi_sim+eng', {
                 logger: function (m) {
@@ -2971,10 +2979,16 @@
                 }
             }).then(function (res) {
                 var data = (res && res.data) || {};
-                return api('/api/ocr/parse', {
-                    method: 'POST',
-                    body: { text: data.text || '', tsv: data.tsv || '' }
-                });
+                return { text: data.text || '', tsv: data.tsv || '' };
+            });
+        });
+    }
+
+    function runBrowserOcr(file, onStatus) {
+        return browserRecognize(file, onStatus).then(function (data) {
+            return api('/api/ocr/parse', {
+                method: 'POST',
+                body: { text: data.text || '', tsv: data.tsv || '' }
             });
         });
     }
@@ -3042,6 +3056,7 @@
     function openOcrDialog() {
         var g = gameConfig();
         var selected = localStorage.getItem(OCR_ENGINE_KEY) || '';
+        var mode = localStorage.getItem(OCR_MODE_KEY) === 'history' ? 'history' : 'wishes';
         var currentFile = null;
 
         return new Promise(function (resolve) {
@@ -3052,8 +3067,11 @@
                 + '<span class="pool-tag">' + esc(g.fullName) + '</span></h3>'
                 + '<button class="modal-close" type="button" aria-label="关闭">×</button></header>'
                 + '<div class="modal-body ocr-body">'
-                + '<p class="modal-hint">上传抽卡记录截图，按文字与角色 / 武器头像识别候选记录；'
-                + '核对名称、星级与卡池后再导入。</p>'
+                + '<div class="ocr-modes" id="ocr-modes">'
+                + '<button type="button" class="ocr-mode" data-mode="wishes">抽卡记录</button>'
+                + '<button type="button" class="ocr-mode" data-mode="history">出金历史</button>'
+                + '</div>'
+                + '<p class="modal-hint" id="ocr-mode-hint">' + esc(OCR_MODE_HINTS[mode]) + '</p>'
                 + '<div class="ocr-engines" id="ocr-engines"><span class="ocr-loading">正在检测可用引擎…</span></div>'
                 + '<div class="ocr-drop" id="ocr-drop" role="button" tabindex="0">'
                 + '<input id="ocr-file" type="file" accept="image/*" hidden/>'
@@ -3095,6 +3113,8 @@
             });
 
             var enginesBox = $('#ocr-engines', mask);
+            var modesBox = $('#ocr-modes', mask);
+            var modeHint = $('#ocr-mode-hint', mask);
             var drop = $('#ocr-drop', mask);
             var fileInput = $('#ocr-file', mask);
             var preview = $('#ocr-preview', mask);
@@ -3107,6 +3127,29 @@
                 statusEl.textContent = text || '';
                 statusEl.className = 'ocr-status' + (isError ? ' error' : '');
             }
+
+            function renderModes() {
+                $$('.ocr-mode', modesBox).forEach(function (btn) {
+                    var active = btn.dataset.mode === mode;
+                    btn.classList.toggle('active', active);
+                    btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+                });
+                modeHint.textContent = OCR_MODE_HINTS[mode];
+            }
+
+            $$('.ocr-mode', modesBox).forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    if (btn.dataset.mode === mode) {
+                        return;
+                    }
+                    mode = btn.dataset.mode;
+                    localStorage.setItem(OCR_MODE_KEY, mode);
+                    renderModes();
+                    resultBox.innerHTML = '';
+                    setStatus('');
+                });
+            });
+            renderModes();
 
             function renderEngines() {
                 enginesBox.innerHTML = engines.map(function (engine) {
@@ -3231,26 +3274,39 @@
                 return hit ? hit.label : key;
             }
 
-            function runEngine(engineKey) {
+            function runEngine(engineKey, runMode) {
+                var field = new FormData();
+                field.append('file', currentFile);
+                if (runMode === 'history') {
+                    if (engineKey === 'browser') {
+                        return browserRecognize(currentFile, setStatus).then(function (raw) {
+                            return parseHistoryScreenshot(raw);
+                        });
+                    }
+                    return apiUpload('/api/ocr/raw?engine=' + encodeURIComponent(engineKey), field)
+                        .then(function (raw) {
+                            return parseHistoryScreenshot(raw);
+                        });
+                }
                 if (engineKey === 'browser') {
                     return runBrowserOcr(currentFile, setStatus);
                 }
-                var field = new FormData();
-                field.append('file', currentFile);
                 return apiUpload('/api/ocr/wishes?engine=' + encodeURIComponent(engineKey), field);
             }
 
-            function showResult(result) {
+            function showResult(result, runMode) {
                 if (!result) {
                     resultBox.innerHTML = ocrWarningsHtml(['没有返回识别结果']);
                     return;
                 }
                 setStatus('正在匹配头像…');
-                enhanceOcrAvatars(result, currentFile).then(function () {
+                var enhance = runMode === 'history' ? enhanceHistoryAvatars : enhanceOcrAvatars;
+                var render = runMode === 'history' ? renderOcrHistory : renderOcrWishes;
+                enhance(result, currentFile).then(function () {
                     setStatus('识别完成 · ' + engineLabel(selected));
-                    renderOcrWishes(result, resultBox, close);
+                    render(result, resultBox, close);
                 }).catch(function () {
-                    renderOcrWishes(result, resultBox, close);
+                    render(result, resultBox, close);
                 });
             }
 
@@ -3260,6 +3316,7 @@
                 }
                 runBtn.disabled = true;
                 resultBox.innerHTML = '';
+                var runMode = mode;
                 // 当前引擎优先，失败时按顺序自动降级到其它可用引擎
                 var chain = [selected].concat(engines
                     .filter(function (item) {
@@ -3273,7 +3330,7 @@
                 function attempt() {
                     var engineKey = chain[index];
                     setStatus('识别中（' + engineLabel(engineKey) + '）…');
-                    runEngine(engineKey).then(function (result) {
+                    runEngine(engineKey, runMode).then(function (result) {
                         setStatus('识别完成 · ' + engineLabel(engineKey));
                         runBtn.disabled = false;
                         if (engineKey !== selected) {
@@ -3281,7 +3338,7 @@
                             localStorage.setItem(OCR_ENGINE_KEY, selected);
                             renderEngines();
                         }
-                        showResult(result);
+                        showResult(result, runMode);
                     }).catch(function (err) {
                         index += 1;
                         if (index < chain.length) {
@@ -3467,6 +3524,318 @@
         });
     }
 
+    /* ---------------- 出金历史（第三方助手截图）：只有「N抽」与头像 ---------------- */
+
+    /* 顶部卡池标签 → 系统卡池值；同时出现多个标签时无法判断，默认角色池 */
+    var HISTORY_POOL_TABS = {
+        genshin: [
+            { keys: ['千星', '集录', '混池'], pool: '集录祈愿' },
+            { keys: ['武器'], pool: '武器活动' },
+            { keys: ['常驻'], pool: '常驻' },
+            { keys: ['角色'], pool: '角色活动' }
+        ],
+        starrail: [
+            { keys: ['联动'], pool: '联动' },
+            { keys: ['光锥'], pool: '光锥活动' },
+            { keys: ['常驻'], pool: '常驻' },
+            { keys: ['角色'], pool: '角色活动' }
+        ]
+    };
+
+    /** tesseract TSV → 单词框（跳过表头与无效行） */
+    function parseOcrTsv(tsv) {
+        var words = [];
+        if (!tsv) {
+            return words;
+        }
+        var rows = String(tsv).split(/\r?\n/);
+        for (var i = 1; i < rows.length; i++) {
+            var cols = rows[i].split('\t');
+            if (cols.length < 12) {
+                continue;
+            }
+            var text = cols.slice(11).join('\t').trim();
+            var conf = Number(cols[10]);
+            if (!text || (isFinite(conf) && conf < 0)) {
+                continue;
+            }
+            var x = Number(cols[6]);
+            var y = Number(cols[7]);
+            var w = Number(cols[8]);
+            var h = Number(cols[9]);
+            if (!isFinite(x) || !isFinite(y) || !w || !h) {
+                continue;
+            }
+            words.push({ text: text, x: x, y: y, w: w, h: h, conf: conf });
+        }
+        return words;
+    }
+
+    /** 按垂直重叠把单词聚成行，便于按行判断「N抽 / 已垫 / 歪」 */
+    function groupOcrLines(words) {
+        var lines = [];
+        words.slice().sort(function (a, b) {
+            return a.y - b.y || a.x - b.x;
+        }).forEach(function (word) {
+            var target = null;
+            lines.forEach(function (line) {
+                if (target) {
+                    return;
+                }
+                var overlap = Math.min(line.bottom, word.y + word.h) - Math.max(line.top, word.y);
+                if (overlap > Math.min(line.height, word.h) * 0.5) {
+                    target = line;
+                }
+            });
+            if (!target) {
+                lines.push({
+                    top: word.y,
+                    bottom: word.y + word.h,
+                    height: word.h,
+                    words: [word]
+                });
+                return;
+            }
+            target.words.push(word);
+            target.top = Math.min(target.top, word.y);
+            target.bottom = Math.max(target.bottom, word.y + word.h);
+            target.height = Math.max(target.height, word.h);
+        });
+        lines.forEach(function (line) {
+            line.words.sort(function (a, b) {
+                return a.x - b.x;
+            });
+            line.text = line.words.map(function (word) {
+                return word.text;
+            }).join(' ');
+            line.x = Math.min.apply(null, line.words.map(function (word) {
+                return word.x;
+            }));
+            line.y = line.top;
+            var right = Math.max.apply(null, line.words.map(function (word) {
+                return word.x + word.w;
+            }));
+            line.w = right - line.x;
+            line.h = line.bottom - line.top;
+        });
+        lines.sort(function (a, b) {
+            return a.y - b.y || a.x - b.x;
+        });
+        return lines;
+    }
+
+    function detectHistoryPool(lines, game) {
+        var tabs = HISTORY_POOL_TABS[game] || [];
+        var found = [];
+        lines.filter(function (line) {
+            return !/(\d{1,3})\s*抽/.test(line.text);
+        }).slice(0, 4).forEach(function (line) {
+            tabs.forEach(function (tab) {
+                if (found.indexOf(tab.pool) >= 0) {
+                    return;
+                }
+                if (tab.keys.some(function (key) {
+                    return line.text.indexOf(key) >= 0;
+                })) {
+                    found.push(tab.pool);
+                }
+            });
+        });
+        if (found.length === 1) {
+            return { pool: found[0], found: found, confirmed: true };
+        }
+        return { pool: gameConfig().charPool, found: found, confirmed: false };
+    }
+
+    /** 解析出金历史：每行「N抽」即一次五星，跳过「已垫N抽」 */
+    function parseHistoryScreenshot(raw) {
+        var g = gameConfig();
+        var result = {
+            engine: 'history',
+            rawText: (raw && raw.text) || '',
+            candidates: [],
+            warnings: [],
+            pendingPity: null
+        };
+        var lines = groupOcrLines(parseOcrTsv(raw && raw.tsv));
+        if (!lines.length) {
+            result.warnings.push('没有读取到文字坐标（TSV），可改用其它引擎重试');
+            return result;
+        }
+
+        var detected = detectHistoryPool(lines, state.game);
+        if (!detected.confirmed) {
+            result.warnings.push(detected.found.length > 1
+                ? '顶部同时出现多个卡池标签，无法判断当前卡池，已默认「' + poolLabel(g.charPool) + '」，请逐条核对'
+                : '未识别到顶部卡池标签，已默认「' + poolLabel(g.charPool) + '」，请逐条核对');
+        }
+
+        var now = nowLocal();
+        var seen = {};
+        lines.forEach(function (line) {
+            var compact = line.text.replace(/\s+/g, '');
+            var match = compact.match(/(\d{1,3})\s*抽/);
+            if (!match) {
+                return;
+            }
+            var count = Number(match[1]);
+            if (!count || count > 200) {
+                return;
+            }
+            if (/已垫|垫了/.test(compact)) {
+                result.pendingPity = count;
+                return;
+            }
+            var key = Math.round(line.y / Math.max(4, line.h / 2)) + ':' + count;
+            if (seen[key]) {
+                return;
+            }
+            seen[key] = true;
+            result.candidates.push({
+                itemName: '',
+                rarity: 5,
+                pool: detected.pool,
+                pityCount: count,
+                wishTime: now,
+                x: line.x,
+                y: line.y,
+                w: line.w,
+                h: line.h,
+                lostStamp: compact.indexOf('歪') >= 0,
+                avatarMatch: null
+            });
+        });
+
+        if (result.candidates.length) {
+            result.warnings.push('截图不含时间，已默认当前时间；「歪」按红章或文字识别，可在每条记录中修改');
+        } else {
+            result.warnings.push('没有识别到「N抽」文本，请确认截图属于出金历史页面且文字清晰完整');
+        }
+        return result;
+    }
+
+    /** 出金历史里头像与「N抽」文字等高，且紧贴在文字左侧 */
+    function historyAvatarRects(box) {
+        var h = Math.max(8, Number(box.h) || 0);
+        var rects = [];
+        [1.4, 1.7, 2.0, 2.3, 2.6].forEach(function (ratio) {
+            var side = h * ratio;
+            [0, 0.15, -0.15].forEach(function (yOffset) {
+                [0.05, 0.2, 0.35, 0.5, 0.7].forEach(function (gapRatio) {
+                    rects.push({
+                        x: (Number(box.x) || 0) - side - h * gapRatio,
+                        y: (Number(box.y) || 0) + h / 2 - side / 2 + h * yOffset,
+                        side: side
+                    });
+                });
+            });
+        });
+        return rects;
+    }
+
+    function matchHistoryAvatar(img, item) {
+        var best = null;
+        historyAvatarRects(item).forEach(function (rect) {
+            if (rect.x < 0 || rect.y < 0 || rect.x + rect.side > img.width
+                || rect.y + rect.side > img.height) {
+                return;
+            }
+            var hit = matchOcrItem(regionHash(img, rect.x, rect.y, rect.side));
+            if (hit && (!best || hit.distance < best.distance)) {
+                best = hit;
+            }
+        });
+        return best;
+    }
+
+    /** 文字右侧的深红像素块（歪印章）；金色进度条 g 通道较高，不会命中 */
+    function hasRedStamp(img, item) {
+        var h = Math.max(8, Number(item.h) || 0);
+        var startX = Math.round((Number(item.x) || 0) + (Number(item.w) || 0) + h * 0.4);
+        var startY = Math.max(0, Math.round((Number(item.y) || 0) - h * 0.15));
+        var endX = img.width;
+        var endY = Math.min(img.height, Math.round((Number(item.y) || 0) + h * 1.15));
+        var sw = endX - startX;
+        var sh = endY - startY;
+        if (sw < 12 || sh < 8) {
+            return false;
+        }
+        var canvas = document.createElement('canvas');
+        canvas.width = Math.min(300, sw);
+        canvas.height = Math.max(1, Math.round(canvas.width * sh / sw));
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(img, startX, startY, sw, sh, 0, 0, canvas.width, canvas.height);
+        var pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+        var red = 0;
+        var total = 0;
+        for (var i = 0; i < pixels.length; i += 4) {
+            total += 1;
+            if (pixels[i] >= 150 && pixels[i + 1] <= 95 && pixels[i + 2] <= 95) {
+                red += 1;
+            }
+        }
+        return red >= Math.max(30, total * 0.012);
+    }
+
+    /** 按头像 / 歪章补全名称与 UP 状态；名称已知时用常驻名单推断是否歪 */
+    function enhanceHistoryAvatars(result, file) {
+        var candidates = (result && result.candidates) || [];
+        var maps = window.SG_ITEM_HASHES || {};
+        if (!file || !candidates.length || !maps[state.game]) {
+            applyHistoryIsUp(result);
+            return Promise.resolve(result);
+        }
+        return loadOcrImage(file).then(function (img) {
+            candidates.forEach(function (item) {
+                var hit = matchHistoryAvatar(img, item);
+                if (hit) {
+                    var confident = hit.distance <= OCR_MATCH_THRESHOLD && hit.margin >= OCR_MATCH_MARGIN;
+                    item.avatarMatch = {
+                        name: hit.name,
+                        type: hit.type,
+                        distance: hit.distance,
+                        confident: confident
+                    };
+                    if (confident) {
+                        item.itemName = hit.name;
+                        item.autoName = true;
+                    }
+                }
+                if (!item.lostStamp && hasRedStamp(img, item)) {
+                    item.lostStamp = true;
+                }
+            });
+            applyHistoryIsUp(result);
+            return result;
+        }).catch(function () {
+            applyHistoryIsUp(result);
+            return result;
+        });
+    }
+
+    function applyHistoryIsUp(result) {
+        (result.candidates || []).forEach(function (item) {
+            if (item.pool === '常驻') {
+                item.isUp = null;
+                return;
+            }
+            if (item.lostStamp) {
+                item.isUp = false;
+                return;
+            }
+            var type = inferItemType(state.game, item.itemName);
+            item.isUp = item.itemName ? inferIsUp(state.game, item.pool, item.itemName, type) : true;
+        });
+    }
+
+    function ocrIsUpSelectHtml(item) {
+        var lost = item.isUp === false;
+        return '<select class="input" data-w="isUp">'
+            + '<option value="1"' + (lost ? '' : ' selected') + '>未歪</option>'
+            + '<option value="0"' + (lost ? ' selected' : '') + '>歪了</option>'
+            + '</select>';
+    }
+
     function ocrNameSelectHtml(item, lists) {
         var g = gameConfig();
         var current = String(item.itemName || '');
@@ -3581,6 +3950,95 @@
                             || (/武器|光锥/.test(pool) ? g.itemTypes[1] : g.itemTypes[0]),
                         pityCount: pityRaw === '' ? null : Number(pityRaw),
                         wishTime: timeRaw ? toApiTime(timeRaw) : null
+                    });
+                });
+                if (!payload.length) {
+                    throw new Error('请至少勾选一条记录');
+                }
+                return api('/api/wishes/import?format=json&mode=merge', {
+                    method: 'POST',
+                    body: payload
+                }).then(function (res) {
+                    toast('已导入 ' + res.imported + ' 条'
+                        + (res.skipped ? '，跳过重复 ' + res.skipped + ' 条' : '')
+                        + (res.filtered ? '，忽略 ' + res.filtered + ' 条' : ''));
+                    close(true);
+                    refreshWishList();
+                });
+            });
+        });
+    }
+
+    function renderOcrHistory(result, box, close) {
+        var g = gameConfig();
+        var lists = nameLists(state.game);
+        var candidates = (result && result.candidates) || [];
+        if (!candidates.length) {
+            box.innerHTML = ocrWarningsHtml(result.warnings) + ocrRawHtml(result.rawText);
+            return;
+        }
+
+        var head = '共识别 ' + candidates.length + ' 条五星记录';
+        if (result.pendingPity) {
+            head += ' · 截图显示当前已垫 ' + result.pendingPity + ' 抽';
+        }
+        head += '，时间默认当前，可逐条修改';
+
+        box.innerHTML = ocrWarningsHtml(result.warnings)
+            + '<div class="ocr-wish-head">' + head + '</div>'
+            + '<div class="ocr-wish-list">' + candidates.map(function (item, index) {
+                var poolOptions = g.pools.map(function (pool) {
+                    return '<option value="' + esc(pool) + '"'
+                        + (item.pool === pool ? ' selected' : '') + '>' + esc(poolLabel(pool)) + '</option>';
+                }).join('');
+                return '<div class="ocr-wish-row" data-index="' + index + '">'
+                    + '<input type="checkbox" class="ocr-wish-check" checked aria-label="导入该条"/>'
+                    + ocrItemIconHtml(item.itemName)
+                    + '<div class="ocr-wish-main">'
+                    + '<div class="ocr-wish-fields">'
+                    + ocrNameSelectHtml(item, lists)
+                    + ocrIsUpSelectHtml(item)
+                    + '<select class="input" data-w="pool">' + poolOptions + '</select>'
+                    + '<input class="input" type="number" min="1" max="200" data-w="pityCount" value="'
+                    + (item.pityCount === null || item.pityCount === undefined ? '' : item.pityCount)
+                    + '" placeholder="第几抽"/>'
+                    + '<input class="input" type="datetime-local" data-w="wishTime" value="'
+                    + localTimeValue(item.wishTime) + '"/>'
+                    + '</div>'
+                    + ocrMatchHtml(item)
+                    + '</div>'
+                    + '</div>';
+            }).join('') + '</div>'
+            + '<div class="ocr-foot"><button class="btn btn-primary btn-sm" id="ocr-import" type="button">'
+            + '导入勾选记录</button></div>'
+            + ocrRawHtml(result.rawText);
+
+        var importBtn = $('#ocr-import', box);
+        importBtn.addEventListener('click', function () {
+            guard(function () {
+                var payload = [];
+                $$('.ocr-wish-row', box).forEach(function (row) {
+                    if (!$('.ocr-wish-check', row).checked) {
+                        return;
+                    }
+                    var nameInput = $('[data-w=itemName]', row).value.trim();
+                    var pool = $('[data-w=pool]', row).value;
+                    var pityRaw = $('[data-w=pityCount]', row).value.trim();
+                    var timeRaw = $('[data-w=wishTime]', row).value;
+                    var isUpRaw = $('[data-w=isUp]', row).value;
+                    if (!nameInput) {
+                        throw new Error('第 ' + (Number(row.dataset.index) + 1) + ' 条未选择'
+                            + g.itemTypes[0] + ' / ' + g.itemTypes[1]);
+                    }
+                    payload.push({
+                        itemName: nameInput,
+                        rarity: 5,
+                        pool: pool,
+                        itemType: inferItemType(state.game, nameInput)
+                            || (/武器|光锥/.test(pool) ? g.itemTypes[1] : g.itemTypes[0]),
+                        pityCount: pityRaw === '' ? null : Number(pityRaw),
+                        wishTime: timeRaw ? toApiTime(timeRaw) : null,
+                        isUp: pool === '常驻' ? null : isUpRaw === '1'
                     });
                 });
                 if (!payload.length) {

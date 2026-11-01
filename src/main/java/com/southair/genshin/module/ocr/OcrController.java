@@ -3,6 +3,7 @@ package com.southair.genshin.module.ocr;
 import com.southair.genshin.common.R;
 import com.southair.genshin.module.ocr.dto.OcrEngineStatus;
 import com.southair.genshin.module.ocr.dto.OcrParseRequest;
+import com.southair.genshin.module.ocr.dto.OcrRawResult;
 import com.southair.genshin.module.ocr.dto.OcrWishResult;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -42,6 +43,13 @@ public class OcrController {
                                    @RequestParam(defaultValue = "tesseract") String engine,
                                    @RequestParam(defaultValue = "genshin") String game) {
         return R.ok(ocrService.recognizeWishes(file, engine, game));
+    }
+
+    /** 只返回文字与坐标，供前端解析其它截图格式（出金历史）。 */
+    @PostMapping("/raw")
+    public R<OcrRawResult> raw(@RequestParam("file") MultipartFile file,
+                               @RequestParam(defaultValue = "tesseract") String engine) {
+        return R.ok(ocrService.recognizeRaw(file, engine));
     }
 
     /** 浏览器 OCR 回传文本的解析入口。 */
