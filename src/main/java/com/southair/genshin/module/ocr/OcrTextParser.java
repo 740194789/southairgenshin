@@ -2,13 +2,13 @@ package com.southair.genshin.module.ocr;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.southair.genshin.module.ocr.dto.OcrResourceResult;
 import com.southair.genshin.module.ocr.dto.OcrWishCandidate;
 import com.southair.genshin.module.ocr.dto.OcrWishResult;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -18,16 +18,15 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 把识别出的文本解析成结构化数据。
+ * 把识别出的文本解析成抽卡记录候选。
  *
  * <p>文本若是 JSON 则优先按 JSON 解析，否则走基于标签与数字邻近关系的启发式解析。
+ * 若带有 TSV，则同时保留每条记录所在文字行的坐标，供前端做头像匹配。
  * 所有结果都只作为「候选」，最终由用户确认。</p>
  */
 @Component
 public class OcrTextParser {
 
-    /** 千分位或纯数字 */
-    private static final Pattern NUMBER = Pattern.compile("(\\d{1,3}(?:[,，]\\d{3})+|\\d+)");
     /** 五星 / 5星 / ★★★★★ */
     private static final Pattern FIVE_STAR = Pattern.compile("[5五]\\s*[星★]|★{5}|☆{5}");
     /** 四星 / 4星 / ★★★★ */
@@ -35,7 +34,6 @@ public class OcrTextParser {
     private static final Pattern TIME = Pattern.compile(
             "\\d{4}\\s*[-/.年]\\s*\\d{1,2}\\s*[-/.月]\\s*\\d{1,2}\\s*日?[\\sT]*\\d{1,2}\\s*:\\s*\\d{2}(?:\\s*:\\s*\\d{2})?");
     private static final Pattern CHINESE_RUN = Pattern.compile("[\\u4e00-\\u9fa5]{2,12}");
-    private static final Pattern PITY = Pattern.compile("第\\s*(\\d{1,3})\\s*抽|(\\d{1,3})\\s*抽");
 
     /** 抽卡记录里常见的非物品词，避免被当成物品名称 */
     private static final Set<String> NAME_STOP_WORDS = new HashSet<>(Arrays.asList(
@@ -49,304 +47,22 @@ public class OcrTextParser {
         this.objectMapper = objectMapper;
     }
 
-    /* ==================== 资源 ==================== */
-
-    public OcrResourceResult parseResource(String text, String game) {
-        OcrResourceResult result = new OcrResourceResult();
-        result.setRawText(text == null ? "" : text);
-        if (text == null || text.trim().isEmpty()) {
-            result.getWarnings().add("没有识别到任何文字，请换一张更清晰的截图");
-            return result;
-        }
-
-        if (applyResourceJson(text, game, result)) {
-            return result;
-        }
-
-        String normalized = normalize(text);
-        Map<String, List<String>> aliases = resourceAliases(game);
-        Set<Integer> usedPositions = new HashSet<>();
-        Map<String, Long> values = new LinkedHashMap<>();
-        for (Map.Entry<String, List<String>> entry : aliases.entrySet()) {
-            Long value = findValueNearLabels(normalized, entry.getValue(), usedPositions);
-            if (value != null) {
-                values.put(entry.getKey(), value);
-            }
-        }
-        applyPositionFallback(normalized, game, aliases, values, usedPositions, result);
-
-        result.setPrimogems(values.get("primogems"));
-        result.setMora(values.get("mora"));
-        result.setIntertwinedFates(values.get("intertwinedFates"));
-        result.setAcquaintedFates(values.get("acquaintedFates"));
-
-        if (values.isEmpty()) {
-            result.getWarnings().add("未能从文本中定位到资源数量，请手动填写");
-        } else if (values.size() < 4) {
-            result.getWarnings().add("只识别到 " + values.size() + " 项资源，其余请手动补全");
-        }
-        return result;
-    }
-
-    /** JSON 形式的资源结果：{primogems: 123, mora: ..., ...} */
-    private boolean applyResourceJson(String text, String game, OcrResourceResult result) {
-        String trimmed = text.trim();
-        int brace = trimmed.indexOf('{');
-        int end = trimmed.lastIndexOf('}');
-        if (brace < 0 || end <= brace) {
-            return false;
-        }
-        try {
-            JsonNode root = objectMapper.readTree(trimmed.substring(brace, end + 1));
-            if (root == null || !root.isObject()) {
-                return false;
-            }
-            Map<String, List<String>> aliases = resourceAliases(game);
-            boolean any = false;
-            for (Map.Entry<String, List<String>> entry : aliases.entrySet()) {
-                Long value = readLong(root, entry.getKey(), entry.getValue());
-                if (value != null) {
-                    setResourceField(result, entry.getKey(), value);
-                    any = true;
-                }
-            }
-            return any;
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    private Long readLong(JsonNode root, String field, List<String> aliases) {
-        List<String> keys = new ArrayList<>();
-        keys.add(field);
-        keys.addAll(aliases);
-        for (String key : keys) {
-            JsonNode node = root.get(key);
-            if (node == null || node.isNull()) {
-                continue;
-            }
-            if (node.isNumber()) {
-                return node.asLong();
-            }
-            String raw = node.asText("").trim();
-            if (raw.isEmpty() || "null".equalsIgnoreCase(raw)) {
-                continue;
-            }
-            Long parsed = firstNumber(raw);
-            if (parsed != null) {
-                return parsed;
-            }
-        }
-        return null;
-    }
-
-    private void setResourceField(OcrResourceResult result, String field, Long value) {
-        switch (field) {
-            case "primogems":
-                result.setPrimogems(value);
-                break;
-            case "mora":
-                result.setMora(value);
-                break;
-            case "intertwinedFates":
-                result.setIntertwinedFates(value);
-                break;
-            case "acquaintedFates":
-                result.setAcquaintedFates(value);
-                break;
-            default:
-                break;
-        }
-    }
-
-    private Map<String, List<String>> resourceAliases(String game) {
-        Map<String, List<String>> map = new LinkedHashMap<>();
-        if ("starrail".equalsIgnoreCase(game)) {
-            map.put("primogems", Arrays.asList("星琼", "星琼数"));
-            map.put("mora", Arrays.asList("信用点"));
-            map.put("intertwinedFates", Arrays.asList("星轨专票", "专票"));
-            map.put("acquaintedFates", Arrays.asList("星轨通票", "通票"));
-        } else {
-            map.put("primogems", Arrays.asList("原石", "原石数"));
-            map.put("mora", Arrays.asList("摩拉"));
-            map.put("intertwinedFates", Arrays.asList("纠缠之缘", "纠缠"));
-            map.put("acquaintedFates", Arrays.asList("相遇之缘", "相遇"));
-        }
-        return map;
-    }
-
-    /**
-     * 位置兜底：只缺一项资源、且恰好只剩一个未使用的数字时，按位置补上。
-     *
-     * <p>例如「星琼」被 OCR 误识别成字母，但数值仍在，就把它当作第一项资源的数值；
-     * 结果会带上警告，由用户确认。</p>
-     */
-    private void applyPositionFallback(String text, String game, Map<String, List<String>> aliases,
-                                       Map<String, Long> values, Set<Integer> usedPositions,
-                                       OcrResourceResult result) {
-        List<String> missing = new ArrayList<>();
-        for (String key : aliases.keySet()) {
-            if (!values.containsKey(key)) {
-                missing.add(key);
-            }
-        }
-        if (missing.size() != 1) {
-            return;
-        }
-        List<Candidate> unused = new ArrayList<>();
-        Matcher matcher = NUMBER.matcher(text);
-        while (matcher.find()) {
-            if (usedPositions.contains(matcher.start())) {
-                continue;
-            }
-            Long value = toLong(matcher.group());
-            if (value != null) {
-                unused.add(new Candidate(matcher.start(), value, matcher.start()));
-            }
-        }
-        if (unused.size() != 1) {
-            return;
-        }
-        Candidate only = unused.get(0);
-        String field = missing.get(0);
-        values.put(field, only.value);
-        usedPositions.add(only.position);
-        result.getWarnings().add(resourceLabel(field, game) + " 未直接匹配到，已按位置推断为 "
-                + only.value + "，请核对");
-    }
-
-    private String resourceLabel(String field, String game) {
-        boolean starrail = "starrail".equalsIgnoreCase(game);
-        switch (field) {
-            case "primogems":
-                return starrail ? "星琼" : "原石";
-            case "mora":
-                return starrail ? "信用点" : "摩拉";
-            case "intertwinedFates":
-                return starrail ? "星轨专票" : "纠缠之缘";
-            case "acquaintedFates":
-                return starrail ? "星轨通票" : "相遇之缘";
-            default:
-                return field;
-        }
-    }
-
-    /**
-     * 在标签附近找最可能的数字。
-     *
-     * <p>优先取与标签同一行的数字，其次取上下相邻行，最后才按全局字符距离兜底，
-     * 避免把上一行的数字错配给下一行的标签。</p>
-     */
-    private Long findValueNearLabels(String text, List<String> aliases, Set<Integer> usedPositions) {
-        Candidate best = null;
-
-        for (String alias : aliases) {
-            int from = 0;
-            while (true) {
-                int idx = text.indexOf(alias, from);
-                if (idx < 0) {
-                    break;
-                }
-                from = idx + alias.length();
-                int labelEnd = idx + alias.length();
-
-                int lineStart = text.lastIndexOf('\n', idx) + 1;
-                int lineEnd = text.indexOf('\n', labelEnd);
-                if (lineEnd < 0) {
-                    lineEnd = text.length();
-                }
-
-                // 同一行：标签之后优先，标签之前次之
-                best = mergeBest(best, scan(text, labelEnd, lineEnd, usedPositions, 1, labelEnd));
-                best = mergeBest(best, scan(text, lineStart, idx, usedPositions, 3, labelEnd));
-
-                // 上一行 / 下一行
-                int prevStart = lineStart > 0 ? text.lastIndexOf('\n', lineStart - 2) + 1 : 0;
-                int nextEnd = text.indexOf('\n', lineEnd + 1);
-                nextEnd = nextEnd < 0 ? text.length() : nextEnd;
-                if (prevStart < lineStart) {
-                    best = mergeBest(best, scan(text, prevStart, lineStart - 1, usedPositions, 6, labelEnd));
-                }
-                if (nextEnd > lineEnd) {
-                    best = mergeBest(best, scan(text, lineEnd + 1, nextEnd, usedPositions, 5, labelEnd));
-                }
-
-                // 全局兜底：允许跨行但距离受限
-                int windowStart = Math.max(0, idx - 30);
-                int windowEnd = Math.min(text.length(), labelEnd + 30);
-                best = mergeBest(best, scan(text, windowStart, windowEnd, usedPositions, 9, labelEnd));
-            }
-        }
-
-        if (best == null) {
-            return null;
-        }
-        usedPositions.add(best.position);
-        return best.value;
-    }
-
-    private Candidate mergeBest(Candidate current, Candidate candidate) {
-        if (candidate == null) {
-            return current;
-        }
-        return current == null || candidate.score < current.score ? candidate : current;
-    }
-
-    /**
-     * 在 [from, to) 区间内挑选数字。
-     *
-     * @param weight    区间权重，越小越优先
-     * @param labelEnd  标签结束位置，用于计算同行内距离
-     */
-    private Candidate scan(String text, int from, int to, Set<Integer> usedPositions,
-                           int weight, int labelEnd) {
-        if (from >= to || from < 0) {
-            return null;
-        }
-        Candidate best = null;
-        Matcher matcher = NUMBER.matcher(text.substring(from, to));
-        while (matcher.find()) {
-            int start = from + matcher.start();
-            int endPos = from + matcher.end();
-            if (usedPositions.contains(start)) {
-                continue;
-            }
-            Long value = toLong(matcher.group());
-            if (value == null) {
-                continue;
-            }
-            int distance = start >= labelEnd ? start - labelEnd : labelEnd - endPos;
-            int score = weight * 100 + Math.max(0, distance);
-            if (best == null || score < best.score) {
-                best = new Candidate(start, value, score);
-            }
-        }
-        return best;
-    }
-
-    private static class Candidate {
-        private final int position;
-        private final long value;
-        private final int score;
-
-        Candidate(int position, long value, int score) {
-            this.position = position;
-            this.value = value;
-            this.score = score;
-        }
-    }
-
     /* ==================== 抽卡记录 ==================== */
 
-    public OcrWishResult parseWishes(String text, String game) {
+    public OcrWishResult parseWishes(String text, String tsv, String game) {
         OcrWishResult result = new OcrWishResult();
-        result.setRawText(text == null ? "" : text);
-        if (text == null || text.trim().isEmpty()) {
+        String raw = text == null ? "" : text;
+        List<OcrLine> lines = parseTsvLines(tsv);
+        if (raw.trim().isEmpty() && !lines.isEmpty()) {
+            raw = joinLines(lines);
+        }
+        result.setRawText(raw);
+        if (raw.trim().isEmpty() && lines.isEmpty()) {
             result.getWarnings().add("没有识别到任何文字，请换一张更清晰的截图");
             return result;
         }
 
-        List<OcrWishCandidate> fromJson = wishesFromJson(text, game);
+        List<OcrWishCandidate> fromJson = wishesFromJson(raw, game);
         if (fromJson != null) {
             result.setCandidates(fromJson);
             if (fromJson.isEmpty()) {
@@ -355,13 +71,155 @@ public class OcrTextParser {
             return result;
         }
 
-        result.setCandidates(wishesFromLines(text, game, result));
+        if (lines.isEmpty()) {
+            lines = textLines(raw);
+        }
+        result.setCandidates(wishesFromLines(lines, game, result));
         if (result.getCandidates().isEmpty()) {
             result.getWarnings().add("未能从文本中解析出抽卡记录，建议手动录入");
         } else {
-            result.getWarnings().add("纯文本识别结果仅供参考，导入前请核对物品名称、星级与卡池");
+            result.getWarnings().add("识别结果仅供参考，导入前请核对名称、星级与卡池");
         }
         return result;
+    }
+
+    /** tesseract TSV → 每行文字与坐标（level=5 为词，按 block/par/line 合并） */
+    private List<OcrLine> parseTsvLines(String tsv) {
+        List<OcrLine> lines = new ArrayList<>();
+        if (tsv == null || tsv.trim().isEmpty()) {
+            return lines;
+        }
+        String[] rows = tsv.split("\n");
+        Map<String, LineBuilder> groups = new LinkedHashMap<>();
+        for (int i = 1; i < rows.length; i++) {
+            String row = rows[i];
+            if (row.trim().isEmpty()) {
+                continue;
+            }
+            String[] cols = row.split("\t", -1);
+            if (cols.length < 12) {
+                continue;
+            }
+            int level;
+            try {
+                level = Integer.parseInt(cols[0].trim());
+            } catch (NumberFormatException e) {
+                continue;
+            }
+            if (level != 5) {
+                continue;
+            }
+            String word = cols[11].trim();
+            if (word.isEmpty()) {
+                continue;
+            }
+            String key = cols[2].trim() + "-" + cols[3].trim() + "-" + cols[4].trim();
+            LineBuilder builder = groups.get(key);
+            if (builder == null) {
+                builder = new LineBuilder();
+                groups.put(key, builder);
+            }
+            builder.add(cols, word);
+        }
+        for (LineBuilder builder : groups.values()) {
+            lines.add(builder.build());
+        }
+        lines.sort(Comparator.comparingInt(line -> line.y));
+        return lines;
+    }
+
+    private String joinLines(List<OcrLine> lines) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < lines.size(); i++) {
+            if (i > 0) {
+                sb.append('\n');
+            }
+            sb.append(lines.get(i).text);
+        }
+        return sb.toString();
+    }
+
+    /** 没有 TSV 时的兜底：按换行切分，坐标为空 */
+    private List<OcrLine> textLines(String text) {
+        List<OcrLine> lines = new ArrayList<>();
+        for (String raw : text.split("\\r?\\n")) {
+            String line = raw.trim();
+            if (!line.isEmpty()) {
+                lines.add(new OcrLine(line, 0, 0, 0, 0));
+            }
+        }
+        return lines;
+    }
+
+    /** 单个 TSV 文字行的累积器 */
+    private static class LineBuilder {
+        private final StringBuilder text = new StringBuilder();
+        private int left = Integer.MAX_VALUE;
+        private int top = Integer.MAX_VALUE;
+        private int right = 0;
+        private int bottom = 0;
+
+        void add(String[] cols, String word) {
+            int x;
+            int y;
+            int w;
+            int h;
+            try {
+                x = Integer.parseInt(cols[6].trim());
+                y = Integer.parseInt(cols[7].trim());
+                w = Integer.parseInt(cols[8].trim());
+                h = Integer.parseInt(cols[9].trim());
+            } catch (NumberFormatException e) {
+                return;
+            }
+            int x2 = x + Math.max(0, w);
+            int y2 = y + Math.max(0, h);
+            left = Math.min(left, x);
+            top = Math.min(top, y);
+            right = Math.max(right, x2);
+            bottom = Math.max(bottom, y2);
+            if (text.length() > 0) {
+                char prev = text.charAt(text.length() - 1);
+                char next = word.charAt(0);
+                if (isAsciiWord(prev) && isAsciiWord(next)) {
+                    text.append(' ');
+                }
+            }
+            text.append(word);
+        }
+
+        private boolean isAsciiWord(char ch) {
+            return ch < 128 && Character.isLetterOrDigit(ch);
+        }
+
+        OcrLine build() {
+            if (left == Integer.MAX_VALUE) {
+                return new OcrLine(text.toString(), 0, 0, 0, 0);
+            }
+            return new OcrLine(text.toString(), left, top,
+                    Math.max(0, right - left), Math.max(0, bottom - top));
+        }
+    }
+
+    /** 一行文字及其在截图中的像素坐标 */
+    private static class OcrLine {
+        private final String text;
+        private final int x;
+        private final int y;
+        private final int w;
+        private final int h;
+
+        OcrLine(String text, int x, int y, int w, int h) {
+            this.text = text;
+            this.x = x;
+            this.y = y;
+            this.w = w;
+            this.h = h;
+        }
+
+        boolean hasBox() {
+            return w > 0 && h > 0;
+        }
     }
 
     /** JSON 形式的抽卡记录数组 */
@@ -420,32 +278,30 @@ public class OcrTextParser {
             if (value.isNumber()) {
                 return value.asInt();
             }
-            Long parsed = firstNumber(value.asText(""));
-            if (parsed != null) {
-                return parsed.intValue();
+            String raw = value.asText("");
+            Matcher matcher = Pattern.compile("\\d+").matcher(raw);
+            if (matcher.find()) {
+                return Integer.parseInt(matcher.group());
             }
         }
         return null;
     }
 
     /** 纯文本启发式：按行找星级标记，并就近匹配物品名 */
-    private List<OcrWishCandidate> wishesFromLines(String text, String game, OcrWishResult result) {
+    private List<OcrWishCandidate> wishesFromLines(List<OcrLine> lines, String game, OcrWishResult result) {
         List<OcrWishCandidate> list = new ArrayList<>();
-        String[] lines = text.split("\\r?\\n");
-        Integer lastRarity = null;
-        String lastTime = null;
+        OcrLine lastRarityLine = null;
+        String lastRarityTime = null;
+        OcrLine pendingNameLine = null;
         String pendingName = null;
         String pendingTime = null;
         int skipped = 0;
 
-        for (String rawLine : lines) {
-            String line = rawLine.trim();
-            if (line.isEmpty()) {
-                continue;
-            }
-            Integer rarity = detectRarity(line);
-            String time = detectTime(line);
-            String name = detectItemName(line);
+        for (OcrLine line : lines) {
+            String text = line.text;
+            Integer rarity = detectRarity(text);
+            String time = detectTime(text);
+            String name = detectItemName(text);
 
             if (rarity == null && name == null) {
                 continue;
@@ -454,20 +310,22 @@ public class OcrTextParser {
             if (rarity != null && name == null) {
                 // 星级单独成行：与上一行的名称配对
                 if (pendingName != null) {
-                    addCandidate(list, pendingName, rarity, time != null ? time : pendingTime, game);
+                    addCandidate(list, pendingName, rarity, time != null ? time : pendingTime,
+                            pendingNameLine, line, game);
                     pendingName = null;
+                    pendingNameLine = null;
                     pendingTime = null;
                 } else {
-                    lastRarity = rarity;
-                    lastTime = time;
+                    lastRarityLine = line;
+                    lastRarityTime = time;
                 }
                 continue;
             }
 
             if (rarity != null) {
-                addCandidate(list, name, rarity, time, game);
-                lastRarity = null;
-                lastTime = null;
+                addCandidate(list, name, rarity, time, line, line, game);
+                lastRarityLine = null;
+                lastRarityTime = null;
                 continue;
             }
 
@@ -476,13 +334,15 @@ public class OcrTextParser {
                 skipped++;
             }
             pendingName = name;
-            pendingTime = time != null ? time : lastTime;
+            pendingNameLine = line;
+            pendingTime = time != null ? time : lastRarityTime;
         }
 
         // 行尾残留：只有名称能配上一行出现过的星级，否则丢弃，避免凭空造记录
         if (pendingName != null) {
-            if (lastRarity != null) {
-                addCandidate(list, pendingName, lastRarity, pendingTime, game);
+            if (lastRarityLine != null) {
+                addCandidate(list, pendingName, detectRarity(lastRarityLine.text),
+                        pendingTime, pendingNameLine, lastRarityLine, game);
             } else {
                 skipped++;
             }
@@ -493,7 +353,8 @@ public class OcrTextParser {
         return list;
     }
 
-    private void addCandidate(List<OcrWishCandidate> list, String name, Integer rarity, String time, String game) {
+    private void addCandidate(List<OcrWishCandidate> list, String name, Integer rarity, String time,
+                              OcrLine nameLine, OcrLine rarityLine, String game) {
         if (rarity == null || rarity < 4) {
             return;
         }
@@ -502,6 +363,14 @@ public class OcrTextParser {
         item.setRarity(rarity);
         item.setPool(defaultPool(game));
         item.setWishTime(time);
+        OcrLine boxLine = nameLine != null && nameLine.hasBox() ? nameLine
+                : (rarityLine != null && rarityLine.hasBox() ? rarityLine : null);
+        if (boxLine != null) {
+            item.setX(boxLine.x);
+            item.setY(boxLine.y);
+            item.setW(boxLine.w);
+            item.setH(boxLine.h);
+        }
         list.add(item);
     }
 
@@ -555,7 +424,7 @@ public class OcrTextParser {
     }
 
     private String defaultPool(String game) {
-        return "starrail".equalsIgnoreCase(game) ? "角色活动" : "角色活动";
+        return "角色活动";
     }
 
     private String normalizePool(String pool, String game) {
@@ -607,43 +476,5 @@ public class OcrTextParser {
 
     private String pad(String value) {
         return value.length() == 1 ? "0" + value : value;
-    }
-
-    /* ==================== 通用 ==================== */
-
-    /** 全角转半角，便于正则匹配 */
-    private String normalize(String text) {
-        StringBuilder sb = new StringBuilder(text.length());
-        for (char ch : text.toCharArray()) {
-            // 全角 ASCII（含全角数字）转半角
-            if (ch >= '\uFF01' && ch <= '\uFF5E') {
-                sb.append((char) (ch - 0xFEE0));
-            } else if (ch == '\u3000') {
-                sb.append(' ');
-            } else {
-                sb.append(ch);
-            }
-        }
-        return sb.toString();
-    }
-
-    private Long firstNumber(String text) {
-        Matcher matcher = NUMBER.matcher(normalize(text));
-        return matcher.find() ? toLong(matcher.group()) : null;
-    }
-
-    private Long toLong(String raw) {
-        if (raw == null) {
-            return null;
-        }
-        String digits = raw.replaceAll("[,，\\s]", "");
-        if (digits.isEmpty() || digits.length() > 12) {
-            return null;
-        }
-        try {
-            return Long.parseLong(digits);
-        } catch (NumberFormatException e) {
-            return null;
-        }
     }
 }

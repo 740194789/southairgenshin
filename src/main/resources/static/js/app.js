@@ -68,6 +68,97 @@
         return GAMES[state.game] || GAMES.genshin;
     }
 
+    /* 卡池展示名：库内值保持不变，避免历史记录、备份与导入失效 */
+    var POOL_LABELS = {
+        '角色活动': '角色卡池',
+        '武器活动': '武器卡池',
+        '光锥活动': '光锥卡池'
+    };
+
+    function poolLabel(pool) {
+        return POOL_LABELS[pool] || pool || '';
+    }
+
+    /* 常驻名单：用于自动判定五星是否 UP（与链接导入口径一致） */
+    var STANDARD_ITEMS = {
+        genshin: {
+            characters: ['迪卢克', '琴', '莫娜', '七七', '刻晴', '提纳里', '迪希雅', '梦见月瑞希'],
+            weapons: ['天空之刃', '天空之翼', '天空之傲', '天空之卷', '天空之脊', '阿莫斯之弓',
+                '狼的末路', '风鹰剑', '四风原典', '和璞鸢']
+        },
+        starrail: {
+            characters: ['姬子', '瓦尔特', '布洛妮娅', '克拉拉', '杰帕德', '彦卿', '白露'],
+            weapons: ['银河铁道之夜', '无可取代的东西', '但战斗还未结束', '以世界之名',
+                '制胜的瞬间', '于夜色中', '时节不居'],
+            extraCharacters: ['云璃', '银枝', '银狼', '符玄', '刃', '希儿']
+        }
+    };
+
+    function inferIsUp(game, pool, name, itemType) {
+        var standard = STANDARD_ITEMS[game];
+        if (!standard || !name) {
+            return false;
+        }
+        if (pool === '角色活动') {
+            return standard.characters.indexOf(name) < 0
+                && (standard.extraCharacters || []).indexOf(name) < 0;
+        }
+        if (pool === '武器活动' || pool === '光锥活动') {
+            return standard.weapons.indexOf(name) < 0;
+        }
+        return false;
+    }
+
+    function nameLists(game) {
+        var characterMap = (window.SG_AVATARS || {})[game] || {};
+        var weaponMap = (window.SG_WEAPON_ICONS || {})[game] || {};
+        function sortNames(list) {
+            return list.sort(function (a, b) {
+                return a.localeCompare(b, 'zh-Hans-CN');
+            });
+        }
+        return {
+            characters: sortNames(Object.keys(characterMap)),
+            weapons: sortNames(Object.keys(weaponMap))
+        };
+    }
+
+    function inferItemType(game, name) {
+        var lists = nameLists(game);
+        if (lists.characters.indexOf(name) >= 0) {
+            return GAMES[game].itemTypes[0];
+        }
+        if (lists.weapons.indexOf(name) >= 0) {
+            return GAMES[game].itemTypes[1];
+        }
+        return null;
+    }
+
+    /* 四星角色名单：补充已有按类别选择时用于切分四星 / 五星角色 */
+    var FOUR_STAR_CHARACTERS = {
+        genshin: ['丽莎', '芭芭拉', '凯亚', '雷泽', '安柏', '香菱', '北斗', '行秋', '凝光', '菲谢尔',
+            '班尼特', '诺艾尔', '重云', '迪奥娜', '砂糖', '辛焱', '罗莎莉亚', '烟绯', '托马', '早柚',
+            '五郎', '九条裟罗', '鹿野院平藏', '绮良良', '云堇', '久岐忍', '柯莱', '多莉', '坎蒂丝',
+            '莱依拉', '珐露珊', '瑶瑶', '米卡', '卡维', '琳妮特', '菲米尼', '夏洛蒂', '夏沃蕾',
+            '嘉明', '赛索斯', '卡齐娜', '欧洛伦', '蓝砚', '伊安珊', '伊法', '塔利雅', '爱诺',
+            '雅珂达', '叶洛亚', '布伦妮', '阿罗夏'],
+        starrail: ['三月七', '丹恒', '阿兰', '艾丝妲', '黑塔', '希露瓦', '娜塔莎', '佩拉', '桑博',
+            '虎克', '玲可', '卢卡', '青雀', '停云', '素裳', '驭空', '桂乃芬', '雪衣', '寒鸦',
+            '貊泽', '加拉赫', '米沙', '大丽花']
+    };
+
+    function ownedNameOptions(game, category) {
+        var lists = nameLists(game);
+        if (category === 'weapons5') {
+            return lists.weapons;
+        }
+        var four = FOUR_STAR_CHARACTERS[game] || [];
+        var wantFour = category === 'characters4';
+        return lists.characters.filter(function (name) {
+            return (four.indexOf(name) >= 0) === wantFour;
+        });
+    }
+
     function $(selector, root) {
         return (root || document).querySelector(selector);
     }
@@ -340,8 +431,7 @@
     /** 统计页内部分组：只显示当前分组，避免所有模块堆在一页。 */
     var STATS_TABS = [
         { key: 'overview', label: '概览' },
-        { key: 'pity', label: '保底' },
-        { key: 'analysis', label: '分析' },
+        { key: 'pity', label: '保底分析' },
         { key: 'expect', label: '期望' },
         { key: 'resource', label: '资源' }
     ];
@@ -452,7 +542,7 @@
                 + '<span class="stars">' + starText(item.rarity) + '</span>'
                 + esc(item.itemName) + '</span>'
                 + (rarity >= 5 && item.pool
-                    ? '<span class="mini-meta">' + esc(item.pool) + ' · ' + (item.pityCount || 1) + ' 抽</span>'
+                    ? '<span class="mini-meta">' + esc(poolLabel(item.pool)) + ' · ' + (item.pityCount || 1) + ' 抽</span>'
                     : '')
                 + '<span class="time">' + esc(time) + '</span>'
                 + '</div>';
@@ -488,8 +578,11 @@
             + '</section>';
     }
 
-    function poolStatsPanelHtml(data) {
-        var list = data.poolStats || [];
+    function poolStatsPanelHtml(data, active) {
+        var all = data.poolStats || [];
+        var list = active && active !== PULL_POOL_ALL
+            ? all.filter(function (item) { return item.pool === active; })
+            : all;
         if (!list.length) {
             return '';
         }
@@ -508,16 +601,16 @@
         }
 
         return '<section class="panel pool-stats-panel">'
-            + '<h3>卡池保底统计<span class="pool-tag">保底 · 出货</span></h3>'
+            + '<h3>卡池保底统计<span class="pool-tag">'
+            + esc(active && active !== PULL_POOL_ALL ? poolLabel(active) : '保底 · 出货') + '</span></h3>'
             + '<div class="pool-stat-list">'
             + list.map(function (item) {
                 var percent = item.cap > 0
                     ? Math.min(100, Math.round(item.currentPity / item.cap * 100)) : 0;
                 return '<div class="pool-stat">'
                     + '<div class="pool-stat-head">'
-                    + '<span class="pool-tag">' + esc(item.pool) + '</span>'
-                    + '<span class="pool-stat-pity">已垫 ' + item.currentPity + ' / ' + item.cap + ' 抽'
-                    + (item.pityManual ? ' · 手动' : '') + '</span>'
+                    + '<span class="pool-tag">' + esc(poolLabel(item.pool)) + '</span>'
+                    + '<span class="pool-stat-pity">已垫 ' + item.currentPity + ' / ' + item.cap + ' 抽</span>'
                     + '</div>'
                     + '<div class="pity-bar"><span style="width:' + percent + '%"></span></div>'
                     + '<div class="pool-stat-meta">'
@@ -534,6 +627,33 @@
     }
 
     /* ---------------- 抽卡期望 ---------------- */
+
+    /* 保底分析的卡池筛选：全部 + 有记录 / 有保底数据的卡池 */
+    var PULL_POOL_ALL = 'all';
+
+    function statsPoolOptions(data) {
+        var options = [{ key: PULL_POOL_ALL, label: '全部' }];
+        (data.poolStats || []).forEach(function (item) {
+            options.push({ key: item.pool, label: poolLabel(item.pool) });
+        });
+        return options;
+    }
+
+    function statsPoolFilterHtml(data, active) {
+        return '<div class="pull-pools stats-pool-filter" id="stats-pool-filter">'
+            + statsPoolOptions(data).map(function (option) {
+                return '<button class="pull-pool' + (option.key === active ? ' active' : '') + '"'
+                    + ' type="button" data-pool="' + esc(option.key) + '">'
+                    + esc(option.label) + '</button>';
+            }).join('') + '</div>';
+    }
+
+    function statsPityContentHtml(data, active) {
+        var g = gameConfig();
+        var showCapture = state.game === 'genshin'
+            && (active === PULL_POOL_ALL || active === g.charPool);
+        return (showCapture ? capturePanelHtml(data) : '') + poolStatsPanelHtml(data, active);
+    }
 
     var EXPECT_KEY = 'sg_expect_';
 
@@ -896,7 +1016,6 @@
         el.innerHTML = '<div class="loading">加载中…</div>';
 
         return api('/api/stats/overview').then(function (data) {
-            applyPityOverrides(data);
             var resource = data.resource;
             var total = resource.totalPulls || 0;
             var currencyPulls = resource.pullsFromPrimogems || 0;
@@ -934,7 +1053,6 @@
                 + '<span class="asset-unit">' + esc(g.currency) + '</span></strong>'
                 + '</div>'
                 + '<div class="fortune-actions">'
-                + '<button class="btn btn-primary" id="resource-ocr" type="button">截图识别</button>'
                 + '<button class="btn btn-outline" id="resource-edit" type="button">编辑资源</button>'
                 + '</div>'
                 + '</aside>'
@@ -967,15 +1085,6 @@
                 editBtn.addEventListener('click', function () {
                     guard(function () {
                         return editResource(resource);
-                    });
-                });
-            }
-
-            var ocrBtn = $('#resource-ocr');
-            if (ocrBtn) {
-                ocrBtn.addEventListener('click', function () {
-                    guard(function () {
-                        return openOcrDialog('resource');
                     });
                 });
             }
@@ -1037,7 +1146,8 @@
                 }
                 cycles[pool] = acc;
             });
-            return points;
+            // 记录按时间升序参与周期累计，展示时最新的一根在上
+            return points.reverse();
         }
         return (list || []).map(function (item) {
             return {
@@ -1047,7 +1157,7 @@
                 value: Number(item.pityCount) || 0,
                 up: item.isUp === true
             };
-        });
+        }).reverse();
     }
 
     function pullChartHtml(points, emptyText) {
@@ -1060,7 +1170,7 @@
         });
         return '<div class="pull-chart">' + points.map(function (point) {
             var width = Math.max(4, Math.round(point.value / max * 100));
-            return '<div class="pull-row' + (point.up ? '' : ' lost') + '" title="' + esc(point.pool) + ' · '
+            return '<div class="pull-row' + (point.up ? '' : ' lost') + '" title="' + esc(poolLabel(point.pool)) + ' · '
                 + (point.up ? 'UP' : '歪') + ' · 用了 ' + point.value + ' 抽">'
                 + '<div class="pull-label">'
                 + avatarHtml({ itemName: point.name, itemType: point.type })
@@ -1071,45 +1181,11 @@
         }).join('') + '</div>';
     }
 
-    /** 卡池筛选按钮：全部 + 有五星记录的卡池，按游戏配置顺序排列。 */
-    var PULL_POOL_ALL = 'all';
-
-    function pullPoolList(list) {
-        var g = gameConfig();
-        var seen = {};
-        (list || []).forEach(function (item) {
-            seen[item.pool || '未知卡池'] = true;
-        });
-        var options = [{ key: PULL_POOL_ALL, label: '全部' }];
-        var known = [];
-        (g.pools || []).forEach(function (pool) {
-            if (seen[pool]) {
-                known.push(pool);
-            }
-        });
-        Object.keys(seen).forEach(function (pool) {
-            if (known.indexOf(pool) < 0) {
-                known.push(pool);
-            }
-        });
-        known.forEach(function (pool) {
-            options.push({ key: pool, label: pool });
-        });
-        return options;
-    }
-
-    function pullPoolsHtml(pools, active) {
-        return pools.map(function (pool) {
-            return '<button class="pull-pool' + (pool.key === active ? ' active' : '') + '" type="button"'
-                + ' data-pool="' + esc(pool.key) + '">' + esc(pool.label) + '</button>';
-        }).join('');
-    }
-
+    /** 卡池筛选按钮已上移到「保底分析」顶部，图表跟随同一筛选。 */
     function pullPanelHtml() {
         return '<section class="panel pull-panel">'
             + '<h3>五星抽数<span class="pool-tag">每次五星用了多少抽</span>'
             + '<button class="btn btn-text pull-toggle" type="button" id="pull-toggle">显示真实抽数</button></h3>'
-            + '<div class="pull-pools" id="pull-pools"></div>'
             + '<p class="pull-summary" id="pull-summary"></p>'
             + '<div class="pull-chart-wrap" id="pull-chart-wrap"></div></section>';
     }
@@ -1117,30 +1193,19 @@
     function renderPullChart(real) {
         var all = (cache.stats && cache.stats.fiveStarRecords) || [];
         cache.pullReal = real;
-        var pools = pullPoolList(all);
-        var exists = pools.some(function (pool) {
-            return pool.key === cache.pullPool;
-        });
-        if (!exists) {
-            cache.pullPool = PULL_POOL_ALL;
-        }
-        var selected = cache.pullPool;
+        var selected = cache.statsPool || PULL_POOL_ALL;
         var list = selected === PULL_POOL_ALL ? all : all.filter(function (item) {
             return (item.pool || '未知卡池') === selected;
         });
         var points = pullChartPoints(list, real);
         var wrap = $('#pull-chart-wrap');
-        var poolWrap = $('#pull-pools');
         var summary = $('#pull-summary');
         var toggle = $('#pull-toggle');
         if (!wrap) {
             return;
         }
-        if (poolWrap) {
-            poolWrap.innerHTML = pullPoolsHtml(pools, selected);
-        }
         wrap.innerHTML = pullChartHtml(points, selected === PULL_POOL_ALL
-            ? '还没有五星记录' : selected + ' 还没有五星记录');
+            ? '还没有五星记录' : poolLabel(selected) + ' 还没有五星记录');
         if (toggle) {
             toggle.textContent = real ? '显示原始抽数' : '显示真实抽数';
             toggle.classList.toggle('active', real);
@@ -1150,7 +1215,7 @@
             total += point.value;
         });
         if (summary) {
-            var scope = selected === PULL_POOL_ALL ? '' : selected + '：';
+            var scope = selected === PULL_POOL_ALL ? '' : poolLabel(selected) + '：';
             if (real) {
                 var hidden = list.filter(function (item) {
                     return item.isUp !== true;
@@ -1169,26 +1234,41 @@
         if (!toggle) {
             return;
         }
-        cache.pullPool = PULL_POOL_ALL;
+        cache.pullReal = false;
         toggle.addEventListener('click', function () {
             renderPullChart(!cache.pullReal);
         });
-        var poolWrap = $('#pull-pools');
-        if (poolWrap) {
-            poolWrap.addEventListener('click', function (event) {
-                var btn = event.target.closest ? event.target.closest('.pull-pool') : null;
-                if (!btn || !poolWrap.contains(btn)) {
-                    return;
-                }
-                var pool = btn.getAttribute('data-pool');
-                if (pool === cache.pullPool) {
-                    return;
-                }
-                cache.pullPool = pool;
-                renderPullChart(cache.pullReal);
-            });
-        }
         renderPullChart(false);
+    }
+
+    /** 保底分析的统一卡池筛选：同时刷新保底面板与五星抽数图表。 */
+    function bindStatsPoolFilter(data) {
+        var bar = $('#stats-pool-filter');
+        if (!bar) {
+            return;
+        }
+        bar.addEventListener('click', function (event) {
+            var btn = event.target.closest ? event.target.closest('.pull-pool') : null;
+            if (!btn || !bar.contains(btn)) {
+                return;
+            }
+            var pool = btn.getAttribute('data-pool');
+            if (pool === cache.statsPool) {
+                return;
+            }
+            cache.statsPool = pool;
+            cache.statsPools[state.game] = pool;
+            Array.prototype.forEach.call(bar.querySelectorAll('.pull-pool'), function (item) {
+                item.classList.toggle('active', item.getAttribute('data-pool') === pool);
+            });
+            var wrap = $('#stats-pity-content');
+            if (wrap) {
+                var html = statsPityContentHtml(data, pool);
+                wrap.innerHTML = html;
+                wrap.hidden = !html;
+            }
+            renderPullChart(cache.pullReal);
+        });
     }
 
     function loadStats() {
@@ -1197,14 +1277,25 @@
         el.innerHTML = '<div class="loading">加载中…</div>';
 
         return api('/api/stats/overview').then(function (data) {
-            applyPityOverrides(data);
             var resource = data.resource;
             var name = (state.user && (state.user.nickname || state.user.username)) || '旅行者';
             cache.stats = data;
             cache.statsTab = cache.statsTab || 'overview';
-            var tab = cache.statsTab;
+            cache.statsPools = cache.statsPools || {};
+            var poolOptions = statsPoolOptions(data);
+            var activePool = cache.statsPools[state.game] || PULL_POOL_ALL;
+            var poolExists = poolOptions.some(function (option) {
+                return option.key === activePool;
+            });
+            if (!poolExists) {
+                activePool = PULL_POOL_ALL;
+            }
+            cache.statsPools[state.game] = activePool;
+            cache.statsPool = activePool;
+            var tab = cache.statsTab === 'analysis' ? 'pity' : cache.statsTab;
+            cache.statsTab = tab;
 
-            var pityHtml = capturePanelHtml(data) + poolStatsPanelHtml(data);
+            var pityHtml = statsPityContentHtml(data, activePool);
 
             el.innerHTML =
                 '<div class="hero">'
@@ -1233,10 +1324,9 @@
                 + '</div>'
 
                 + statsSection('pity', tab)
-                + (pityHtml ? '<div class="stats-duo">' + pityHtml + '</div>' : '')
-                + '</div>'
-
-                + statsSection('analysis', tab)
+                + statsPoolFilterHtml(data, activePool)
+                + '<div class="stats-duo" id="stats-pity-content"' + (pityHtml ? '' : ' hidden') + '>'
+                + pityHtml + '</div>'
                 + luckPanelHtml(data)
                 + pullPanelHtml()
                 + '<section class="panel"><h3>卡池分布<span class="pool-tag">各卡池抽数占比</span></h3>'
@@ -1253,6 +1343,7 @@
 
             bindStatsTabs();
             bindResourcePanel();
+            bindStatsPoolFilter(data);
             bindPullChart();
             bindExpectation(data);
         }).catch(function (err) {
@@ -1289,7 +1380,7 @@
             + '<span class="name' + (rarity === 3 ? ' muted' : '') + '">' + esc(name) + '</span>'
             + '<span class="stars">' + starText(rarity) + '</span>'
             + '<span class="pool-tag' + (item.isUp ? ' up' : '') + '">'
-            + esc(item.pool || '未知卡池') + '</span>'
+            + esc(poolLabel(item.pool) || '未知卡池') + '</span>'
             + '</div>'
             + '<div class="record-sub">' + meta.join('') + '</div>'
             + '</div>'
@@ -1307,12 +1398,12 @@
         var pools = gameConfig().pools;
         var poolOptions = [''].concat(pools).map(function (pool) {
             return '<option value="' + pool + '"' + (state.wishPool === pool ? ' selected' : '') + '>'
-                + (pool || '全部卡池') + '</option>';
+                + (pool ? poolLabel(pool) : '全部卡池') + '</option>';
         }).join('');
 
         el.innerHTML =
             '<div class="page-head">'
-            + '<div><p class="eyebrow">Wish Records</p><h2>抽卡记录</h2><p class="sub">五星出货记录 · 记录抽到五星用了多少抽 · 支持导入导出</p></div>'
+            + '<div><p class="eyebrow">Wish Records</p><h2>抽卡记录</h2><p class="sub">五星出货记录 · 记录抽到五星用了多少抽 · 支持链接导入</p></div>'
             + '<div class="head-actions">'
             + '<button class="btn btn-primary" id="wish-add" type="button">+ 录入五星</button>'
             + '</div>'
@@ -1329,28 +1420,16 @@
             + '</div>'
             + '</div>'
             + '<div class="toolbar-tools">'
-            + '<button class="btn btn-outline btn-sm" id="wish-ocr" type="button">截图导入</button>'
-            + '<button class="btn btn-outline btn-sm" id="wish-import" type="button">导入记录</button>'
+            + '<button class="btn btn-outline btn-sm" id="wish-ocr" type="button">截图识别</button>'
             + '<button class="btn btn-outline btn-sm" id="wish-link-import" type="button">链接导入</button>'
-            + '<button class="btn btn-outline btn-sm" id="wish-export-csv" type="button">导出 CSV</button>'
-            + '<button class="btn btn-outline btn-sm" id="wish-export-json" type="button">导出 JSON</button>'
-            + '<button class="btn btn-text btn-sm" id="wish-template" type="button">下载模板</button>'
-            + '<input id="wish-file" type="file" accept=".csv,.json,text/csv,application/json" hidden/>'
             + '</div>'
             + '</div>'
-            + '<div id="wish-pity" class="wish-pity"></div>'
             + '<div id="wish-list"><div class="loading">加载中…</div></div>'
             + '<div id="wish-pager" class="pager"></div>';
 
         $('#wish-add').addEventListener('click', function () {
             guard(function () {
                 return openEditor('wishes', null);
-            });
-        });
-
-        $('#wish-ocr').addEventListener('click', function () {
-            guard(function () {
-                return openOcrDialog('wishes');
             });
         });
 
@@ -1436,135 +1515,12 @@
         btn.textContent = allSelected ? '取消全选' : '全选本页';
     }
 
-    function pityStorageKey() {
-        var uid = (state.user && (state.user.id || state.user.username)) || 'guest';
-        return 'sg_pity_' + uid + '_' + state.game;
-    }
-
-    function loadPityOverrides() {
-        var parsed = safeParse(localStorage.getItem(pityStorageKey()));
-        return parsed && typeof parsed === 'object' ? parsed : {};
-    }
-
-    function savePityOverrides(map) {
-        localStorage.setItem(pityStorageKey(), JSON.stringify(map));
-    }
-
-    function setPityOverride(pool, value) {
-        var map = loadPityOverrides();
-        if (!value) {
-            delete map[pool];
-        } else {
-            map[pool] = { value: Number(value), at: Date.now() };
-        }
-        savePityOverrides(map);
-    }
-
-    function parseWishTime(value) {
-        if (!value) {
-            return 0;
-        }
-        var ms = Date.parse(String(value).trim().replace(' ', 'T'));
-        return isNaN(ms) ? 0 : ms;
-    }
-
-    /* 手动已垫优先，但一旦导入 / 录入更晚的五星，自动失效并回到记录推导值 */
-    function applyPityOverrides(data) {
-        if (!data || !data.poolStats) {
-            return data;
-        }
-        var latestFive = {};
-        (data.fiveStarRecords || []).forEach(function (record) {
-            if (Number(record.rarity) !== 5) {
-                return;
-            }
-            var time = parseWishTime(record.wishTime);
-            if (!latestFive[record.pool] || time > latestFive[record.pool]) {
-                latestFive[record.pool] = time;
-            }
-        });
-        var map = loadPityOverrides();
-        var dirty = false;
-        data.poolStats.forEach(function (item) {
-            var override = map[item.pool];
-            if (!override) {
-                return;
-            }
-            if ((latestFive[item.pool] || 0) > (Number(override.at) || 0)) {
-                delete map[item.pool];
-                dirty = true;
-                return;
-            }
-            var cap = Number(item.cap) || 90;
-            var pity = Math.max(0, Math.min(cap - 1, Number(override.value) || 0));
-            item.currentPity = pity;
-            item.pullsToPity = Math.max(cap - pity, 0);
-            item.pityManual = true;
-        });
-        if (dirty) {
-            savePityOverrides(map);
-        }
-        return data;
-    }
-
-    function renderWishPity() {
-        var host = $('#wish-pity');
-        if (!host) {
-            return;
-        }
-        host.innerHTML = '';
-        api('/api/stats/overview').then(function (data) {
-            applyPityOverrides(data);
-            var g = gameConfig();
-            var stats = (data && data.poolStats) || [];
-            host.innerHTML = stats.map(function (item) {
-                var cap = Number(item.cap) || (item.pool === g.weaponPool ? 80 : 90);
-                var pity = Math.max(0, Number(item.currentPity) || 0);
-                var left = Math.max(0, cap - pity);
-                return '<button type="button" class="wish-pity-chip'
-                    + (item.upGuaranteed ? ' guaranteed' : '')
-                    + '" data-pool="' + esc(item.pool) + '" data-cap="' + cap + '" data-pity="' + pity
-                    + '" title="点击手动修正已垫">'
-                    + esc(item.pool) + ' 已垫 <strong>' + pity + '</strong> / ' + cap + ' 抽'
-                    + ' · 距保底 ' + left + ' 抽'
-                    + (item.upGuaranteed ? ' · 大保底' : '')
-                    + (item.pityManual ? '<span class="wish-pity-manual">手动</span>' : '')
-                    + '</button>';
-            }).join('');
-
-            host.onclick = function (event) {
-                var chip = event.target.closest ? event.target.closest('.wish-pity-chip') : null;
-                if (!chip) {
-                    return;
-                }
-                var cap = Number(chip.dataset.cap) || 90;
-                var pool = chip.dataset.pool;
-                var input = window.prompt('输入「' + pool + '」当前已垫抽数（0–' + (cap - 1) + '，0 表示清除手动值）',
-                    chip.dataset.pity);
-                if (input === null) {
-                    return;
-                }
-                var value = Math.floor(Number(input));
-                if (!isFinite(value) || value < 0 || value > cap - 1) {
-                    toast('已垫需在 0–' + (cap - 1) + ' 之间', 'error');
-                    return;
-                }
-                setPityOverride(pool, value);
-                renderWishPity();
-                toast(value > 0 ? '已更新「' + pool + '」已垫为 ' + value + ' 抽' : '已清除「' + pool + '」手动已垫');
-            };
-        }).catch(function () {
-            host.innerHTML = '';
-        });
-    }
-
     function refreshWishList() {
         var box = $('#wish-list');
         var pager = $('#wish-pager');
         state.wishSelected.clear();
         updateBatchDelBtn();
         updateSelectAllBtn();
-        renderWishPity();
         var params = new URLSearchParams();
         params.set('page', state.pages.wishes);
         params.set('size', '10');
@@ -1640,15 +1596,16 @@
     function formConfig(type) {
         var g = gameConfig();
         var fields = [
-            {
-                key: 'itemName', label: '抽到的五星', type: 'text',
-                placeholder: g.itemTypes[0] + ' / ' + g.itemTypes[1] + '名称'
-            },
+            { key: 'itemName', label: '选择角色 / 物品', type: 'name-picker', full: true },
             { key: 'rarity', type: 'hidden', default: 5 },
-            { key: 'itemType', label: '类型', type: 'select', options: g.itemTypes, default: g.itemTypes[0] },
-            { key: 'pool', label: '卡池', type: 'select', options: g.pools, default: g.pools[0] },
-            { key: 'pityCount', label: '抽到五星用了多少抽', type: 'number', min: 1, max: 90, default: 1 },
-            { key: 'isUp', label: '是否 UP', type: 'select', options: [{ value: true, label: 'UP 内' }, { value: false, label: '未中 UP' }], default: true }
+            {
+                key: 'pool', label: '卡池', type: 'select',
+                options: g.pools.map(function (pool) {
+                    return { value: pool, label: poolLabel(pool) };
+                }),
+                default: g.pools[0]
+            },
+            { key: 'pityCount', label: '抽到五星用了多少抽', type: 'number', min: 1, max: 90, default: 1 }
         ];
         if (state.game === 'genshin') {
             fields.push({
@@ -1656,15 +1613,44 @@
                 options: [{ value: true, label: '是' }, { value: false, label: '否' }], default: false
             });
         }
-        fields.push(
-            { key: 'wishTime', label: '抽卡时间', type: 'datetime', full: true, default: nowLocal() },
-            { key: 'note', label: '备注', type: 'textarea', full: true }
-        );
+        fields.push({ key: 'wishTime', label: '抽卡时间', type: 'datetime', full: true, default: nowLocal() });
         return {
             title: '抽卡',
             endpoint: '/api/wishes',
             fields: fields
         };
+    }
+
+    function namePickerHtml(field, current) {
+        var g = gameConfig();
+        var lists = nameLists(state.game);
+        var currentName = String(current === undefined || current === null ? '' : current);
+        var known = lists.characters.indexOf(currentName) >= 0 || lists.weapons.indexOf(currentName) >= 0;
+        var groups = [
+            { label: g.itemTypes[0], list: lists.characters },
+            { label: g.itemTypes[1], list: lists.weapons }
+        ];
+        var body = groups.map(function (group) {
+            if (!group.list.length) {
+                return '';
+            }
+            return '<optgroup label="' + esc(group.label) + '">'
+                + group.list.map(function (name) {
+                    return '<option value="' + esc(name) + '"'
+                        + (name === currentName ? ' selected' : '') + '>' + esc(name) + '</option>';
+                }).join('')
+                + '</optgroup>';
+        }).join('');
+
+        if (currentName && !known) {
+            body = '<option value="' + esc(currentName) + '" selected>' + esc(currentName)
+                + '（原记录）</option>' + body;
+        } else if (!currentName) {
+            body = '<option value="" selected disabled>请选择角色 / 物品</option>' + body;
+        }
+
+        return '<label class="field field-full"><span>' + esc(field.label) + '</span>'
+            + '<select name="' + field.key + '" class="name-picker">' + body + '</select></label>';
     }
 
     function fieldHtml(field, value) {
@@ -1674,6 +1660,10 @@
 
         if (field.type === 'hidden') {
             return '<input type="hidden" name="' + field.key + '" value="' + esc(current) + '"/>';
+        }
+
+        if (field.type === 'name-picker') {
+            return namePickerHtml(field, current);
         }
 
         if (field.type === 'select') {
@@ -1740,6 +1730,10 @@
             document.body.style.overflow = 'hidden';
 
             var form = $('form', mask);
+
+            if (opts.onMount) {
+                opts.onMount(mask, form);
+            }
 
             function close(result) {
                 mask.remove();
@@ -1821,7 +1815,7 @@
         return openForm((isEdit ? '编辑' : '新增') + config.title, config.fields, values, {
             validate: function (data) {
                 if (!data.itemName) {
-                    return '请填写五星名称';
+                    return '请选择角色 / 物品';
                 }
                 if (!data.pityCount || data.pityCount < 1 || data.pityCount > 90) {
                     return '抽到五星用了多少抽需在 1-90 之间';
@@ -1832,6 +1826,10 @@
             if (!data) {
                 return null;
             }
+            /* 类型由所选名称推断，是否 UP 按卡池常驻名单自动判定 */
+            data.itemType = inferItemType(state.game, data.itemName)
+                || (item && item.itemType) || gameConfig().itemTypes[0];
+            data.isUp = inferIsUp(state.game, data.pool, data.itemName, data.itemType);
             var path = isEdit ? config.endpoint + '/' + item.id : config.endpoint;
             return api(path, { method: isEdit ? 'PUT' : 'POST', body: data }).then(function (saved) {
                 toast(isEdit ? '修改已保存' : '新增成功');
@@ -1983,37 +1981,15 @@
             });
         });
 
-        $('#wish-export-csv').addEventListener('click', function () {
+        $('#wish-ocr').addEventListener('click', function () {
             guard(function () {
-                return downloadFile('/api/wishes/export?format=csv',
-                    'southair-wishes.csv', '抽卡记录已导出（CSV）');
-            });
-        });
-
-        $('#wish-export-json').addEventListener('click', function () {
-            guard(function () {
-                return downloadFile('/api/wishes/export?format=json',
-                    'southair-wishes.json', '抽卡记录已导出（JSON）');
-            });
-        });
-
-        $('#wish-import').addEventListener('click', function () {
-            guard(function () {
-                return chooseImport('wishes', 'wish-file', state.game);
-            });
-        });
-
-        $('#wish-template').addEventListener('click', function () {
-            guard(function () {
-                return chooseTemplate('wishes', state.game);
+                return openOcrDialog();
             });
         });
 
         $('#wish-link-import').addEventListener('click', function () {
             guard(importFromLink);
         });
-
-        $('#wish-file').addEventListener('change', onWishFileSelected);
     }
 
     /* 抽卡链接导入：后端代理读取米游社接口，避开浏览器跨域限制 */
@@ -2630,39 +2606,67 @@
         }).join('');
     }
 
+    function ownedNameFieldOptions(game, category) {
+        return [{ value: '', label: '请选择角色 / 物品' }].concat(
+            ownedNameOptions(game, category).map(function (name) {
+                return { value: name, label: name };
+            })
+        );
+    }
+
+    function ownedNameOptionHtml(game, category) {
+        return ownedNameFieldOptions(game, category).map(function (option) {
+            return '<option value="' + esc(option.value) + '"'
+                + (option.value ? '' : ' selected') + '>' + esc(option.label) + '</option>';
+        }).join('');
+    }
+
     function openOwnedForm() {
         var g = gameConfig();
+        var defs = collectionDefs(g);
         return openForm('补充已有 · ' + g.fullName, [
             {
                 key: 'category',
                 label: '类别',
                 type: 'select',
                 full: true,
-                options: [
-                    { value: 'characters4', label: '四星角色' },
-                    { value: 'characters5', label: '五星角色' },
-                    { value: 'weapons5', label: '五星' + (g.itemTypes[1] === '光锥' ? '光锥' : '武器') }
-                ]
+                options: defs.map(function (def) {
+                    return { value: def.key, label: def.title };
+                }),
+                default: defs[0].key
             },
             {
                 key: 'name',
                 label: '名称',
+                type: 'select',
                 full: true,
-                placeholder: '输入角色 / 武器名称'
+                options: ownedNameFieldOptions(state.game, defs[0].key)
             },
             {
                 key: 'copies',
                 label: '额外数量',
                 type: 'number',
                 full: true,
-                placeholder: '1–6'
+                min: 1,
+                max: 6,
+                default: 1
             }
         ], null, {
-            hint: '额外数量会叠加到抽卡记录统计；角色按命座展示（最高 C6），武器按精炼展示（最高 R5）。',
+            hint: '类别决定分栏；额外数量会叠加到抽卡记录统计，角色按命座展示（最高 C6），武器按精炼展示（最高 R5）。',
             submitText: '保存',
+            onMount: function (mask) {
+                var categoryEl = $('select[name="category"]', mask);
+                var nameEl = $('select[name="name"]', mask);
+                if (!categoryEl || !nameEl) {
+                    return;
+                }
+                categoryEl.addEventListener('change', function () {
+                    nameEl.innerHTML = ownedNameOptionHtml(state.game, categoryEl.value);
+                });
+            },
             validate: function (values) {
                 if (!String(values.name || '').trim()) {
-                    return '请输入名称';
+                    return '请选择角色 / 物品';
                 }
                 var copies = Number(values.copies);
                 if (!isFinite(copies) || copies < 1 || copies > 6) {
@@ -2952,7 +2956,7 @@
         return tesseractLoading;
     }
 
-    function runBrowserOcr(kind, file, onStatus) {
+    function runBrowserOcr(file, onStatus) {
         return loadTesseract().then(function (Tesseract) {
             return Tesseract.recognize(file, 'chi_sim+eng', {
                 logger: function (m) {
@@ -2966,8 +2970,11 @@
                     }
                 }
             }).then(function (res) {
-                var text = res && res.data ? res.data.text : '';
-                return api('/api/ocr/parse', { method: 'POST', body: { kind: kind, text: text } });
+                var data = (res && res.data) || {};
+                return api('/api/ocr/parse', {
+                    method: 'POST',
+                    body: { text: data.text || '', tsv: data.tsv || '' }
+                });
             });
         });
     }
@@ -3032,9 +3039,8 @@
         });
     }
 
-    function openOcrDialog(kind) {
+    function openOcrDialog() {
         var g = gameConfig();
-        var isResource = kind === 'resource';
         var selected = localStorage.getItem(OCR_ENGINE_KEY) || '';
         var currentFile = null;
 
@@ -3042,15 +3048,12 @@
             var mask = document.createElement('div');
             mask.className = 'modal-mask';
             mask.innerHTML = '<div class="modal modal-wide ocr-modal">'
-                + '<header><h3>' + (isResource ? '截图识别资源' : '截图识别抽卡')
+                + '<header><h3>截图识别抽卡'
                 + '<span class="pool-tag">' + esc(g.fullName) + '</span></h3>'
                 + '<button class="modal-close" type="button" aria-label="关闭">×</button></header>'
                 + '<div class="modal-body ocr-body">'
-                + '<p class="modal-hint">' + (isResource
-                    ? '上传游戏内资源界面截图，自动识别 ' + esc(g.currency) + '、' + esc(g.credit) + '、'
-                        + esc(g.fateLimited) + '、' + esc(g.fateStandard) + ' 的数量，确认后填入资源。'
-                    : '上传抽卡记录截图，生成候选记录，核对名称、星级与卡池后再导入。')
-                + '</p>'
+                + '<p class="modal-hint">上传抽卡记录截图，按文字与角色 / 武器头像识别候选记录；'
+                + '核对名称、星级与卡池后再导入。</p>'
                 + '<div class="ocr-engines" id="ocr-engines"><span class="ocr-loading">正在检测可用引擎…</span></div>'
                 + '<div class="ocr-drop" id="ocr-drop" role="button" tabindex="0">'
                 + '<input id="ocr-file" type="file" accept="image/*" hidden/>'
@@ -3229,14 +3232,12 @@
             }
 
             function runEngine(engineKey) {
-                return engineKey === 'browser'
-                    ? runBrowserOcr(kind, currentFile, setStatus)
-                    : (function () {
-                        var field = new FormData();
-                        field.append('file', currentFile);
-                        return apiUpload('/api/ocr/' + (isResource ? 'resource' : 'wishes')
-                            + '?engine=' + encodeURIComponent(engineKey), field);
-                    })();
+                if (engineKey === 'browser') {
+                    return runBrowserOcr(currentFile, setStatus);
+                }
+                var field = new FormData();
+                field.append('file', currentFile);
+                return apiUpload('/api/ocr/wishes?engine=' + encodeURIComponent(engineKey), field);
             }
 
             function showResult(result) {
@@ -3244,11 +3245,13 @@
                     resultBox.innerHTML = ocrWarningsHtml(['没有返回识别结果']);
                     return;
                 }
-                if (isResource) {
-                    renderOcrResource(result, resultBox, close);
-                } else {
+                setStatus('正在匹配头像…');
+                enhanceOcrAvatars(result, currentFile).then(function () {
+                    setStatus('识别完成 · ' + engineLabel(selected));
                     renderOcrWishes(result, resultBox, close);
-                }
+                }).catch(function () {
+                    renderOcrWishes(result, resultBox, close);
+                });
             }
 
             runBtn.addEventListener('click', function () {
@@ -3297,60 +3300,225 @@
         });
     }
 
-    function renderOcrResource(result, box, close) {
-        var g = gameConfig();
-        var fields = [
-            { key: 'primogems', label: g.currency },
-            { key: 'mora', label: g.credit },
-            { key: 'intertwinedFates', label: g.fateLimited + '（抽）' },
-            { key: 'acquaintedFates', label: g.fateStandard + '（抽）' }
-        ];
+    /* ---------------- 截图识别：头像 / 武器图标指纹匹配 ---------------- */
 
-        box.innerHTML = ocrWarningsHtml(result.warnings)
-            + '<div class="ocr-fields">' + fields.map(function (field) {
-                var value = result[field.key];
-                return '<label class="field"><span>' + esc(field.label) + '</span>'
-                    + '<input type="number" min="0" step="1" data-ocr-field="' + field.key + '" value="'
-                    + (value === null || value === undefined ? '' : value) + '" placeholder="未识别"/></label>';
-            }).join('') + '</div>'
-            + '<div class="ocr-foot"><button class="btn btn-primary btn-sm" id="ocr-apply" type="button">'
-            + '按识别结果填入</button></div>'
-            + ocrRawHtml(result.rawText);
+    var OCR_HASH_SIZE = 16;
+    /* 汉明距离阈值与领先幅度：都满足才认为是可信匹配（256 位） */
+    var OCR_MATCH_THRESHOLD = 62;
+    var OCR_MATCH_MARGIN = 10;
 
-        var applyBtn = $('#ocr-apply', box);
-        if (!applyBtn) {
-            return;
+    function loadOcrImage(file) {
+        return new Promise(function (resolve, reject) {
+            var url = URL.createObjectURL(file);
+            var img = new Image();
+            img.onload = function () {
+                URL.revokeObjectURL(url);
+                resolve(img);
+            };
+            img.onerror = function () {
+                URL.revokeObjectURL(url);
+                reject(new Error('图片读取失败'));
+            };
+            img.src = url;
+        });
+    }
+
+    /** 把截图中的一块正方形区域缩成 16×16 灰度均值哈希（64 位十六进制） */
+    function regionHash(img, sx, sy, side) {
+        var canvas = document.createElement('canvas');
+        canvas.width = OCR_HASH_SIZE;
+        canvas.height = OCR_HASH_SIZE;
+        var ctx = canvas.getContext('2d');
+        // 取中心 72%，与指纹生成时对图标的裁切保持一致
+        var inset = side * 0.14;
+        var inner = Math.max(1, side - inset * 2);
+        ctx.drawImage(img, sx + inset, sy + inset, inner, inner,
+            0, 0, OCR_HASH_SIZE, OCR_HASH_SIZE);
+        var pixels = ctx.getImageData(0, 0, OCR_HASH_SIZE, OCR_HASH_SIZE).data;
+        var values = [];
+        var sum = 0;
+        for (var i = 0; i < pixels.length; i += 4) {
+            var gray = pixels[i] * 0.299 + pixels[i + 1] * 0.587 + pixels[i + 2] * 0.114;
+            values.push(gray);
+            sum += gray;
         }
-        applyBtn.addEventListener('click', function () {
-            guard(function () {
-                var body = {};
-                var filled = 0;
-                $$('[data-ocr-field]', box).forEach(function (input) {
-                    var raw = input.value.trim();
-                    if (raw === '') {
-                        return;
-                    }
-                    var value = Number(raw);
-                    if (!isFinite(value) || value < 0) {
-                        return;
-                    }
-                    body[input.dataset.ocrField] = Math.floor(value);
-                    filled += 1;
-                });
-                if (!filled) {
-                    throw new Error('请至少填写或识别出一项资源');
+        var avg = sum / values.length;
+        var bits = '';
+        var hex = '';
+        for (var j = 0; j < values.length; j++) {
+            bits += values[j] >= avg ? '1' : '0';
+            if (bits.length === 4) {
+                hex += parseInt(bits, 2).toString(16);
+                bits = '';
+            }
+        }
+        return hex;
+    }
+
+    function hammingHex(a, b) {
+        if (!a || !b || a.length !== b.length) {
+            return 999;
+        }
+        var distance = 0;
+        for (var i = 0; i < a.length; i++) {
+            var diff = parseInt(a.charAt(i), 16) ^ parseInt(b.charAt(i), 16);
+            distance += (diff & 1) + ((diff >> 1) & 1) + ((diff >> 2) & 1) + ((diff >> 3) & 1);
+        }
+        return distance;
+    }
+
+    /** 在全部角色 / 武器指纹里找最接近的一个，并记录与第二名的差距 */
+    function matchOcrItem(hex) {
+        var maps = window.SG_ITEM_HASHES || {};
+        var gameMaps = maps[state.game] || {};
+        var best = null;
+        var second = null;
+        ['character', 'weapon'].forEach(function (type) {
+            var entries = gameMaps[type] || {};
+            Object.keys(entries).forEach(function (name) {
+                var distance = hammingHex(hex, entries[name]);
+                if (distance >= 999) {
+                    return;
                 }
-                return api('/api/resources', { method: 'PUT', body: body }).then(function () {
-                    toast('资源已更新');
-                    close(true);
-                    loadDashboard();
+                var hit = { name: name, type: type, distance: distance };
+                if (!best || distance < best.distance) {
+                    second = best;
+                    best = hit;
+                } else if (!second || distance < second.distance) {
+                    second = hit;
+                }
+            });
+        });
+        if (!best) {
+            return null;
+        }
+        best.margin = second ? second.distance - best.distance : 256;
+        return best;
+    }
+
+    /** 头像通常在文字名左侧，行高不同时按多个比例 / 偏移 / 间距尝试 */
+    function candidateAvatarRects(box) {
+        var h = Math.max(8, Number(box.h) || 0);
+        var rects = [];
+        [1.6, 2.0, 2.4, 2.8].forEach(function (ratio) {
+            var side = h * ratio;
+            [0.05, 0.3, 0.6, 0.9].forEach(function (yOffset) {
+                [0.2, 0.5, 0.9].forEach(function (gapRatio) {
+                    rects.push({
+                        x: (Number(box.x) || 0) - side - h * gapRatio,
+                        y: (Number(box.y) || 0) - h * yOffset,
+                        side: side
+                    });
                 });
             });
         });
+        return rects;
+    }
+
+    function matchCandidateAvatar(img, item) {
+        if (!item || !Number(item.w) || !Number(item.h)) {
+            return null;
+        }
+        var best = null;
+        candidateAvatarRects(item).forEach(function (rect) {
+            if (rect.x < 0 || rect.y < 0 || rect.x + rect.side > img.width
+                || rect.y + rect.side > img.height) {
+                return;
+            }
+            var hit = matchOcrItem(regionHash(img, rect.x, rect.y, rect.side));
+            if (hit && (!best || hit.distance < best.distance)) {
+                best = hit;
+            }
+        });
+        return best;
+    }
+
+    /** 给候选补上用头像匹配到的名称；文字名称缺失或不在名单里时才自动填入 */
+    function enhanceOcrAvatars(result, file) {
+        var candidates = (result && result.candidates) || [];
+        var maps = window.SG_ITEM_HASHES || {};
+        if (!file || !candidates.length || !maps[state.game]) {
+            return Promise.resolve(result);
+        }
+        var lists = nameLists(state.game);
+        return loadOcrImage(file).then(function (img) {
+            candidates.forEach(function (item) {
+                var hit = matchCandidateAvatar(img, item);
+                if (!hit) {
+                    return;
+                }
+                var current = String(item.itemName || '').trim();
+                var known = lists.characters.indexOf(current) >= 0 || lists.weapons.indexOf(current) >= 0;
+                var confident = hit.distance <= OCR_MATCH_THRESHOLD && hit.margin >= OCR_MATCH_MARGIN;
+                item.avatarMatch = {
+                    name: hit.name,
+                    type: hit.type,
+                    distance: hit.distance,
+                    confident: confident
+                };
+                if (confident && !known) {
+                    item.itemName = hit.name;
+                    item.autoName = true;
+                }
+            });
+            return result;
+        }).catch(function () {
+            return result;
+        });
+    }
+
+    function ocrNameSelectHtml(item, lists) {
+        var g = gameConfig();
+        var current = String(item.itemName || '');
+        var known = lists.characters.indexOf(current) >= 0 || lists.weapons.indexOf(current) >= 0;
+        var body = '<option value=""' + (current ? '' : ' selected') + '>请选择角色 / 物品</option>';
+        if (current && !known) {
+            body += '<option value="' + esc(current) + '" selected>原文：' + esc(current) + '</option>';
+        }
+        [
+            { label: g.itemTypes[0], list: lists.characters },
+            { label: g.itemTypes[1], list: lists.weapons }
+        ].forEach(function (group) {
+            if (!group.list.length) {
+                return;
+            }
+            body += '<optgroup label="' + esc(group.label) + '">'
+                + group.list.map(function (name) {
+                    return '<option value="' + esc(name) + '"'
+                        + (name === current ? ' selected' : '') + '>' + esc(name) + '</option>';
+                }).join('')
+                + '</optgroup>';
+        });
+        return '<select class="input" data-w="itemName">' + body + '</select>';
+    }
+
+    function ocrItemIconHtml(name) {
+        var g = gameConfig();
+        var lists = nameLists(state.game);
+        var avatarMap = (window.SG_AVATARS || {})[state.game] || {};
+        var weaponMap = (window.SG_WEAPON_ICONS || {})[state.game] || {};
+        var isCharacter = lists.characters.indexOf(name) >= 0;
+        var url = isCharacter ? avatarMap[name] : weaponMap[name];
+        return '<div class="ocr-item-icon"><span>' + esc((name || '?').charAt(0)) + '</span>'
+            + (url ? '<img src="' + esc(url) + '" alt="" loading="lazy" onerror="this.remove()"/>' : '')
+            + '</div>';
+    }
+
+    function ocrMatchHtml(item) {
+        if (!item.avatarMatch) {
+            return '';
+        }
+        var percent = Math.max(0, Math.round((1 - item.avatarMatch.distance / 256) * 100));
+        return '<div class="ocr-match' + (item.avatarMatch.confident ? '' : ' low') + '">'
+            + '头像匹配：' + esc(item.avatarMatch.name) + ' · 相似 ' + percent + '%'
+            + (item.autoName ? '（已自动填入）' : '')
+            + (item.avatarMatch.confident ? '' : '（可信度低，仅供参照）')
+            + '</div>';
     }
 
     function renderOcrWishes(result, box, close) {
         var g = gameConfig();
+        var lists = nameLists(state.game);
         var candidates = (result && result.candidates) || [];
         if (!candidates.length) {
             box.innerHTML = ocrWarningsHtml(result.warnings) + ocrRawHtml(result.rawText);
@@ -3362,13 +3530,14 @@
             + '<div class="ocr-wish-list">' + candidates.map(function (item, index) {
                 var poolOptions = g.pools.map(function (pool) {
                     return '<option value="' + esc(pool) + '"'
-                        + (item.pool === pool ? ' selected' : '') + '>' + esc(pool) + '</option>';
+                        + (item.pool === pool ? ' selected' : '') + '>' + esc(poolLabel(pool)) + '</option>';
                 }).join('');
                 return '<div class="ocr-wish-row" data-index="' + index + '">'
                     + '<input type="checkbox" class="ocr-wish-check" checked aria-label="导入该条"/>'
+                    + ocrItemIconHtml(item.itemName)
+                    + '<div class="ocr-wish-main">'
                     + '<div class="ocr-wish-fields">'
-                    + '<input class="input" data-w="itemName" value="' + esc(item.itemName || '')
-                    + '" placeholder="物品名称"/>'
+                    + ocrNameSelectHtml(item, lists)
                     + '<select class="input" data-w="rarity">'
                     + '<option value="5"' + (item.rarity === 5 ? ' selected' : '') + '>五星</option>'
                     + '<option value="4"' + (item.rarity === 4 ? ' selected' : '') + '>四星</option>'
@@ -3379,7 +3548,10 @@
                     + '" placeholder="第几抽"/>'
                     + '<input class="input" type="datetime-local" data-w="wishTime" value="'
                     + localTimeValue(item.wishTime) + '"/>'
-                    + '</div></div>';
+                    + '</div>'
+                    + ocrMatchHtml(item)
+                    + '</div>'
+                    + '</div>';
             }).join('') + '</div>'
             + '<div class="ocr-foot"><button class="btn btn-primary btn-sm" id="ocr-import" type="button">'
             + '导入勾选记录</button></div>'
@@ -3399,13 +3571,14 @@
                     var pityRaw = $('[data-w=pityCount]', row).value.trim();
                     var timeRaw = $('[data-w=wishTime]', row).value;
                     if (!nameInput) {
-                        throw new Error('第 ' + (Number(row.dataset.index) + 1) + ' 条缺少物品名称');
+                        throw new Error('第 ' + (Number(row.dataset.index) + 1) + ' 条未选择角色 / 物品');
                     }
                     payload.push({
                         itemName: nameInput,
                         rarity: rarity,
                         pool: pool,
-                        itemType: /武器|光锥/.test(pool) ? g.itemTypes[1] : g.itemTypes[0],
+                        itemType: inferItemType(state.game, nameInput)
+                            || (/武器|光锥/.test(pool) ? g.itemTypes[1] : g.itemTypes[0]),
                         pityCount: pityRaw === '' ? null : Number(pityRaw),
                         wishTime: timeRaw ? toApiTime(timeRaw) : null
                     });

@@ -2,7 +2,6 @@ package com.southair.genshin.module.ocr;
 
 import com.southair.genshin.common.BusinessException;
 import com.southair.genshin.module.ocr.dto.OcrEngineStatus;
-import com.southair.genshin.module.ocr.dto.OcrResourceResult;
 import com.southair.genshin.module.ocr.dto.OcrWishResult;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -45,37 +44,14 @@ public class OcrService {
         return status;
     }
 
-    public OcrResourceResult recognizeResource(MultipartFile file, String engine, String game) {
-        String text = recognizeText(file, engine);
-        OcrResourceResult result = parser.parseResource(text, game);
-        result.setEngine(engine);
-        return result;
-    }
-
     public OcrWishResult recognizeWishes(MultipartFile file, String engine, String game) {
-        String text = recognizeText(file, engine);
-        OcrWishResult result = parser.parseWishes(text, game);
-        result.setEngine(engine);
-        return result;
-    }
-
-    public OcrResourceResult parseResourceText(String text, String game) {
-        OcrResourceResult result = parser.parseResource(text, game);
-        result.setEngine(ENGINE_BROWSER);
-        return result;
-    }
-
-    public OcrWishResult parseWishText(String text, String game) {
-        OcrWishResult result = parser.parseWishes(text, game);
-        result.setEngine(ENGINE_BROWSER);
-        return result;
-    }
-
-    private String recognizeText(MultipartFile file, String engine) {
         validate(file);
         String normalized = engine == null ? "" : engine.trim().toLowerCase(Locale.ROOT);
         if (normalized.isEmpty()) {
             normalized = ENGINE_TESSERACT;
+        }
+        if (!ENGINE_TESSERACT.equals(normalized)) {
+            throw new BusinessException("浏览器识别请在本地完成，仅把文本提交到 /api/ocr/parse");
         }
         byte[] bytes;
         try {
@@ -83,15 +59,17 @@ public class OcrService {
         } catch (IOException e) {
             throw new BusinessException("读取图片失败：" + e.getMessage());
         }
+        String ext = resolveExtension(file);
+        TesseractEngine.OcrOutput output = tesseractEngine.recognizeWithTsv(bytes, ext);
+        OcrWishResult result = parser.parseWishes(output.getText(), output.getTsv(), game);
+        result.setEngine(ENGINE_TESSERACT);
+        return result;
+    }
 
-        switch (normalized) {
-            case ENGINE_TESSERACT:
-                return tesseractEngine.recognize(bytes, resolveExtension(file));
-            case ENGINE_BROWSER:
-                throw new BusinessException("浏览器识别请在本地完成，仅把文本提交到 /api/ocr/parse");
-            default:
-                throw new BusinessException("不支持的识别引擎：" + engine);
-        }
+    public OcrWishResult parseWishText(String text, String tsv, String game) {
+        OcrWishResult result = parser.parseWishes(text, tsv, game);
+        result.setEngine(ENGINE_BROWSER);
+        return result;
     }
 
     private void validate(MultipartFile file) {
