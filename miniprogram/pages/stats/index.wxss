@@ -61,6 +61,36 @@
   color: #f2e2bd;
 }
 
+/* ---------- 统计页分组 ---------- */
+
+.stats-tabs {
+  display: flex;
+  align-items: center;
+  margin: 0 0 24rpx;
+}
+
+.stats-tab {
+  flex: 1;
+  padding: 12rpx 0;
+  border-radius: 999rpx;
+  border: 1rpx solid rgba(211, 188, 142, 0.28);
+  background: rgba(255, 255, 255, 0.02);
+  font-size: 24rpx;
+  color: #8b90a6;
+  text-align: center;
+}
+
+.stats-tab + .stats-tab {
+  margin-left: 12rpx;
+}
+
+.stats-tab.active {
+  color: #14161f;
+  font-weight: 600;
+  border-color: transparent;
+  background: linear-gradient(135deg, #f2e2bd, #d3bc8e);
+}
+
 .inline {
   margin-left: 12rpx;
   font-size: 22rpx;
@@ -180,6 +210,30 @@
 .pull-toggle.active {
   color: #ffd479;
   border-color: rgba(255, 212, 121, 0.7);
+}
+
+.pull-pools {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 16rpx 0 14rpx;
+}
+
+.pull-pool {
+  padding: 8rpx 24rpx;
+  border-radius: 999rpx;
+  border: 1rpx solid rgba(211, 188, 142, 0.28);
+  font-size: 22rpx;
+  color: #8b90a6;
+}
+
+.pull-pool + .pull-pool {
+  margin-left: 12rpx;
+}
+
+.pull-pool.active {
+  background: rgba(211, 188, 142, 0.16);
+  border-color: rgba(211, 188, 142, 0.6);
+  color: #d3bc8e;
 }
 
 .pull-summary {

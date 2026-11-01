@@ -23,27 +23,60 @@ function guaranteeText(pool) {
   return '大保底 · 下次必定 UP';
 }
 
+/** 卡池筛选按钮：全部 + 有五星记录的卡池，按游戏配置顺序排列。 */
+function chartPoolOptions(list, game) {
+  var g = gameLib.config(game);
+  var seen = {};
+  (list || []).forEach(function (item) {
+    seen[item.pool || '未知卡池'] = true;
+  });
+  var options = [{ key: 'all', label: '全部' }];
+  var known = [];
+  (g.pools || []).forEach(function (pool) {
+    if (seen[pool]) {
+      known.push(pool);
+    }
+  });
+  Object.keys(seen).forEach(function (pool) {
+    if (known.indexOf(pool) < 0) {
+      known.push(pool);
+    }
+  });
+  known.forEach(function (pool) {
+    options.push({ key: pool, label: pool });
+  });
+  return options;
+}
+
 /**
  * 五星抽数柱形图：real 为 true 时隐藏歪的记录，按 UP 周期累计真实抽数。
  * 周期按卡池分别累计，避免角色池与武器 / 光锥池混算。
+ * pool 为 'all' 时展示全部卡池，否则只展示该卡池。
  */
-function buildChart(list, real) {
+function buildChart(list, real, pool) {
+  var all = list || [];
+  var selected = pool && pool !== 'all'
+    ? all.filter(function (item) {
+      return (item.pool || '未知卡池') === pool;
+    })
+    : all;
+  var scope = pool && pool !== 'all' ? pool + '：' : '';
   var points = [];
   var total = 0;
 
   if (real) {
     var cycles = {};
-    (list || []).forEach(function (item) {
-      var pool = item.pool || '未知卡池';
-      var acc = (cycles[pool] || 0) + (item.pityCount || 0);
+    selected.forEach(function (item) {
+      var poolName = item.pool || '未知卡池';
+      var acc = (cycles[poolName] || 0) + (item.pityCount || 0);
       if (item.isUp === true) {
         points.push({ name: item.itemName || '未命名', value: acc, up: true });
         acc = 0;
       }
-      cycles[pool] = acc;
+      cycles[poolName] = acc;
     });
   } else {
-    points = (list || []).map(function (item) {
+    points = selected.map(function (item) {
       return {
         name: item.itemName || '未命名',
         value: item.pityCount || 0,
@@ -61,16 +94,17 @@ function buildChart(list, real) {
     total += point.value;
   });
 
-  var hidden = (list || []).filter(function (item) {
+  var hidden = selected.filter(function (item) {
     return item.isUp !== true;
   }).length;
 
   return {
     points: points,
     total: total,
-    summary: real
-      ? '已隐藏 ' + hidden + ' 次歪的记录 · 抽到 UP 一共用了 ' + total + ' 抽（含歪掉的抽数，按卡池分别累计）'
-      : '共 ' + points.length + ' 次五星，合计 ' + total + ' 抽；深色柱为歪掉的五星'
+    summary: scope + (real
+      ? '已隐藏 ' + hidden + ' 次歪的记录 · 抽到 UP 一共用了 ' + total + ' 抽（含歪掉的抽数'
+        + (scope ? '' : '，按卡池分别累计') + '）'
+      : '共 ' + points.length + ' 次五星，合计 ' + total + ' 抽；深色柱为歪掉的五星')
   };
 }
 
@@ -322,6 +356,14 @@ Page({
     statusBarHeight: 20,
     game: 'genshin',
     g: gameLib.config('genshin'),
+    statsTab: 'overview',
+    statsTabs: [
+      { key: 'overview', label: '概览' },
+      { key: 'pity', label: '保底' },
+      { key: 'analysis', label: '分析' },
+      { key: 'expect', label: '期望' },
+      { key: 'resource', label: '资源' }
+    ],
     stats: {},
     pools: [],
     dist: [],
@@ -329,6 +371,8 @@ Page({
     capture: null,
     expect: null,
     chartReal: false,
+    chartPool: 'all',
+    chartPools: [{ key: 'all', label: '全部' }],
     chart: { points: [], summary: '' },
     resourceEditing: false,
     resourceForm: {
@@ -355,7 +399,15 @@ Page({
     var g = gameLib.config(game);
     this.expectSource = data;
     this.fiveStars = data.fiveStarHistory || [];
-    var chart = buildChart(this.fiveStars, this.data.chartReal);
+    var chartPools = chartPoolOptions(this.fiveStars, game);
+    var chartPool = this.data.chartPool;
+    var poolExists = chartPools.some(function (item) {
+      return item.key === chartPool;
+    });
+    if (!poolExists) {
+      chartPool = 'all';
+    }
+    var chart = buildChart(this.fiveStars, this.data.chartReal, chartPool);
 
     var stats = {
       totalPullsText: store.fmt(data.resource.totalPulls),
@@ -446,6 +498,8 @@ Page({
       recent: recent,
       capture: capture,
       expect: buildExpectation(data, game, expectPrefs(game)),
+      chartPool: chartPool,
+      chartPools: chartPools,
       chart: chart
     });
   },
@@ -453,15 +507,35 @@ Page({
   onSwitchGame: function (event) {
     var game = event.detail.game;
     app.setGame(game);
-    this.setData({ chartReal: false, resourceEditing: false, resourceTextVisible: false });
+    this.setData({ chartReal: false, chartPool: 'all', resourceEditing: false, resourceTextVisible: false });
     this.load(game);
+  },
+
+  onSelectStatsTab: function (event) {
+    var tab = event.currentTarget.dataset.tab || 'overview';
+    if (tab === this.data.statsTab) {
+      return;
+    }
+    this.setData({ statsTab: tab });
+    wx.pageScrollTo({ scrollTop: 0, duration: 0 });
   },
 
   onToggleReal: function () {
     var real = !this.data.chartReal;
     this.setData({
       chartReal: real,
-      chart: buildChart(this.fiveStars || [], real)
+      chart: buildChart(this.fiveStars || [], real, this.data.chartPool)
+    });
+  },
+
+  onSelectChartPool: function (event) {
+    var pool = event.currentTarget.dataset.pool || 'all';
+    if (pool === this.data.chartPool) {
+      return;
+    }
+    this.setData({
+      chartPool: pool,
+      chart: buildChart(this.fiveStars || [], this.data.chartReal, pool)
     });
   },
 

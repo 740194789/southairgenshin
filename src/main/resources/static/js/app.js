@@ -337,6 +337,61 @@
             + '</div>';
     }
 
+    /** 统计页内部分组：只显示当前分组，避免所有模块堆在一页。 */
+    var STATS_TABS = [
+        { key: 'overview', label: '概览' },
+        { key: 'pity', label: '保底' },
+        { key: 'analysis', label: '分析' },
+        { key: 'expect', label: '期望' },
+        { key: 'resource', label: '资源' }
+    ];
+
+    function statsTabsHtml(active) {
+        return '<div class="stats-tabs" id="stats-tabs" role="tablist">'
+            + STATS_TABS.map(function (tab) {
+                var on = tab.key === active;
+                return '<button class="stats-tab' + (on ? ' active' : '') + '" type="button"'
+                    + ' role="tab" data-stats-tab="' + tab.key + '"'
+                    + ' aria-selected="' + (on ? 'true' : 'false') + '">' + tab.label + '</button>';
+            }).join('') + '</div>';
+    }
+
+    function statsSection(key, active) {
+        return '<div class="stats-section" data-stats-section="' + key + '"'
+            + (key === active ? '' : ' hidden') + '>';
+    }
+
+    function applyStatsTab(key) {
+        var bar = $('#stats-tabs');
+        if (bar) {
+            Array.prototype.forEach.call(bar.querySelectorAll('[data-stats-tab]'), function (btn) {
+                var on = btn.getAttribute('data-stats-tab') === key;
+                btn.classList.toggle('active', on);
+                btn.setAttribute('aria-selected', on ? 'true' : 'false');
+            });
+        }
+        Array.prototype.forEach.call(
+            document.querySelectorAll('#view-stats [data-stats-section]'),
+            function (section) {
+                section.hidden = section.getAttribute('data-stats-section') !== key;
+            });
+    }
+
+    function bindStatsTabs() {
+        var bar = $('#stats-tabs');
+        if (!bar) {
+            return;
+        }
+        bar.addEventListener('click', function (event) {
+            var btn = event.target.closest ? event.target.closest('[data-stats-tab]') : null;
+            if (!btn) {
+                return;
+            }
+            cache.statsTab = btn.getAttribute('data-stats-tab');
+            applyStatsTab(cache.statsTab);
+        });
+    }
+
     function resourceTile(glyph, label, value, extra) {
         return '<article class="inventory-tile">'
             + '<span class="tile-glyph" aria-hidden="true">' + glyph + '</span>'
@@ -991,9 +1046,9 @@
         });
     }
 
-    function pullChartHtml(points) {
+    function pullChartHtml(points, emptyText) {
         if (!points.length) {
-            return emptyHtml('还没有五星记录');
+            return emptyHtml(emptyText || '还没有五星记录');
         }
         var max = 1;
         points.forEach(function (point) {
@@ -1012,25 +1067,76 @@
         }).join('') + '</div>';
     }
 
+    /** 卡池筛选按钮：全部 + 有五星记录的卡池，按游戏配置顺序排列。 */
+    var PULL_POOL_ALL = 'all';
+
+    function pullPoolList(list) {
+        var g = gameConfig();
+        var seen = {};
+        (list || []).forEach(function (item) {
+            seen[item.pool || '未知卡池'] = true;
+        });
+        var options = [{ key: PULL_POOL_ALL, label: '全部' }];
+        var known = [];
+        (g.pools || []).forEach(function (pool) {
+            if (seen[pool]) {
+                known.push(pool);
+            }
+        });
+        Object.keys(seen).forEach(function (pool) {
+            if (known.indexOf(pool) < 0) {
+                known.push(pool);
+            }
+        });
+        known.forEach(function (pool) {
+            options.push({ key: pool, label: pool });
+        });
+        return options;
+    }
+
+    function pullPoolsHtml(pools, active) {
+        return pools.map(function (pool) {
+            return '<button class="pull-pool' + (pool.key === active ? ' active' : '') + '" type="button"'
+                + ' data-pool="' + esc(pool.key) + '">' + esc(pool.label) + '</button>';
+        }).join('');
+    }
+
     function pullPanelHtml() {
         return '<section class="panel pull-panel">'
             + '<h3>五星抽数<span class="pool-tag">每次五星用了多少抽</span>'
             + '<button class="btn btn-text pull-toggle" type="button" id="pull-toggle">显示真实抽数</button></h3>'
+            + '<div class="pull-pools" id="pull-pools"></div>'
             + '<p class="pull-summary" id="pull-summary"></p>'
             + '<div class="pull-chart-wrap" id="pull-chart-wrap"></div></section>';
     }
 
     function renderPullChart(real) {
-        var list = (cache.stats && cache.stats.fiveStarRecords) || [];
+        var all = (cache.stats && cache.stats.fiveStarRecords) || [];
         cache.pullReal = real;
+        var pools = pullPoolList(all);
+        var exists = pools.some(function (pool) {
+            return pool.key === cache.pullPool;
+        });
+        if (!exists) {
+            cache.pullPool = PULL_POOL_ALL;
+        }
+        var selected = cache.pullPool;
+        var list = selected === PULL_POOL_ALL ? all : all.filter(function (item) {
+            return (item.pool || '未知卡池') === selected;
+        });
         var points = pullChartPoints(list, real);
         var wrap = $('#pull-chart-wrap');
+        var poolWrap = $('#pull-pools');
         var summary = $('#pull-summary');
         var toggle = $('#pull-toggle');
         if (!wrap) {
             return;
         }
-        wrap.innerHTML = pullChartHtml(points);
+        if (poolWrap) {
+            poolWrap.innerHTML = pullPoolsHtml(pools, selected);
+        }
+        wrap.innerHTML = pullChartHtml(points, selected === PULL_POOL_ALL
+            ? '还没有五星记录' : selected + ' 还没有五星记录');
         if (toggle) {
             toggle.textContent = real ? '显示原始抽数' : '显示真实抽数';
             toggle.classList.toggle('active', real);
@@ -1040,14 +1146,15 @@
             total += point.value;
         });
         if (summary) {
+            var scope = selected === PULL_POOL_ALL ? '' : selected + '：';
             if (real) {
                 var hidden = list.filter(function (item) {
                     return item.isUp !== true;
                 }).length;
-                summary.textContent = '已隐藏 ' + hidden + ' 次歪的记录 · 抽到 UP 一共用了 '
-                    + total + ' 抽（含歪掉的抽数，按卡池分别累计）';
+                summary.textContent = scope + '已隐藏 ' + hidden + ' 次歪的记录 · 抽到 UP 一共用了 '
+                    + total + ' 抽（含歪掉的抽数' + (selected === PULL_POOL_ALL ? '，按卡池分别累计' : '') + '）';
             } else {
-                summary.textContent = '共 ' + points.length + ' 次五星，合计 ' + total
+                summary.textContent = scope + '共 ' + points.length + ' 次五星，合计 ' + total
                     + ' 抽；深色柱为歪掉的五星';
             }
         }
@@ -1058,9 +1165,25 @@
         if (!toggle) {
             return;
         }
+        cache.pullPool = PULL_POOL_ALL;
         toggle.addEventListener('click', function () {
             renderPullChart(!cache.pullReal);
         });
+        var poolWrap = $('#pull-pools');
+        if (poolWrap) {
+            poolWrap.addEventListener('click', function (event) {
+                var btn = event.target.closest ? event.target.closest('.pull-pool') : null;
+                if (!btn || !poolWrap.contains(btn)) {
+                    return;
+                }
+                var pool = btn.getAttribute('data-pool');
+                if (pool === cache.pullPool) {
+                    return;
+                }
+                cache.pullPool = pool;
+                renderPullChart(cache.pullReal);
+            });
+        }
         renderPullChart(false);
     }
 
@@ -1074,6 +1197,10 @@
             var resource = data.resource;
             var name = (state.user && (state.user.nickname || state.user.username)) || '旅行者';
             cache.stats = data;
+            cache.statsTab = cache.statsTab || 'overview';
+            var tab = cache.statsTab;
+
+            var pityHtml = capturePanelHtml(data) + poolStatsPanelHtml(data);
 
             el.innerHTML =
                 '<div class="hero">'
@@ -1086,12 +1213,9 @@
                 + '<div class="hero-badge">五星出货率<br><strong>' + data.fiveStarRate + '%</strong></div>'
                 + '</div>'
 
-                + capturePanelHtml(data)
-                + poolStatsPanelHtml(data)
-                + luckPanelHtml(data)
-                + pullPanelHtml()
-                + expectationPanelHtml(data)
+                + statsTabsHtml(tab)
 
+                + statsSection('overview', tab)
                 + '<div class="stat-grid">'
                 + statCard('出货记录', data.wishCount, '四星 ' + data.fourStarWishes + ' 次')
                 + statCard('五星出货', data.fiveStarWishes, '出货率 ' + data.fiveStarRate + '%')
@@ -1099,14 +1223,31 @@
                     + (data.wishCount ? Math.round(data.fourStarWishes * 100 / data.wishCount) : 0) + '%')
                 + statCard('五星平均抽数', data.avgFiveStarPity, '按记录中的保底进度')
                 + '</div>'
-
-                + '<div class="panel-grid">'
-                + '<section class="panel"><h3>卡池分布</h3>' + poolBars(data.poolDistribution) + '</section>'
-                + '<section class="panel"><h3>最近出货</h3>' + miniWishes(data.recentWishes) + '</section>'
+                + '<section class="panel"><h3>最近出货<span class="pool-tag">最近 '
+                + (data.recentWishes || []).length + ' 条</span></h3>'
+                + miniWishes(data.recentWishes) + '</section>'
                 + '</div>'
 
-                + resourcePanelHtml();
+                + statsSection('pity', tab)
+                + (pityHtml ? '<div class="stats-duo">' + pityHtml + '</div>' : '')
+                + '</div>'
 
+                + statsSection('analysis', tab)
+                + luckPanelHtml(data)
+                + pullPanelHtml()
+                + '<section class="panel"><h3>卡池分布<span class="pool-tag">各卡池抽数占比</span></h3>'
+                + poolBars(data.poolDistribution) + '</section>'
+                + '</div>'
+
+                + statsSection('expect', tab)
+                + expectationPanelHtml(data)
+                + '</div>'
+
+                + statsSection('resource', tab)
+                + resourcePanelHtml()
+                + '</div>';
+
+            bindStatsTabs();
             bindResourcePanel();
             bindPullChart();
             bindExpectation(data);

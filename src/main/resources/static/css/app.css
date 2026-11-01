@@ -521,6 +521,63 @@ body.game-starrail {
     color: var(--gold-2);
 }
 
+/* ---------- 统计页分组 ---------- */
+
+.stats-tabs {
+    display: flex;
+    gap: 8px;
+    margin: 0 0 18px;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.stats-tabs::-webkit-scrollbar {
+    display: none;
+}
+
+.stats-tab {
+    flex: 0 0 auto;
+    padding: 8px 18px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.02);
+    color: var(--muted);
+    font-size: 13px;
+    cursor: pointer;
+    transition: color 0.16s, border-color 0.16s, background 0.16s;
+}
+
+.stats-tab:hover {
+    color: var(--text);
+    border-color: var(--line-strong);
+}
+
+.stats-tab.active {
+    color: #14161f;
+    border-color: transparent;
+    background: linear-gradient(135deg, var(--gold-2), var(--gold));
+    font-weight: 600;
+}
+
+.stats-section[hidden] {
+    display: none;
+}
+
+.stats-section > .panel + .panel {
+    margin-top: 14px;
+}
+
+.stats-duo {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+}
+
+.stats-duo > .panel {
+    flex: 1 1 320px;
+    min-width: 0;
+}
+
 .stat-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
@@ -1639,8 +1696,37 @@ body.game-starrail {
     border-color: var(--line-strong);
 }
 
+.pull-pools {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: -2px 0 14px;
+}
+
+.pull-pool {
+    padding: 5px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: transparent;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.4;
+    cursor: pointer;
+}
+
+.pull-pool:hover {
+    color: var(--text);
+    border-color: var(--line-strong);
+}
+
+.pull-pool.active {
+    color: var(--gold);
+    border-color: var(--line-strong);
+    background: rgba(211, 188, 142, 0.12);
+}
+
 .pull-summary {
-    margin: -6px 0 14px;
+    margin: -4px 0 14px;
     font-size: 12.5px;
     color: var(--muted);
     line-height: 1.6;
@@ -2017,6 +2103,16 @@ body.game-starrail {
 
     .hero {
         padding: 20px 18px;
+    }
+
+    .stats-tabs {
+        gap: 6px;
+        margin-bottom: 14px;
+    }
+
+    .stats-tab {
+        padding: 7px 13px;
+        font-size: 12px;
     }
 
     /* 资源页：大数字与资产改为纵向堆叠 */

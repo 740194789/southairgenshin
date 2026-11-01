@@ -19,236 +19,260 @@
     </view>
   </view>
 
-  <view wx:if="{{capture}}" class="panel">
-    <view class="panel-title">捕获明光<text class="pool-tag inline">角色活动 · 原神</text></view>
-    <view class="pity-bar">
-      <view class="pity-bar-fill" style="width:{{capture.percent}}%"></view>
-    </view>
-    <view class="pity-line">
-      <text>连歪次数 <text class="strong">{{capture.losses}} / 3</text></text>
-      <text>距必定捕获还差 <text class="strong">{{capture.remaining}} 次</text></text>
-    </view>
-    <view class="pity-note">{{capture.status}}</view>
-    <view class="pity-note">角色池五星 {{capture.characterFive}} 次，UP {{capture.characterUp}} 次（UP 率 {{capture.characterRate}}%）</view>
-    <view class="pity-note">规则：小保底基础 50%，含捕获明光综合 55%；连续 3 次歪后，下次五星必定 UP（连歪 1 / 2 次按 55% / 75% 估算）。</view>
+  <view class="stats-tabs">
+    <view class="stats-tab {{statsTab === item.key ? 'active' : ''}}" wx:for="{{statsTabs}}" wx:key="key"
+          bindtap="onSelectStatsTab" data-tab="{{item.key}}">{{item.label}}</view>
   </view>
 
-  <view wx:if="{{expect}}" class="panel expect-panel">
-    <view class="panel-title">抽卡期望<text class="pool-tag inline">目标模拟</text></view>
-    <view class="expect-modes">
-      <view class="expect-mode {{expect.historyOn ? '' : 'is-on'}}" bindtap="onExpectMode" data-mode="theory">理论模型</view>
-      <view class="expect-mode {{expect.historyOn ? 'is-on' : ''}} {{expect.historyReady ? '' : 'is-disabled'}}"
-            bindtap="onExpectMode" data-mode="history">往期区间</view>
-    </view>
-
-    <view class="expect-targets">
-      <view class="expect-target">
-        <view class="expect-target-label">角色命座</view>
-        <view class="expect-stepper">
-          <view class="expect-step {{expect.c <= 0 ? 'is-disabled' : ''}}" bindtap="onExpectStep"
-                data-step="c" data-dir="-1">−</view>
-          <view class="expect-step-value">{{expect.c}}<text class="expect-unit">命</text></view>
-          <view class="expect-step {{expect.c >= 6 ? 'is-disabled' : ''}}" bindtap="onExpectStep"
-                data-step="c" data-dir="1">＋</view>
-        </view>
-        <view class="expect-target-note">{{expect.charNote}}</view>
-      </view>
-      <view class="expect-target">
-        <view class="expect-target-label">{{g.weaponPool === '光锥活动' ? '光锥精炼' : '武器精炼'}}</view>
-        <view class="expect-stepper">
-          <view class="expect-step {{expect.r <= 0 ? 'is-disabled' : ''}}" bindtap="onExpectStep"
-                data-step="r" data-dir="-1">−</view>
-          <view class="expect-step-value">{{expect.r}}<text class="expect-unit">精</text></view>
-          <view class="expect-step {{expect.r >= 5 ? 'is-disabled' : ''}}" bindtap="onExpectStep"
-                data-step="r" data-dir="1">＋</view>
-        </view>
-        <view class="expect-target-note">{{expect.weaponNote}}</view>
-      </view>
-    </view>
-
-    <view class="expect-readout">
-      <view class="expect-kicker">目标 {{expect.targetName}} · {{expect.historyOn ? '往期区间' : '理论期望'}}</view>
-      <view class="expect-number {{expect.isRange ? 'is-range' : ''}}">{{expect.totalText}}<text class="expect-unit">抽</text></view>
-      <view class="expect-compare">{{expect.compareText}}</view>
-      <view class="expect-bar">
-        <view class="expect-bar-fill {{expect.enough ? 'done' : ''}}" style="width:{{expect.percent}}%"></view>
-      </view>
-    </view>
-
-    <view class="expect-split">
-      <view class="expect-part">
-        <view class="expect-part-label">{{expect.charLabel}}</view>
-        <view class="expect-part-value">{{expect.charCostText}}</view>
-        <view class="expect-part-note">{{expect.charUpText}}</view>
-      </view>
-      <view class="expect-part">
-        <view class="expect-part-label">{{expect.weaponLabel}}</view>
-        <view class="expect-part-value">{{expect.weaponCostText}}</view>
-        <view class="expect-part-note">{{expect.weaponUpText}}</view>
-      </view>
-    </view>
-
-    <view class="expect-note">{{expect.sourceNote}}</view>
-    <view class="expect-note">{{expect.pityNote}}{{expect.rangeNote}}</view>
-  </view>
-
-  <view class="panel">
-    <view class="panel-title">抽卡统计<text class="pool-tag inline">角色活动 · {{g.weaponPool}}</text></view>
+  <!-- 概览 -->
+  <view hidden="{{statsTab !== 'overview'}}">
     <view class="stat-grid">
       <view class="stat-card">
-        <view class="stat-label">一共抽过</view>
-        <view class="stat-value">{{stats.recordPullsText}} 抽</view>
-        <view class="stat-extra">五星 {{stats.fiveStarWishes}} 次</view>
+        <view class="stat-label">出货记录</view>
+        <view class="stat-value">{{stats.wishCount}}</view>
+        <view class="stat-extra">四星 {{stats.fourStarWishes}} 次</view>
       </view>
       <view class="stat-card">
-        <view class="stat-label">歪了几次</view>
-        <view class="stat-value">{{stats.lostCount}} 次</view>
-        <view class="stat-extra">小保底 {{stats.softPityCount}} 次</view>
+        <view class="stat-label">五星出货</view>
+        <view class="stat-value">{{stats.fiveStarWishes}}</view>
+        <view class="stat-extra">出货率 {{stats.fiveStarRate}}%</view>
       </view>
       <view class="stat-card">
-        <view class="stat-label">小保底不歪</view>
-        <view class="stat-value">{{stats.softPityUpCount}} 次</view>
-        <view class="stat-extra">不歪率 {{stats.softPityUpRate}}%</view>
+        <view class="stat-label">四星出货</view>
+        <view class="stat-value">{{stats.fourStarWishes}}</view>
+        <view class="stat-extra">占总记录 {{stats.fourStarPercent}}%</view>
       </view>
       <view class="stat-card">
-        <view class="stat-label">最多连歪</view>
-        <view class="stat-value">{{stats.maxLossStreak}} 次</view>
-        <view class="stat-extra">最多连不歪 {{stats.maxUpStreak}} 次</view>
-      </view>
-      <view class="stat-card">
-        <view class="stat-label">平均 UP 角色</view>
-        <view class="stat-value">{{stats.charAvgText}}</view>
-        <view class="stat-extra">UP {{stats.charSamples}} 次</view>
-      </view>
-      <view class="stat-card">
-        <view class="stat-label">平均 UP {{g.weaponPool === '光锥活动' ? '光锥' : '武器'}}</view>
-        <view class="stat-value">{{stats.weaponAvgText}}</view>
-        <view class="stat-extra">UP {{stats.weaponSamples}} 次</view>
-      </view>
-      <view class="stat-card">
-        <view class="stat-label">平均每个 UP 角色</view>
-        <view class="stat-value">{{stats.charCostText}} {{g.currency}}</view>
-        <view class="stat-extra">按 160 {{g.currency}} / 抽</view>
-      </view>
-      <view class="stat-card">
-        <view class="stat-label">平均限定{{g.weaponPool === '光锥活动' ? '光锥' : '武器'}}</view>
-        <view class="stat-value">{{stats.weaponCostText}} {{g.currency}}</view>
-        <view class="stat-extra">按 160 {{g.currency}} / 抽</view>
-      </view>
-      <view class="stat-card" wx:if="{{game === 'genshin'}}">
-        <view class="stat-label">捕获明光触发</view>
-        <view class="stat-value">{{stats.captureCount}} 次</view>
-        <view class="stat-extra">录入时勾选触发次数</view>
+        <view class="stat-label">五星平均抽数</view>
+        <view class="stat-value">{{stats.avgFiveStarPity}}</view>
+        <view class="stat-extra">按记录中的保底进度</view>
       </view>
     </view>
-  </view>
 
-  <view class="panel">
-    <view class="panel-title pull-head">
-      <text>五星抽数</text>
-      <view class="pull-toggle {{chartReal ? 'active' : ''}}" bindtap="onToggleReal">{{chartReal ? '显示原始抽数' : '显示真实抽数'}}</view>
-    </view>
-    <view class="pull-summary">{{chart.summary}}</view>
-    <view class="pull-chart" wx:if="{{chart.points.length}}">
-      <view class="pull-row {{item.up ? '' : 'lost'}}" wx:for="{{chart.points}}" wx:key="index">
-        <text class="pull-name">{{item.name}}</text>
-        <view class="pull-track">
-          <view class="pull-bar" style="width:{{item.percent}}%"></view>
+    <view class="panel">
+      <view class="panel-title">最近出货<text class="pool-tag inline">最近 {{recent.length}} 条</text></view>
+      <block wx:if="{{recent.length}}">
+        <view class="list-row" wx:for="{{recent}}" wx:key="id">
+          <view class="recent-name"><text class="stars">{{item.stars}}</text>{{item.name}}</view>
+          <text class="recent-time">{{item.time}}</text>
         </view>
-        <text class="pull-val">{{item.value}}</text>
-      </view>
+      </block>
+      <view wx:else class="empty">还没有抽卡记录</view>
     </view>
-    <view wx:else class="empty">还没有五星记录</view>
   </view>
 
-  <view class="panel">
-    <view class="panel-title">卡池保底统计<text class="pool-tag inline">保底 · 出货</text></view>
-    <view class="pool-stat" wx:for="{{pools}}" wx:key="pool">
-      <view class="pool-stat-head">
-        <text class="pool-tag">{{item.pool}}</text>
-        <text class="pool-pity">已垫 {{item.currentPity}} / {{item.cap}} 抽{{item.pityManual ? ' · 手动' : ''}}</text>
-      </view>
+  <!-- 保底 -->
+  <view hidden="{{statsTab !== 'pity'}}">
+    <view wx:if="{{capture}}" class="panel">
+      <view class="panel-title">捕获明光<text class="pool-tag inline">角色活动 · 原神</text></view>
       <view class="pity-bar">
-        <view class="pity-bar-fill" style="width:{{item.percent}}%"></view>
+        <view class="pity-bar-fill" style="width:{{capture.percent}}%"></view>
       </view>
-      <view class="pool-meta">
-        <text>五星 {{item.fiveStarCount}} 次</text>
-        <text>平均 {{item.avgFiveStarPity}} 抽</text>
-        <text>距保底 {{item.pullsToPity}} 抽</text>
-        <text wx:if="{{item.upGuaranteed}}" class="pool-tag up">{{item.guaranteeText}}</text>
+      <view class="pity-line">
+        <text>连歪次数 <text class="strong">{{capture.losses}} / 3</text></text>
+        <text>距必定捕获还差 <text class="strong">{{capture.remaining}} 次</text></text>
       </view>
+      <view class="pity-note">{{capture.status}}</view>
+      <view class="pity-note">角色池五星 {{capture.characterFive}} 次，UP {{capture.characterUp}} 次（UP 率 {{capture.characterRate}}%）</view>
+      <view class="pity-note">规则：小保底基础 50%，含捕获明光综合 55%；连续 3 次歪后，下次五星必定 UP（连歪 1 / 2 次按 55% / 75% 估算）。</view>
     </view>
-  </view>
 
-  <view class="stat-grid">
-    <view class="stat-card">
-      <view class="stat-label">出货记录</view>
-      <view class="stat-value">{{stats.wishCount}}</view>
-      <view class="stat-extra">四星 {{stats.fourStarWishes}} 次</view>
-    </view>
-    <view class="stat-card">
-      <view class="stat-label">五星出货</view>
-      <view class="stat-value">{{stats.fiveStarWishes}}</view>
-      <view class="stat-extra">出货率 {{stats.fiveStarRate}}%</view>
-    </view>
-    <view class="stat-card">
-      <view class="stat-label">四星出货</view>
-      <view class="stat-value">{{stats.fourStarWishes}}</view>
-      <view class="stat-extra">占总记录 {{stats.fourStarPercent}}%</view>
-    </view>
-    <view class="stat-card">
-      <view class="stat-label">五星平均抽数</view>
-      <view class="stat-value">{{stats.avgFiveStarPity}}</view>
-      <view class="stat-extra">按记录中的保底进度</view>
-    </view>
-  </view>
-
-  <view class="panel">
-    <view class="panel-title">卡池分布</view>
-    <block wx:if="{{dist.length}}">
-      <view class="bar-row" wx:for="{{dist}}" wx:key="name">
-        <text class="bar-name">{{item.name}}</text>
-        <view class="bar-track">
-          <view class="bar-fill" style="width:{{item.percent}}%"></view>
+    <view class="panel">
+      <view class="panel-title">卡池保底统计<text class="pool-tag inline">保底 · 出货</text></view>
+      <view class="pool-stat" wx:for="{{pools}}" wx:key="pool">
+        <view class="pool-stat-head">
+          <text class="pool-tag">{{item.pool}}</text>
+          <text class="pool-pity">已垫 {{item.currentPity}} / {{item.cap}} 抽{{item.pityManual ? ' · 手动' : ''}}</text>
         </view>
-        <text class="bar-count">{{item.value}}</text>
+        <view class="pity-bar">
+          <view class="pity-bar-fill" style="width:{{item.percent}}%"></view>
+        </view>
+        <view class="pool-meta">
+          <text>五星 {{item.fiveStarCount}} 次</text>
+          <text>平均 {{item.avgFiveStarPity}} 抽</text>
+          <text>距保底 {{item.pullsToPity}} 抽</text>
+          <text wx:if="{{item.upGuaranteed}}" class="pool-tag up">{{item.guaranteeText}}</text>
+        </view>
       </view>
-    </block>
-    <view wx:else class="empty">还没有抽卡记录</view>
+    </view>
   </view>
 
-  <view class="panel">
-    <view class="panel-title">最近出货</view>
-    <block wx:if="{{recent.length}}">
-      <view class="list-row" wx:for="{{recent}}" wx:key="id">
-        <view class="recent-name"><text class="stars">{{item.stars}}</text>{{item.name}}</view>
-        <text class="recent-time">{{item.time}}</text>
+  <!-- 分析 -->
+  <view hidden="{{statsTab !== 'analysis'}}">
+    <view class="panel">
+      <view class="panel-title">抽卡统计<text class="pool-tag inline">角色活动 · {{g.weaponPool}}</text></view>
+      <view class="stat-grid">
+        <view class="stat-card">
+          <view class="stat-label">一共抽过</view>
+          <view class="stat-value">{{stats.recordPullsText}} 抽</view>
+          <view class="stat-extra">五星 {{stats.fiveStarWishes}} 次</view>
+        </view>
+        <view class="stat-card">
+          <view class="stat-label">歪了几次</view>
+          <view class="stat-value">{{stats.lostCount}} 次</view>
+          <view class="stat-extra">小保底 {{stats.softPityCount}} 次</view>
+        </view>
+        <view class="stat-card">
+          <view class="stat-label">小保底不歪</view>
+          <view class="stat-value">{{stats.softPityUpCount}} 次</view>
+          <view class="stat-extra">不歪率 {{stats.softPityUpRate}}%</view>
+        </view>
+        <view class="stat-card">
+          <view class="stat-label">最多连歪</view>
+          <view class="stat-value">{{stats.maxLossStreak}} 次</view>
+          <view class="stat-extra">最多连不歪 {{stats.maxUpStreak}} 次</view>
+        </view>
+        <view class="stat-card">
+          <view class="stat-label">平均 UP 角色</view>
+          <view class="stat-value">{{stats.charAvgText}}</view>
+          <view class="stat-extra">UP {{stats.charSamples}} 次</view>
+        </view>
+        <view class="stat-card">
+          <view class="stat-label">平均 UP {{g.weaponPool === '光锥活动' ? '光锥' : '武器'}}</view>
+          <view class="stat-value">{{stats.weaponAvgText}}</view>
+          <view class="stat-extra">UP {{stats.weaponSamples}} 次</view>
+        </view>
+        <view class="stat-card">
+          <view class="stat-label">平均每个 UP 角色</view>
+          <view class="stat-value">{{stats.charCostText}} {{g.currency}}</view>
+          <view class="stat-extra">按 160 {{g.currency}} / 抽</view>
+        </view>
+        <view class="stat-card">
+          <view class="stat-label">平均限定{{g.weaponPool === '光锥活动' ? '光锥' : '武器'}}</view>
+          <view class="stat-value">{{stats.weaponCostText}} {{g.currency}}</view>
+          <view class="stat-extra">按 160 {{g.currency}} / 抽</view>
+        </view>
+        <view class="stat-card" wx:if="{{game === 'genshin'}}">
+          <view class="stat-label">捕获明光触发</view>
+          <view class="stat-value">{{stats.captureCount}} 次</view>
+          <view class="stat-extra">录入时勾选触发次数</view>
+        </view>
       </view>
-    </block>
-    <view wx:else class="empty">还没有抽卡记录</view>
+    </view>
+
+    <view class="panel">
+      <view class="panel-title pull-head">
+        <text>五星抽数</text>
+        <view class="pull-toggle {{chartReal ? 'active' : ''}}" bindtap="onToggleReal">{{chartReal ? '显示原始抽数' : '显示真实抽数'}}</view>
+      </view>
+      <view class="pull-pools">
+        <view class="pull-pool {{chartPool === item.key ? 'active' : ''}}" wx:for="{{chartPools}}" wx:key="key"
+              bindtap="onSelectChartPool" data-pool="{{item.key}}">{{item.label}}</view>
+      </view>
+      <view class="pull-summary">{{chart.summary}}</view>
+      <view class="pull-chart" wx:if="{{chart.points.length}}">
+        <view class="pull-row {{item.up ? '' : 'lost'}}" wx:for="{{chart.points}}" wx:key="index">
+          <text class="pull-name">{{item.name}}</text>
+          <view class="pull-track">
+            <view class="pull-bar" style="width:{{item.percent}}%"></view>
+          </view>
+          <text class="pull-val">{{item.value}}</text>
+        </view>
+      </view>
+      <view wx:else class="empty">还没有五星记录</view>
+    </view>
+
+    <view class="panel">
+      <view class="panel-title">卡池分布<text class="pool-tag inline">各卡池抽数占比</text></view>
+      <block wx:if="{{dist.length}}">
+        <view class="bar-row" wx:for="{{dist}}" wx:key="name">
+          <text class="bar-name">{{item.name}}</text>
+          <view class="bar-track">
+            <view class="bar-fill" style="width:{{item.percent}}%"></view>
+          </view>
+          <text class="bar-count">{{item.value}}</text>
+        </view>
+      </block>
+      <view wx:else class="empty">还没有抽卡记录</view>
+    </view>
   </view>
 
-  <view class="panel">
-    <view class="panel-title">账号资源导入导出 · {{g.fullName}}</view>
-    <view class="panel-desc">手机上可直接手动填写，或粘贴 JSON / CSV 文本（{{g.currency}}、{{g.credit}}、{{g.fateLimited}}、{{g.fateStandard}}），也可以导入电脑端导出的文件。抽卡记录请到「抽卡」页处理。</view>
-    <view class="toolbar">
-      <view class="btn btn-primary btn-sm" bindtap="openResourceForm">手动填写</view>
-      <view class="btn btn-text btn-sm" bindtap="openResourceText">粘贴导入</view>
-      <view class="btn btn-outline btn-sm" bindtap="exportResourceCsv">导出 CSV</view>
-      <view class="btn btn-outline btn-sm" bindtap="exportResourceJson">导出 JSON</view>
-      <view class="btn btn-text btn-sm" bindtap="importResource">文件导入</view>
+  <!-- 期望 -->
+  <view hidden="{{statsTab !== 'expect'}}">
+    <view wx:if="{{expect}}" class="panel expect-panel">
+      <view class="panel-title">抽卡期望<text class="pool-tag inline">目标模拟</text></view>
+      <view class="expect-modes">
+        <view class="expect-mode {{expect.historyOn ? '' : 'is-on'}}" bindtap="onExpectMode" data-mode="theory">理论模型</view>
+        <view class="expect-mode {{expect.historyOn ? 'is-on' : ''}} {{expect.historyReady ? '' : 'is-disabled'}}"
+              bindtap="onExpectMode" data-mode="history">往期区间</view>
+      </view>
+
+      <view class="expect-targets">
+        <view class="expect-target">
+          <view class="expect-target-label">角色命座</view>
+          <view class="expect-stepper">
+            <view class="expect-step {{expect.c <= 0 ? 'is-disabled' : ''}}" bindtap="onExpectStep"
+                  data-step="c" data-dir="-1">−</view>
+            <view class="expect-step-value">{{expect.c}}<text class="expect-unit">命</text></view>
+            <view class="expect-step {{expect.c >= 6 ? 'is-disabled' : ''}}" bindtap="onExpectStep"
+                  data-step="c" data-dir="1">＋</view>
+          </view>
+          <view class="expect-target-note">{{expect.charNote}}</view>
+        </view>
+        <view class="expect-target">
+          <view class="expect-target-label">{{g.weaponPool === '光锥活动' ? '光锥精炼' : '武器精炼'}}</view>
+          <view class="expect-stepper">
+            <view class="expect-step {{expect.r <= 0 ? 'is-disabled' : ''}}" bindtap="onExpectStep"
+                  data-step="r" data-dir="-1">−</view>
+            <view class="expect-step-value">{{expect.r}}<text class="expect-unit">精</text></view>
+            <view class="expect-step {{expect.r >= 5 ? 'is-disabled' : ''}}" bindtap="onExpectStep"
+                  data-step="r" data-dir="1">＋</view>
+          </view>
+          <view class="expect-target-note">{{expect.weaponNote}}</view>
+        </view>
+      </view>
+
+      <view class="expect-readout">
+        <view class="expect-kicker">目标 {{expect.targetName}} · {{expect.historyOn ? '往期区间' : '理论期望'}}</view>
+        <view class="expect-number {{expect.isRange ? 'is-range' : ''}}">{{expect.totalText}}<text class="expect-unit">抽</text></view>
+        <view class="expect-compare">{{expect.compareText}}</view>
+        <view class="expect-bar">
+          <view class="expect-bar-fill {{expect.enough ? 'done' : ''}}" style="width:{{expect.percent}}%"></view>
+        </view>
+      </view>
+
+      <view class="expect-split">
+        <view class="expect-part">
+          <view class="expect-part-label">{{expect.charLabel}}</view>
+          <view class="expect-part-value">{{expect.charCostText}}</view>
+          <view class="expect-part-note">{{expect.charUpText}}</view>
+        </view>
+        <view class="expect-part">
+          <view class="expect-part-label">{{expect.weaponLabel}}</view>
+          <view class="expect-part-value">{{expect.weaponCostText}}</view>
+          <view class="expect-part-note">{{expect.weaponUpText}}</view>
+        </view>
+      </view>
+
+      <view class="expect-note">{{expect.sourceNote}}</view>
+      <view class="expect-note">{{expect.pityNote}}{{expect.rangeNote}}</view>
     </view>
-    <view class="foot-tip">手动填写会覆盖当前数值；文件导入只覆盖文件里填写的字段，空着的保持原值。</view>
   </view>
 
-  <view class="panel">
-    <view class="panel-title">全量备份 · 换设备</view>
-    <view class="panel-desc">把原神与星穹铁道的全部抽卡记录、账号资源打包成一个 JSON 文件；新设备导入即可恢复。</view>
-    <view class="toolbar">
-      <view class="btn btn-primary" bindtap="exportAllBackup">导出全部数据</view>
-      <view class="btn btn-outline" bindtap="importAllBackup">导入全部数据</view>
+  <!-- 资源 -->
+  <view hidden="{{statsTab !== 'resource'}}">
+    <view class="panel">
+      <view class="panel-title">账号资源导入导出 · {{g.fullName}}</view>
+      <view class="panel-desc">手机上可直接手动填写，或粘贴 JSON / CSV 文本（{{g.currency}}、{{g.credit}}、{{g.fateLimited}}、{{g.fateStandard}}），也可以导入电脑端导出的文件。抽卡记录请到「抽卡」页处理。</view>
+      <view class="toolbar">
+        <view class="btn btn-primary btn-sm" bindtap="openResourceForm">手动填写</view>
+        <view class="btn btn-text btn-sm" bindtap="openResourceText">粘贴导入</view>
+        <view class="btn btn-outline btn-sm" bindtap="exportResourceCsv">导出 CSV</view>
+        <view class="btn btn-outline btn-sm" bindtap="exportResourceJson">导出 JSON</view>
+        <view class="btn btn-text btn-sm" bindtap="importResource">文件导入</view>
+      </view>
+      <view class="foot-tip">手动填写会覆盖当前数值；文件导入只覆盖文件里填写的字段，空着的保持原值。</view>
     </view>
-    <view class="foot-tip">离线版数据只存在本机缓存；卸载、清理缓存或换机会丢失，建议定期导出备份。</view>
+
+    <view class="panel">
+      <view class="panel-title">全量备份 · 换设备</view>
+      <view class="panel-desc">把原神与星穹铁道的全部抽卡记录、账号资源打包成一个 JSON 文件；新设备导入即可恢复。</view>
+      <view class="toolbar">
+        <view class="btn btn-primary" bindtap="exportAllBackup">导出全部数据</view>
+        <view class="btn btn-outline" bindtap="importAllBackup">导入全部数据</view>
+      </view>
+      <view class="foot-tip">离线版数据只存在本机缓存；卸载、清理缓存或换机会丢失，建议定期导出备份。</view>
+    </view>
   </view>
 </view>
 
