@@ -52,6 +52,31 @@ button {
     display: none !important;
 }
 
+/* ---------- 暗色滚动条 ---------- */
+
+* {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(211, 188, 142, 0.28) transparent;
+}
+
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: rgba(211, 188, 142, 0.24);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(211, 188, 142, 0.42);
+}
+
 /* ---------- 通用组件 ---------- */
 
 .btn {
@@ -403,35 +428,91 @@ body.game-starrail {
 }
 
 .page-head {
+    position: relative;
     display: flex;
     align-items: flex-end;
     justify-content: space-between;
     gap: 14px;
-    margin-bottom: 18px;
+    padding-bottom: 16px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--line);
+}
+
+.page-head > div:first-child {
+    position: relative;
+    padding-left: 14px;
+}
+
+.page-head > div:first-child::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 4px;
+    bottom: 4px;
+    width: 3px;
+    border-radius: 3px;
+    background: linear-gradient(180deg, var(--gold-2), rgba(211, 188, 142, 0));
+}
+
+.page-head .eyebrow {
+    display: block;
+    margin-bottom: 3px;
+    font-size: 10.5px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--gold);
+    opacity: 0.72;
 }
 
 .page-head h2 {
     margin: 0;
-    font-size: 22px;
-    letter-spacing: 0.5px;
+    font-size: 25px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    background: linear-gradient(120deg, #ffffff 8%, var(--gold-2) 58%, var(--gold) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: var(--gold-2);
 }
 
 .page-head .sub {
-    margin: 4px 0 0;
+    margin: 5px 0 0;
     font-size: 12.5px;
     color: var(--muted);
 }
 
 .toolbar {
     display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding: 14px;
+    border-radius: 16px;
+    border: 1px solid var(--line);
+    background: linear-gradient(160deg, rgba(30, 35, 55, 0.72), rgba(13, 16, 26, 0.78));
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.2);
+}
+
+.toolbar-filters,
+.toolbar-tools {
+    display: flex;
     align-items: center;
     flex-wrap: wrap;
     gap: 10px;
-    margin-bottom: 16px;
+}
+
+.toolbar-tools {
+    padding-top: 12px;
+    border-top: 1px dashed var(--line);
 }
 
 .toolbar .input {
-    max-width: 300px;
+    max-width: 220px;
+    padding: 8px 12px;
+    border-radius: 9px;
+    border-color: var(--line);
+    background: rgba(9, 11, 20, 0.85);
 }
 
 .toolbar-actions {
@@ -469,14 +550,25 @@ body.game-starrail {
     align-items: center;
     justify-content: space-between;
     gap: 18px;
-    padding: 26px 26px;
-    margin-bottom: 18px;
-    border-radius: 20px;
+    padding: 28px;
+    margin-bottom: 20px;
+    border-radius: 22px;
     border: 1px solid var(--line);
     background:
         radial-gradient(600px 240px at 100% 0%, rgba(211, 188, 142, 0.16), transparent 70%),
         linear-gradient(150deg, rgba(33, 38, 60, 0.9), rgba(16, 19, 31, 0.92));
+    box-shadow: 0 22px 50px rgba(0, 0, 0, 0.34);
     overflow: hidden;
+}
+
+.hero::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 1px;
+    background: linear-gradient(90deg, rgba(211, 188, 142, 0.6), transparent 62%);
 }
 
 .hero-sub {
@@ -525,8 +617,12 @@ body.game-starrail {
 
 .stats-tabs {
     display: flex;
-    gap: 8px;
-    margin: 0 0 18px;
+    gap: 4px;
+    margin: 0 0 20px;
+    padding: 5px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: rgba(9, 11, 20, 0.55);
     overflow-x: auto;
     scrollbar-width: none;
 }
@@ -536,20 +632,21 @@ body.game-starrail {
 }
 
 .stats-tab {
-    flex: 0 0 auto;
-    padding: 8px 18px;
+    flex: 1 0 auto;
+    padding: 8px 20px;
     border-radius: 999px;
-    border: 1px solid var(--line);
-    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid transparent;
+    background: transparent;
     color: var(--muted);
     font-size: 13px;
     cursor: pointer;
-    transition: color 0.16s, border-color 0.16s, background 0.16s;
+    text-align: center;
+    transition: color 0.16s, background 0.16s;
 }
 
 .stats-tab:hover {
     color: var(--text);
-    border-color: var(--line-strong);
+    border-color: var(--line);
 }
 
 .stats-tab.active {
@@ -557,6 +654,7 @@ body.game-starrail {
     border-color: transparent;
     background: linear-gradient(135deg, var(--gold-2), var(--gold));
     font-weight: 600;
+    box-shadow: 0 6px 16px rgba(211, 188, 142, 0.22);
 }
 
 .stats-section[hidden] {
@@ -586,21 +684,65 @@ body.game-starrail {
 }
 
 .stat-card {
-    padding: 18px 18px 16px;
+    position: relative;
+    padding: 20px 18px 18px;
     border-radius: var(--radius);
     border: 1px solid var(--line);
-    background: linear-gradient(160deg, rgba(28, 33, 52, 0.9), rgba(17, 20, 33, 0.9));
+    background:
+        radial-gradient(320px 130px at 100% -30%, rgba(211, 188, 142, 0.10), transparent 70%),
+        linear-gradient(160deg, rgba(28, 33, 52, 0.9), rgba(17, 20, 33, 0.9));
+    overflow: hidden;
+    transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.stat-card::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--gold), var(--gold-2), transparent);
+    opacity: 0.65;
+}
+
+.stat-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--line-strong);
+}
+
+.stat-card.tone-gold {
+    background:
+        radial-gradient(320px 130px at 100% -30%, rgba(211, 188, 142, 0.20), transparent 70%),
+        linear-gradient(160deg, rgba(33, 38, 60, 0.92), rgba(17, 20, 33, 0.9));
+    border-color: rgba(211, 188, 142, 0.26);
+}
+
+.stat-card.tone-purple {
+    background:
+        radial-gradient(320px 130px at 100% -30%, rgba(154, 120, 224, 0.22), transparent 70%),
+        linear-gradient(160deg, rgba(31, 34, 58, 0.92), rgba(17, 20, 33, 0.9));
+    border-color: rgba(166, 140, 240, 0.24);
+}
+
+.stat-card.tone-purple::before {
+    background: linear-gradient(90deg, #c9adff, rgba(201, 173, 255, 0.2), transparent);
+}
+
+.stat-card.tone-purple .stat-value {
+    color: #d5c2ff;
 }
 
 .stat-label {
-    font-size: 12px;
+    font-size: 11px;
     color: var(--muted);
-    letter-spacing: 0.5px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
 }
 
 .stat-value {
     margin-top: 8px;
-    font-size: 27px;
+    font-size: 30px;
     font-weight: 700;
     color: var(--gold-2);
     line-height: 1.1;
@@ -621,16 +763,33 @@ body.game-starrail {
 }
 
 .panel {
+    position: relative;
     padding: 20px;
     border-radius: var(--radius);
     border: 1px solid var(--line);
-    background: var(--card-soft);
+    background:
+        linear-gradient(165deg, rgba(30, 35, 55, 0.58), rgba(13, 16, 26, 0.86));
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
 }
 
 .panel h3 {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
     margin: 0 0 16px;
-    font-size: 15px;
-    letter-spacing: 0.4px;
+    font-size: 14.5px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+}
+
+.panel h3::before {
+    content: "";
+    flex: 0 0 auto;
+    width: 3px;
+    height: 14px;
+    border-radius: 2px;
+    background: linear-gradient(180deg, var(--gold-2), var(--gold));
 }
 
 .panel-desc {
@@ -1451,22 +1610,22 @@ body.game-starrail {
 .bars {
     display: flex;
     flex-direction: column;
-    gap: 11px;
+    gap: 14px;
 }
 
 .bar-row {
     display: grid;
-    grid-template-columns: 46px 1fr 34px;
+    grid-template-columns: 64px 1fr 38px;
     align-items: center;
-    gap: 10px;
-    font-size: 12.5px;
+    gap: 12px;
+    font-size: 13px;
     color: var(--muted);
 }
 
 .bar-track {
-    height: 8px;
+    height: 10px;
     border-radius: 99px;
-    background: rgba(255, 255, 255, 0.06);
+    background: rgba(255, 255, 255, 0.07);
     overflow: hidden;
 }
 
@@ -1474,6 +1633,7 @@ body.game-starrail {
     height: 100%;
     border-radius: 99px;
     background: linear-gradient(90deg, var(--gold), var(--gold-2));
+    box-shadow: 0 0 12px rgba(211, 188, 142, 0.28);
     transition: width 0.5s ease;
 }
 
@@ -1490,14 +1650,47 @@ body.game-starrail {
 }
 
 .mini-item {
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 10px;
-    padding: 9px 12px;
-    border-radius: 10px;
-    background: rgba(255, 255, 255, 0.03);
+    padding: 10px 14px 10px 16px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: linear-gradient(150deg, rgba(28, 33, 52, 0.6), rgba(13, 16, 26, 0.82));
     font-size: 13px;
+    overflow: hidden;
+}
+
+.mini-item::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: rgba(211, 188, 142, 0.22);
+}
+
+.mini-item.rarity-5::before {
+    background: linear-gradient(180deg, var(--gold-2), #b9944f);
+}
+
+.mini-item.rarity-4::before {
+    background: linear-gradient(180deg, #c9adff, #8065c7);
+}
+
+.mini-item .mini-meta {
+    flex: 0 0 auto;
+    padding: 0 8px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 18px;
+    white-space: nowrap;
 }
 
 .mini-item .name {
@@ -1544,56 +1737,215 @@ body.game-starrail {
 }
 
 .record-row {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px 16px;
-    padding: 13px 16px;
-    border-radius: 12px;
+    position: relative;
+    border-radius: 14px;
     border: 1px solid var(--line);
-    background: var(--card-soft);
+    background: linear-gradient(160deg, rgba(28, 33, 52, 0.7), rgba(14, 17, 28, 0.86));
     font-size: 13px;
+    overflow: hidden;
+    transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.record-row::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: rgba(211, 188, 142, 0.28);
+}
+
+.record-row.rarity-5 {
+    background:
+        radial-gradient(420px 150px at 100% -40%, rgba(211, 188, 142, 0.16), transparent 70%),
+        linear-gradient(160deg, rgba(32, 37, 58, 0.82), rgba(14, 17, 28, 0.9));
+    border-color: rgba(211, 188, 142, 0.28);
+}
+
+.record-row.rarity-5::before {
+    background: linear-gradient(180deg, var(--gold-2), #b9944f);
+}
+
+.record-row.rarity-4::before {
+    background: linear-gradient(180deg, #c9adff, #8065c7);
+}
+
+.record-row:hover {
+    border-color: var(--line-strong);
+    transform: translateY(-1px);
+    box-shadow: 0 16px 32px rgba(0, 0, 0, 0.3);
 }
 
 .record-row + .record-row {
-    margin-top: 9px;
+    margin-top: 10px;
+}
+
+.record-main {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 13px 16px 13px 19px;
 }
 
 .record-check {
-    width: 16px;
-    height: 16px;
+    width: 17px;
+    height: 17px;
     flex: 0 0 auto;
     margin: 0;
-    accent-color: var(--gold);
+    -webkit-appearance: none;
+    appearance: none;
+    border-radius: 5px;
+    border: 1px solid rgba(211, 188, 142, 0.38);
+    background: rgba(9, 11, 20, 0.9);
     cursor: pointer;
+    transition: border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
 }
 
-.record-name {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex: 1 1 150px;
+.record-check:hover {
+    border-color: var(--gold);
+}
+
+.record-check:checked {
+    border-color: var(--gold);
+    background:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M1.8 6.3l2.6 2.6 5.8-5.8' fill='none' stroke='%23241a05' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 12px 12px no-repeat,
+        linear-gradient(135deg, var(--gold-2), var(--gold));
+    box-shadow: 0 0 10px rgba(211, 188, 142, 0.35);
+}
+
+.record-avatar {
+    position: relative;
+    flex: 0 0 auto;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--gold-2);
+    background: linear-gradient(135deg, rgba(211, 188, 142, 0.28), rgba(90, 120, 255, 0.14));
+    border: 1px solid var(--line);
+}
+
+.record-row.rarity-4 .record-avatar {
+    color: #dccbff;
+    background: linear-gradient(135deg, rgba(154, 120, 224, 0.34), rgba(90, 120, 255, 0.14));
+    border-color: rgba(183, 156, 255, 0.36);
+}
+
+.record-avatar .char-avatar,
+.record-avatar img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    border-radius: 0;
+    vertical-align: 0;
+}
+
+.record-info {
+    flex: 1 1 auto;
     min-width: 0;
 }
 
-.record-name .name {
+.record-title {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+}
+
+.record-title .name {
+    font-size: 14.5px;
+    font-weight: 600;
+    color: var(--text);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-.record-name .name.muted {
+.record-title .name.muted {
+    color: var(--muted);
+    font-weight: 400;
+}
+
+.record-sub {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px 12px;
+    margin-top: 4px;
+    font-size: 11.5px;
     color: var(--muted);
 }
 
-.record-time {
+.record-sub strong {
+    color: var(--gold-2);
+    font-variant-numeric: tabular-nums;
+}
+
+.record-sub .good {
+    color: #7dd3a0;
+}
+
+.record-sub .bad {
+    color: #ff8f8f;
+}
+
+.record-sub .meta-pill {
+    padding: 0 8px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.03);
+    line-height: 18px;
     color: var(--muted);
-    font-size: 12px;
-    margin-left: auto;
+}
+
+.record-sub .meta-pill.good {
+    border-color: rgba(125, 211, 160, 0.34);
+    background: rgba(125, 211, 160, 0.10);
+    color: #86e0af;
+}
+
+.record-sub .meta-pill.bad {
+    border-color: rgba(255, 143, 143, 0.32);
+    background: rgba(255, 143, 143, 0.10);
+    color: #ff9c9c;
+}
+
+.record-sub .pity-pill {
+    border-color: rgba(211, 188, 142, 0.3);
+    background: rgba(211, 188, 142, 0.10);
+    color: var(--gold-2);
+    font-variant-numeric: tabular-nums;
+}
+
+.record-sub .capture-mark {
+    padding: 0 8px;
+    border-radius: 999px;
+    border: 1px solid rgba(122, 215, 192, 0.32);
+    background: rgba(122, 215, 192, 0.10);
+    line-height: 18px;
+    color: #7ad7c0;
+    font-size: 11px;
+    letter-spacing: 0;
+}
+
+.record-time {
+    flex: 0 0 auto;
+    color: var(--muted);
+    font-size: 11.5px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
 }
 
 .record-actions {
     display: flex;
+    flex: 0 0 auto;
     gap: 2px;
     justify-content: flex-end;
 }
@@ -1806,27 +2158,30 @@ body.game-starrail {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    margin: 0 0 14px;
+    margin: 0 0 16px;
 }
 
 .wish-pity-chip {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    padding: 6px 11px;
-    border-radius: 999px;
+    gap: 5px;
+    padding: 8px 14px;
+    border-radius: 12px;
     border: 1px solid var(--line);
-    background: rgba(9, 11, 20, 0.6);
+    background: linear-gradient(150deg, rgba(30, 35, 55, 0.78), rgba(12, 15, 24, 0.86));
     color: var(--muted);
     font-size: 12px;
     font-family: inherit;
     white-space: nowrap;
     cursor: pointer;
+    transition: border-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
 }
 
 .wish-pity-chip:hover {
     border-color: var(--line-strong);
     color: var(--text);
+    transform: translateY(-1px);
+    box-shadow: 0 10px 22px rgba(0, 0, 0, 0.26);
 }
 
 .wish-pity-manual {
@@ -1840,13 +2195,14 @@ body.game-starrail {
 
 .wish-pity-chip strong {
     color: var(--gold-2);
-    font-size: 13px;
+    font-size: 16px;
     font-variant-numeric: tabular-nums;
 }
 
 .wish-pity-chip.guaranteed {
     border-color: var(--line-strong);
     color: var(--gold);
+    background: linear-gradient(150deg, rgba(211, 188, 142, 0.16), rgba(12, 15, 24, 0.86));
 }
 
 .batch-row select,
@@ -2226,14 +2582,42 @@ body.game-starrail {
         max-width: none;
     }
 
-    .record-row {
-        gap: 6px 12px;
-        padding: 12px 14px;
+    .toolbar {
+        gap: 10px;
+        padding: 12px;
+    }
+
+    .toolbar-filters .input {
+        flex: 1 1 100%;
+    }
+
+    .toolbar-actions {
+        width: 100%;
+        margin-left: 0;
+        justify-content: flex-start;
+    }
+
+    .record-main {
+        flex-wrap: wrap;
+        gap: 8px 10px;
+        padding: 12px 13px 12px 16px;
+    }
+
+    .record-avatar {
+        width: 38px;
+        height: 38px;
+        font-size: 14px;
+    }
+
+    .record-info {
+        flex: 1 1 calc(100% - 78px);
     }
 
     .record-time {
-        order: 3;
+        order: 0;
+        flex: 1 1 auto;
         margin-left: 0;
+        padding-left: 2px;
     }
 
     .modal {
@@ -2586,48 +2970,99 @@ body.game-starrail {
 }
 
 .filter-check input {
-    width: 15px;
-    height: 15px;
-    accent-color: var(--gold);
+    width: 16px;
+    height: 16px;
+    -webkit-appearance: none;
+    appearance: none;
+    border-radius: 5px;
+    border: 1px solid rgba(211, 188, 142, 0.38);
+    background: rgba(9, 11, 20, 0.9);
     cursor: pointer;
+    transition: border-color 0.16s ease, background 0.16s ease;
 }
 
-.collection-panel h3 {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+.filter-check input:hover {
+    border-color: var(--gold);
+}
+
+.filter-check input:checked {
+    border-color: var(--gold);
+    background:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M1.8 6.3l2.6 2.6 5.8-5.8' fill='none' stroke='%23241a05' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 11px 11px no-repeat,
+        linear-gradient(135deg, var(--gold-2), var(--gold));
+}
+
+.collection-panel h3 .pool-tag {
+    margin-left: auto;
+}
+
+.collection-panel .empty {
+    margin-top: 12px;
+    padding: 22px 14px;
+    font-size: 12.5px;
 }
 
 .collection-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
-    gap: 10px;
-    margin-top: 12px;
+    grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+    gap: 12px;
+    margin-top: 14px;
 }
 
 .collection-card {
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 6px;
-    padding: 10px 8px;
-    border-radius: 14px;
+    gap: 8px;
+    padding: 14px 10px 12px;
+    border-radius: 16px;
     border: 1px solid var(--line);
-    background: rgba(9, 11, 20, 0.55);
+    background: linear-gradient(165deg, rgba(30, 35, 55, 0.62), rgba(12, 15, 24, 0.82));
+    overflow: hidden;
+    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.collection-card::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(211, 188, 142, 0.55), transparent);
+    opacity: 0.55;
+}
+
+.collection-card:hover {
+    transform: translateY(-3px);
+    border-color: var(--line-strong);
+    box-shadow: 0 16px 32px rgba(0, 0, 0, 0.34);
 }
 
 .collection-icon {
     position: relative;
-    width: 56px;
-    height: 56px;
+    width: 64px;
+    height: 64px;
     border-radius: 50%;
     overflow: hidden;
     display: grid;
     place-items: center;
     background: linear-gradient(135deg, rgba(211, 188, 142, 0.22), rgba(90, 120, 255, 0.16));
+    box-shadow: 0 0 0 1px rgba(211, 188, 142, 0.25), 0 8px 20px rgba(0, 0, 0, 0.35);
     color: var(--gold-2);
-    font-size: 20px;
+    font-size: 22px;
     font-weight: 600;
+}
+
+.collection-card.rarity-4 .collection-icon {
+    background: linear-gradient(135deg, #8a68c9, #443a70);
+    box-shadow: 0 0 0 1px rgba(183, 156, 255, 0.4), 0 8px 20px rgba(0, 0, 0, 0.35);
+}
+
+.collection-card.rarity-5 .collection-icon {
+    background: linear-gradient(135deg, #c9ac6d, #6a5830);
+    box-shadow: 0 0 0 1px rgba(211, 188, 142, 0.45), 0 8px 22px rgba(211, 188, 142, 0.16);
 }
 
 .collection-icon span {
@@ -2649,7 +3084,8 @@ body.game-starrail {
 .collection-name {
     width: 100%;
     text-align: center;
-    font-size: 12px;
+    font-size: 12.5px;
+    font-weight: 600;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -2672,6 +3108,11 @@ body.game-starrail {
     font-variant-numeric: tabular-nums;
 }
 
+.collection-card.rarity-4 .collection-rank {
+    border-color: rgba(183, 156, 255, 0.45);
+    color: #ddceff;
+}
+
 .collection-remove {
     border: none;
     background: none;
@@ -2688,12 +3129,13 @@ body.game-starrail {
 
 @media (max-width: 720px) {
     .collection-grid {
-        grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
-        gap: 8px;
+        grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+        gap: 10px;
     }
 
     .collection-icon {
-        width: 48px;
-        height: 48px;
+        width: 52px;
+        height: 52px;
+        font-size: 18px;
     }
 }

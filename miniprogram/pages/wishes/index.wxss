@@ -28,18 +28,19 @@
 
 .wish-pity-chip {
   margin: 0 12rpx 12rpx 0;
-  padding: 8rpx 16rpx;
-  border-radius: 999rpx;
-  border: 1rpx solid rgba(211, 188, 142, 0.2);
-  background: rgba(9, 11, 20, 0.6);
+  padding: 10rpx 18rpx;
+  border-radius: 16rpx;
+  border: 1rpx solid rgba(211, 188, 142, 0.24);
+  background: linear-gradient(150deg, rgba(30, 35, 55, 0.78), rgba(12, 15, 24, 0.86));
   color: #8b90a6;
   font-size: 22rpx;
   line-height: 1.4;
 }
 
 .wish-pity-chip.guaranteed {
-  border-color: rgba(211, 188, 142, 0.45);
+  border-color: rgba(211, 188, 142, 0.5);
   color: #d3bc8e;
+  background: linear-gradient(150deg, rgba(211, 188, 142, 0.16), rgba(12, 15, 24, 0.86));
 }
 
 .wish-pity-manual {
@@ -72,11 +73,38 @@
 }
 
 .record {
-  background: #171b2b;
+  position: relative;
+  background: linear-gradient(160deg, rgba(30, 35, 55, 0.92), #141826);
   border: 1rpx solid rgba(211, 188, 142, 0.16);
   border-radius: 20rpx;
-  padding: 20rpx 24rpx;
+  padding: 22rpx 24rpx 16rpx 28rpx;
   margin-bottom: 16rpx;
+  overflow: hidden;
+}
+
+.record::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 6rpx;
+  background: rgba(211, 188, 142, 0.3);
+}
+
+.record.rarity-5 {
+  background:
+    radial-gradient(520rpx 200rpx at 100% -30%, rgba(211, 188, 142, 0.16), transparent 70%),
+    linear-gradient(160deg, rgba(34, 39, 61, 0.94), #151928);
+  border-color: rgba(211, 188, 142, 0.28);
+}
+
+.record.rarity-5::before {
+  background: linear-gradient(180deg, #f2e2bd, #b9944f);
+}
+
+.record.rarity-4::before {
+  background: linear-gradient(180deg, #c9adff, #8065c7);
 }
 
 .record-top {
@@ -85,15 +113,15 @@
 }
 
 .check {
-  width: 40rpx;
-  height: 40rpx;
-  line-height: 40rpx;
+  width: 36rpx;
+  height: 36rpx;
+  line-height: 36rpx;
   text-align: center;
   border-radius: 50%;
   border: 1rpx solid rgba(211, 188, 142, 0.42);
   color: #1b1a16;
-  font-size: 22rpx;
-  margin-right: 16rpx;
+  font-size: 20rpx;
+  margin-right: 14rpx;
   flex-shrink: 0;
 }
 
@@ -102,13 +130,56 @@
   border-color: #d3bc8e;
 }
 
+.record-avatar {
+  flex-shrink: 0;
+  width: 64rpx;
+  height: 64rpx;
+  line-height: 64rpx;
+  margin-right: 16rpx;
+  border-radius: 50%;
+  text-align: center;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #f2e2bd;
+  background: linear-gradient(135deg, rgba(211, 188, 142, 0.28), rgba(90, 120, 255, 0.16));
+  border: 1rpx solid rgba(211, 188, 142, 0.24);
+}
+
+.record.rarity-4 .record-avatar {
+  color: #ddceff;
+  background: linear-gradient(135deg, rgba(154, 120, 224, 0.36), rgba(90, 120, 255, 0.16));
+  border-color: rgba(183, 156, 255, 0.36);
+}
+
+.record-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.record-line {
+  display: flex;
+  align-items: center;
+}
+
 .record-name {
   flex: 1;
   min-width: 0;
   font-size: 28rpx;
+  font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.record-name.muted {
+  color: #8b90a6;
+  font-weight: 400;
+}
+
+.record-line .stars {
+  flex-shrink: 0;
+  margin-left: 8rpx;
+  font-size: 22rpx;
 }
 
 .record-top .pool-tag {
@@ -119,14 +190,45 @@
 .record-meta {
   display: flex;
   flex-wrap: wrap;
-  font-size: 22rpx;
+  align-items: center;
+  font-size: 21rpx;
   color: #8b90a6;
-  margin-top: 10rpx;
-  padding-left: 56rpx;
+  margin-top: 6rpx;
 }
 
-.record-meta text {
-  margin-right: 20rpx;
+.record-meta > text {
+  margin-right: 14rpx;
+}
+
+.record-meta .record-time {
+  margin-right: 0;
+}
+
+.up-text,
+.lost-text,
+.capture {
+  padding: 2rpx 12rpx;
+  border-radius: 999rpx;
+  border: 1rpx solid rgba(211, 188, 142, 0.16);
+  line-height: 1.5;
+}
+
+.up-text {
+  color: #86e0af;
+  border-color: rgba(125, 211, 160, 0.34);
+  background: rgba(125, 211, 160, 0.1);
+}
+
+.lost-text {
+  color: #ff9c9c;
+  border-color: rgba(255, 143, 143, 0.32);
+  background: rgba(255, 143, 143, 0.1);
+}
+
+.capture {
+  color: #7ad7c0;
+  border-color: rgba(122, 215, 192, 0.32);
+  background: rgba(122, 215, 192, 0.1);
 }
 
 .record-time {
@@ -137,8 +239,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-top: 10rpx;
-  padding-left: 56rpx;
+  margin-top: 14rpx;
+  padding-top: 12rpx;
+  border-top: 1rpx dashed rgba(255, 255, 255, 0.07);
 }
 
 .record-id {

@@ -32,12 +32,12 @@
         <view class="stat-value">{{stats.wishCount}}</view>
         <view class="stat-extra">四星 {{stats.fourStarWishes}} 次</view>
       </view>
-      <view class="stat-card">
+      <view class="stat-card tone-gold">
         <view class="stat-label">五星出货</view>
         <view class="stat-value">{{stats.fiveStarWishes}}</view>
         <view class="stat-extra">出货率 {{stats.fiveStarRate}}%</view>
       </view>
-      <view class="stat-card">
+      <view class="stat-card tone-purple">
         <view class="stat-label">四星出货</view>
         <view class="stat-value">{{stats.fourStarWishes}}</view>
         <view class="stat-extra">占总记录 {{stats.fourStarPercent}}%</view>

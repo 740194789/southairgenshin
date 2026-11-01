@@ -329,8 +329,8 @@
 
     /* ---------------- 概览 ---------------- */
 
-    function statCard(label, value, extra) {
-        return '<div class="stat-card">'
+    function statCard(label, value, extra, tone) {
+        return '<div class="stat-card' + (tone ? ' tone-' + tone : '') + '">'
             + '<div class="stat-label">' + esc(label) + '</div>'
             + '<div class="stat-value">' + esc(value) + '</div>'
             + '<div class="stat-extra">' + esc(extra) + '</div>'
@@ -446,10 +446,14 @@
         }
         return '<div class="mini-list">' + list.map(function (item) {
             var time = (item.wishTime || '').slice(5, 16);
-            return '<div class="mini-item">'
+            var rarity = Number(item.rarity) || 3;
+            return '<div class="mini-item rarity-' + rarity + '">'
                 + '<span class="name">' + avatarHtml(item)
                 + '<span class="stars">' + starText(item.rarity) + '</span>'
                 + esc(item.itemName) + '</span>'
+                + (rarity >= 5 && item.pool
+                    ? '<span class="mini-meta">' + esc(item.pool) + ' · ' + (item.pityCount || 1) + ' 抽</span>'
+                    : '')
                 + '<span class="time">' + esc(time) + '</span>'
                 + '</div>';
         }).join('') + '</div>';
@@ -1218,9 +1222,9 @@
                 + statsSection('overview', tab)
                 + '<div class="stat-grid">'
                 + statCard('出货记录', data.wishCount, '四星 ' + data.fourStarWishes + ' 次')
-                + statCard('五星出货', data.fiveStarWishes, '出货率 ' + data.fiveStarRate + '%')
+                + statCard('五星出货', data.fiveStarWishes, '出货率 ' + data.fiveStarRate + '%', 'gold')
                 + statCard('四星出货', data.fourStarWishes, '占总记录 '
-                    + (data.wishCount ? Math.round(data.fourStarWishes * 100 / data.wishCount) : 0) + '%')
+                    + (data.wishCount ? Math.round(data.fourStarWishes * 100 / data.wishCount) : 0) + '%', 'purple')
                 + statCard('五星平均抽数', data.avgFiveStarPity, '按记录中的保底进度')
                 + '</div>'
                 + '<section class="panel"><h3>最近出货<span class="pool-tag">最近 '
@@ -1262,23 +1266,38 @@
 
     function wishRow(item) {
         var name = item.itemName || '未命名';
-        var fiveStar = Number(item.rarity) >= 5;
-        return '<div class="record-row" data-id="' + item.id + '">'
+        var rarity = Number(item.rarity) || 3;
+        var fiveStar = rarity >= 5;
+        var meta = ['<span>' + esc(item.itemType || '—') + '</span>'];
+        if (fiveStar) {
+            meta.push('<span class="meta-pill ' + (item.isUp ? 'good' : 'bad') + '">'
+                + (item.isUp ? 'UP 内' : '未中 UP') + '</span>');
+            meta.push('<span class="meta-pill pity-pill">' + (item.pityCount || 1) + ' 抽</span>');
+            if (item.captureTriggered) {
+                meta.push('<span class="meta-pill capture-mark">捕获明光</span>');
+            }
+        }
+        return '<div class="record-row rarity-' + rarity + '" data-id="' + item.id + '">'
+            + '<div class="record-main">'
             + '<input type="checkbox" class="record-check" data-check'
             + (state.wishSelected.has(item.id) ? ' checked' : '') + ' aria-label="选择"/>'
-            + '<div class="record-name">' + avatarHtml(item)
-            + '<span class="stars">' + starText(item.rarity) + '</span>'
-            + '<span class="name' + (item.rarity === 3 ? ' muted' : '') + '">' + esc(name) + '</span></div>'
-            + '<div>' + esc(item.itemType || '—') + '</div>'
-            + '<div><span class="pool-tag' + (item.isUp ? ' up' : '') + '">'
-            + esc(item.pool || '未知卡池') + '</span></div>'
-            + '<div>' + (fiveStar ? (item.isUp ? 'UP 内' : '未中 UP') : '—') + '</div>'
-            + '<div>' + (fiveStar ? '用了 ' + (item.pityCount || 1) + ' 抽' : '—')
-            + (fiveStar && item.captureTriggered ? ' <span class="capture-mark">捕获</span>' : '') + '</div>'
+            + '<div class="record-avatar">'
+            + (avatarHtml(item) || '<span>' + esc(name.charAt(0)) + '</span>')
+            + '</div>'
+            + '<div class="record-info">'
+            + '<div class="record-title">'
+            + '<span class="name' + (rarity === 3 ? ' muted' : '') + '">' + esc(name) + '</span>'
+            + '<span class="stars">' + starText(rarity) + '</span>'
+            + '<span class="pool-tag' + (item.isUp ? ' up' : '') + '">'
+            + esc(item.pool || '未知卡池') + '</span>'
+            + '</div>'
+            + '<div class="record-sub">' + meta.join('') + '</div>'
+            + '</div>'
             + '<div class="record-time">' + esc(item.wishTime || '') + '</div>'
             + '<div class="record-actions">'
             + '<button class="icon-btn" type="button" data-act="edit">编辑</button>'
             + '<button class="icon-btn danger" type="button" data-act="delete">删除</button>'
+            + '</div>'
             + '</div>'
             + '</div>';
     }
@@ -1293,25 +1312,29 @@
 
         el.innerHTML =
             '<div class="page-head">'
-            + '<div><h2>抽卡记录</h2><p class="sub">五星出货记录 · 记录抽到五星用了多少抽 · 支持导入导出</p></div>'
+            + '<div><p class="eyebrow">Wish Records</p><h2>抽卡记录</h2><p class="sub">五星出货记录 · 记录抽到五星用了多少抽 · 支持导入导出</p></div>'
             + '<div class="head-actions">'
             + '<button class="btn btn-primary" id="wish-add" type="button">+ 录入五星</button>'
             + '</div>'
             + '</div>'
             + '<div class="toolbar">'
+            + '<div class="toolbar-filters">'
             + '<select id="wish-pool" class="input">' + poolOptions + '</select>'
             + '<label class="filter-check"><input type="checkbox" id="wish-only-five"'
             + (state.wishOnlyFive ? ' checked' : '') + '/>只看五星</label>'
             + '<div class="toolbar-actions">'
             + '<button class="btn btn-text btn-sm" id="wish-batch-edit" type="button">批量编辑本页</button>'
             + '<button class="btn btn-text btn-sm" id="wish-select-all" type="button">全选本页</button>'
-            + '<button class="btn btn-outline btn-sm" id="wish-ocr" type="button">截图导入</button>'
             + '<button class="btn btn-text btn-sm btn-danger" id="wish-batch-del" type="button" disabled>批量删除</button>'
+            + '</div>'
+            + '</div>'
+            + '<div class="toolbar-tools">'
+            + '<button class="btn btn-outline btn-sm" id="wish-ocr" type="button">截图导入</button>'
+            + '<button class="btn btn-outline btn-sm" id="wish-import" type="button">导入记录</button>'
+            + '<button class="btn btn-outline btn-sm" id="wish-link-import" type="button">链接导入</button>'
             + '<button class="btn btn-outline btn-sm" id="wish-export-csv" type="button">导出 CSV</button>'
             + '<button class="btn btn-outline btn-sm" id="wish-export-json" type="button">导出 JSON</button>'
             + '<button class="btn btn-text btn-sm" id="wish-template" type="button">下载模板</button>'
-            + '<button class="btn btn-outline btn-sm" id="wish-import" type="button">导入记录</button>'
-            + '<button class="btn btn-outline btn-sm" id="wish-link-import" type="button">链接导入</button>'
             + '<input id="wish-file" type="file" accept=".csv,.json,text/csv,application/json" hidden/>'
             + '</div>'
             + '</div>'
@@ -2515,7 +2538,7 @@
         return '';
     }
 
-    function collectionCardHtml(game, sectionKey, kind, name, copies, manual, iconMap) {
+    function collectionCardHtml(game, sectionKey, kind, name, copies, manual, iconMap, rarity) {
         var icon = iconMap[name] || '';
         var badge;
         var sub;
@@ -2526,7 +2549,7 @@
             badge = 'R' + Math.min(5, Math.max(1, copies));
             sub = '共 ' + copies + ' 把';
         }
-        return '<div class="collection-card">'
+        return '<div class="collection-card rarity-' + rarity + '">'
             + '<div class="collection-icon"><span>' + esc(name.charAt(0)) + '</span>'
             + (icon ? '<img src="' + esc(icon) + '" alt="" loading="lazy" onerror="this.remove()">' : '')
             + '</div>'
@@ -2596,7 +2619,7 @@
             var cards = sections[def.key].map(function (entry) {
                 var copies = entry.count + entry.manual;
                 return collectionCardHtml(game, def.key, def.kind, entry.name, copies,
-                    entry.manual, iconMap);
+                    entry.manual, iconMap, def.rarity);
             }).join('');
             return '<section class="panel collection-panel">'
                 + '<h3>' + esc(def.title) + '<span class="pool-tag">' + sections[def.key].length + '</span></h3>'
@@ -2671,7 +2694,7 @@
             var owned = loadOwnedData();
             el.innerHTML =
                 '<div class="page-head">'
-                + '<div><h2>收藏图鉴</h2>'
+                + '<div><p class="eyebrow">Collection</p><h2>收藏图鉴</h2>'
                 + '<p class="sub">四星角色 · 五星角色 · 五星' + (g.itemTypes[1] === '光锥' ? '光锥' : '武器')
                 + ' · 角色最高 C6，武器最高 R5</p></div>'
                 + '<div class="head-actions">'

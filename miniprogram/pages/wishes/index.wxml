@@ -43,22 +43,24 @@
   </view>
 
   <block wx:if="{{rows.length}}">
-    <view class="record" wx:for="{{rows}}" wx:key="id">
+    <view class="record rarity-{{item.rarity}}" wx:for="{{rows}}" wx:key="id">
       <view class="record-top">
         <view class="check {{item.checked ? 'on' : ''}}" data-id="{{item.id}}" bindtap="toggleSelect">{{item.checked ? '✓' : ''}}</view>
-        <view class="record-name">
-          <text class="stars">{{item.stars}}</text>
-          <text class="{{item.rarity === 3 ? 'muted' : ''}}">{{item.displayName}}</text>
+        <view class="record-avatar">{{item.initial}}</view>
+        <view class="record-info">
+          <view class="record-line">
+            <text class="record-name {{item.rarity === 3 ? 'muted' : ''}}">{{item.displayName}}</text>
+            <text class="stars">{{item.stars}}</text>
+          </view>
+          <view class="record-meta">
+            <text>{{item.itemType}}</text>
+            <text wx:if="{{item.rarity === 5}}" class="{{item.isUp ? 'up-text' : 'lost-text'}}">{{item.isUp ? 'UP 内' : '未中 UP'}}</text>
+            <text wx:if="{{item.rarity === 5}}">用了 {{item.pityCount}} 抽</text>
+            <text wx:if="{{item.rarity === 5 && item.capture}}" class="capture">捕获明光</text>
+            <text class="record-time">{{item.time}}</text>
+          </view>
         </view>
         <text class="pool-tag {{item.isUp ? 'up' : ''}}">{{item.pool}}</text>
-      </view>
-
-      <view class="record-meta">
-        <text>{{item.itemType}}</text>
-        <text wx:if="{{item.rarity === 5}}">{{item.isUp ? 'UP 内' : '未中 UP'}}</text>
-        <text wx:if="{{item.rarity === 5}}">用了 {{item.pityCount}} 抽</text>
-        <text wx:if="{{item.rarity === 5 && item.capture}}" style="color:#7ad7c0">捕获明光</text>
-        <text class="record-time">{{item.time}}</text>
       </view>
 
       <view class="record-bottom">

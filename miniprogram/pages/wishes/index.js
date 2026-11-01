@@ -137,6 +137,7 @@ Page({
       return {
         id: record.id,
         displayName: record.itemName || '未命名',
+        initial: (record.itemName || '未命名').charAt(0),
         stars: starText(record.rarity),
         rarity: record.rarity,
         itemType: record.itemType || '—',

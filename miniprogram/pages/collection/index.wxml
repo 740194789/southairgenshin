@@ -20,7 +20,7 @@
     <view class="panel">
       <view class="panel-title">{{section.title}}<text class="pool-tag inline">{{section.items.length}}</text></view>
       <view class="coll-grid" wx:if="{{section.items.length}}">
-        <view class="coll-card" wx:for="{{section.items}}" wx:for-item="item" wx:for-index="ii" wx:key="name">
+        <view class="coll-card coll-{{section.key}}" wx:for="{{section.items}}" wx:for-item="item" wx:for-index="ii" wx:key="name">
           <view class="coll-icon">
             <text>{{item.initial}}</text>
             <image wx:if="{{item.icon}}" src="{{item.icon}}" mode="aspectFill" data-si="{{si}}" data-ii="{{ii}}" binderror="onImageError" />
