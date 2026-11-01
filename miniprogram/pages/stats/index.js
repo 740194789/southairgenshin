@@ -43,9 +43,19 @@ function chartPoolOptions(list, game) {
     }
   });
   known.forEach(function (pool) {
-    options.push({ key: pool, label: pool });
+    options.push({ key: pool, label: gameLib.poolLabel(pool) });
   });
   return options;
+}
+
+/** 保底面板跟随同一个卡池筛选：全部时展示所有卡池，否则只看选中的卡池。 */
+function filterPools(pools, pool) {
+  if (!pool || pool === 'all') {
+    return pools || [];
+  }
+  return (pools || []).filter(function (item) {
+    return item.pool === pool;
+  });
 }
 
 /**
@@ -86,6 +96,8 @@ function buildChart(list, real, pool) {
   }
 
   var max = 1;
+  // 记录按时间升序参与周期累计，展示时最新的一根在上
+  points.reverse();
   points.forEach(function (point) {
     max = Math.max(max, point.value);
   });
@@ -317,9 +329,9 @@ function buildExpectation(data, game, prefs) {
         + '武器池五星平均 53.3 抽、定轨约需 2 个五星。';
   }
 
-  var pityNote = '已扣除当前保底进度：' + g.charPool + ' ' + charPity + ' / '
+  var pityNote = '已扣除当前保底进度：' + gameLib.poolLabel(g.charPool) + ' ' + charPity + ' / '
     + (charPool ? charPool.cap : 90)
-    + (prefs.r > 0 ? '，' + g.weaponPool + ' ' + weaponPity + ' / '
+    + (prefs.r > 0 ? '，' + gameLib.poolLabel(g.weaponPool) + ' ' + weaponPity + ' / '
       + (weaponPool ? weaponPool.cap : 80) : '')
     + (charGuaranteed ? ' · 角色池大保底' : '')
     + (weaponGuaranteed && prefs.r > 0 ? ' · 武器池大保底' : '') + '。';
@@ -359,13 +371,14 @@ Page({
     statsTab: 'overview',
     statsTabs: [
       { key: 'overview', label: '概览' },
-      { key: 'pity', label: '保底' },
-      { key: 'analysis', label: '分析' },
+      { key: 'pity', label: '保底分析' },
       { key: 'expect', label: '期望' },
       { key: 'resource', label: '资源' }
     ],
     stats: {},
     pools: [],
+    pityPools: [],
+    showCapture: false,
     dist: [],
     recent: [],
     capture: null,
@@ -437,6 +450,7 @@ Page({
     var pools = data.poolStats.map(function (item) {
       return {
         pool: item.pool,
+        poolLabel: gameLib.poolLabel(item.pool),
         cap: item.cap,
         currentPity: item.currentPity,
         percent: item.percent,
@@ -444,7 +458,6 @@ Page({
         avgFiveStarPity: item.avgFiveStarPity,
         pullsToPity: item.pullsToPity,
         upGuaranteed: item.upGuaranteed,
-        pityManual: item.pityManual === true,
         guaranteeText: guaranteeText(item.pool)
       };
     });
@@ -455,7 +468,7 @@ Page({
     });
     var dist = data.poolDistribution.map(function (item) {
       return {
-        name: item.name,
+        name: gameLib.poolLabel(item.name),
         value: item.value,
         percent: Math.max(8, Math.round(item.value / maxValue * 100))
       };
@@ -494,6 +507,8 @@ Page({
       g: g,
       stats: stats,
       pools: pools,
+      pityPools: filterPools(pools, chartPool),
+      showCapture: !!capture && (chartPool === 'all' || chartPool === g.charPool),
       dist: dist,
       recent: recent,
       capture: capture,
@@ -535,6 +550,8 @@ Page({
     }
     this.setData({
       chartPool: pool,
+      pityPools: filterPools(this.data.pools, pool),
+      showCapture: !!this.data.capture && (pool === 'all' || pool === this.data.g.charPool),
       chart: buildChart(this.fiveStars || [], this.data.chartReal, pool)
     });
   },

@@ -3,6 +3,26 @@
 var store = require('./store');
 var avatars = require('./avatars');
 var weaponIcons = require('./weaponIcons');
+var gameLib = require('./game');
+
+function sortNames(list) {
+  return list.slice().sort(function (a, b) {
+    return a.localeCompare(b, 'zh-CN');
+  });
+}
+
+/** 补充已有时可选的名称：按类别限定四星角色 / 五星角色 / 五星武器（光锥）。 */
+function nameOptions(game, category) {
+  if (category === 'weapons5') {
+    return sortNames(Object.keys(weaponIcons[game] || {}));
+  }
+  var four = gameLib.FOUR_STAR_CHARACTERS[game] || [];
+  var wantFour = category === 'characters4';
+  var list = Object.keys(avatars[game] || {}).filter(function (name) {
+    return (four.indexOf(name) >= 0) === wantFour;
+  });
+  return sortNames(list);
+}
 
 function ownedKey(game) {
   return 'sg_owned_' + game;
@@ -150,5 +170,6 @@ module.exports = {
   getOwned: getOwned,
   addManual: addManual,
   removeManual: removeManual,
+  nameOptions: nameOptions,
   build: build
 };

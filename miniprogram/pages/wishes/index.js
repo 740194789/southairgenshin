@@ -3,10 +3,65 @@ var store = require('../../utils/store');
 var gameLib = require('../../utils/game');
 var csv = require('../../utils/csv');
 var gacha = require('../../utils/gacha');
-var file = require('../../utils/file');
+var avatars = require('../../utils/avatars');
+var weaponIcons = require('../../utils/weaponIcons');
 
 var PAGE_SIZE = 10;
 var FIVE_STAR = 5;
+
+/* 常驻名单：用于自动判定五星是否 UP（与网页端、链接导入口径一致） */
+var STANDARD_ITEMS = {
+  genshin: {
+    characters: ['迪卢克', '琴', '莫娜', '七七', '刻晴', '提纳里', '迪希雅', '梦见月瑞希'],
+    weapons: ['天空之刃', '天空之翼', '天空之傲', '天空之卷', '天空之脊', '阿莫斯之弓',
+      '狼的末路', '风鹰剑', '四风原典', '和璞鸢']
+  },
+  starrail: {
+    characters: ['姬子', '瓦尔特', '布洛妮娅', '克拉拉', '杰帕德', '彦卿', '白露'],
+    weapons: ['银河铁道之夜', '无可取代的东西', '但战斗还未结束', '以世界之名',
+      '制胜的瞬间', '于夜色中', '时节不居'],
+    extraCharacters: ['云璃', '银枝', '银狼', '符玄', '刃', '希儿']
+  }
+};
+
+function sortNames(list) {
+  return list.slice().sort(function (a, b) {
+    return a.localeCompare(b, 'zh-Hans-CN');
+  });
+}
+
+/** 角色 + 武器 / 光锥的完整候选名单，角色在前。 */
+function allNames(game) {
+  var characters = sortNames(Object.keys(avatars[game] || {}));
+  var weapons = sortNames(Object.keys(weaponIcons[game] || {}));
+  return { characters: characters, weapons: weapons };
+}
+
+function inferItemType(game, name) {
+  var lists = allNames(game);
+  if (lists.characters.indexOf(name) >= 0) {
+    return gameLib.config(game).itemTypes[0];
+  }
+  if (lists.weapons.indexOf(name) >= 0) {
+    return gameLib.config(game).itemTypes[1];
+  }
+  return '';
+}
+
+function inferIsUp(game, pool, name) {
+  var standard = STANDARD_ITEMS[game];
+  if (!standard || !name) {
+    return false;
+  }
+  if (pool === '角色活动') {
+    return standard.characters.indexOf(name) < 0
+      && (standard.extraCharacters || []).indexOf(name) < 0;
+  }
+  if (pool === '武器活动' || pool === '光锥活动') {
+    return standard.weapons.indexOf(name) < 0;
+  }
+  return false;
+}
 
 function starText(rarity) {
   var count = Math.max(0, Math.min(5, Number(rarity) || 0));
@@ -17,7 +72,7 @@ function starText(rarity) {
   return text;
 }
 
-/** 解析文本导入 / 链接导入的内容：JSON（数组、单游戏备份、全量备份）或 CSV。 */
+/** 解析链接导入的内容：JSON（数组、单游戏备份、全量备份）或 CSV。 */
 function parseWishText(text, game) {
   var content = String(text || '').trim();
   if (!content) {
@@ -54,19 +109,18 @@ function nowParts() {
   };
 }
 
-function editorDefaults(g, poolIndex) {
+function editorDefaults(poolIndex) {
   var parts = nowParts();
   return {
     itemName: '',
+    nameIndex: -1,
+    itemType: '',
     rarity: FIVE_STAR,
-    typeIndex: 0,
     poolIndex: poolIndex || 0,
-    isUp: true,
     capture: false,
     pity: '1',
     date: parts.date,
-    time: parts.time,
-    note: ''
+    time: parts.time
   };
 }
 
@@ -75,7 +129,8 @@ Page({
     statusBarHeight: 20,
     game: 'genshin',
     g: gameLib.config('genshin'),
-    poolOptions: ['全部卡池'].concat(gameLib.config('genshin').pools),
+    poolOptions: ['全部卡池'].concat(gameLib.config('genshin').pools.map(gameLib.poolLabel)),
+    poolLabels: gameLib.config('genshin').pools.map(gameLib.poolLabel),
     poolIndex: 0,
     rows: [],
     page: 1,
@@ -84,14 +139,11 @@ Page({
     selected: [],
     selectedCount: 0,
     allChecked: false,
-    pityChips: [],
     onlyFive: false,
-    typeOptions: gameLib.config('genshin').itemTypes,
+    nameOptions: [],
     editorVisible: false,
     editorId: null,
-    editor: editorDefaults(gameLib.config('genshin'), 0),
-    textVisible: false,
-    textContent: '',
+    editor: editorDefaults(0),
     linkVisible: false,
     linkUrl: ''
   },
@@ -112,15 +164,14 @@ Page({
     this.setData({
       game: game,
       g: g,
-      poolOptions: ['全部卡池'].concat(g.pools),
+      poolOptions: ['全部卡池'].concat(g.pools.map(gameLib.poolLabel)),
+      poolLabels: g.pools.map(gameLib.poolLabel),
       poolIndex: 0,
       page: 1,
       selected: [],
       selectedCount: 0,
       allChecked: false,
-      typeOptions: g.itemTypes,
-      editorVisible: false,
-      textVisible: false
+      editorVisible: false
     });
     this.load();
   },
@@ -141,7 +192,7 @@ Page({
         stars: starText(record.rarity),
         rarity: record.rarity,
         itemType: record.itemType || '—',
-        pool: record.pool || '未知卡池',
+        pool: gameLib.poolLabel(record.pool) || '未知卡池',
         isUp: record.isUp === true,
         capture: record.captureTriggered === true,
         pityCount: record.pityCount || 1,
@@ -150,23 +201,8 @@ Page({
       };
     });
 
-    var overview = store.overview(game);
-    var pityChips = (overview.poolStats || []).map(function (item) {
-      var cap = Number(item.cap) || 90;
-      var pity = Math.max(0, Number(item.currentPity) || 0);
-      return {
-        pool: item.pool,
-        currentPity: pity,
-        cap: cap,
-        left: Math.max(0, cap - pity),
-        guaranteed: item.upGuaranteed === true,
-        manual: item.pityManual === true
-      };
-    });
-
     this.setData({
       rows: rows,
-      pityChips: pityChips,
       allChecked: rows.length > 0 && rows.every(function (row) {
         return row.checked;
       }),
@@ -211,39 +247,6 @@ Page({
       allChecked: false
     });
     this.load();
-  },
-
-  editPity: function (event) {
-    var that = this;
-    var pool = event.currentTarget.dataset.pool;
-    var cap = Number(event.currentTarget.dataset.cap) || 90;
-    var pity = Number(event.currentTarget.dataset.pity) || 0;
-    wx.showModal({
-      title: pool + ' 已垫抽数',
-      editable: true,
-      content: '当前 ' + pity + ' 抽，可填 0–' + (cap - 1) + '（0 表示清除手动值）',
-      placeholderText: '输入新的已垫抽数',
-      success: function (res) {
-        if (!res.confirm) {
-          return;
-        }
-        var text = String(res.content || '').trim();
-        if (!text) {
-          return;
-        }
-        var value = Math.floor(Number(text));
-        if (!isFinite(value) || value < 0 || value > cap - 1) {
-          wx.showToast({ title: '需在 0–' + (cap - 1) + ' 之间', icon: 'none' });
-          return;
-        }
-        store.setPityOverride(that.data.game, pool, value);
-        that.load();
-        wx.showToast({
-          title: value > 0 ? '已更新为 ' + value + ' 抽' : '已清除手动已垫',
-          icon: 'none'
-        });
-      }
-    });
   },
 
   toggleOnlyFive: function () {
@@ -351,12 +354,22 @@ Page({
 
   /* ---------------- 单条编辑 ---------------- */
 
+  editorNameOptions: function (game, currentName) {
+    var lists = allNames(game);
+    var options = lists.characters.concat(lists.weapons);
+    if (currentName && options.indexOf(currentName) < 0) {
+      options.unshift(currentName);
+    }
+    return options;
+  },
+
   openAdd: function () {
     var poolIndex = this.data.poolIndex > 0 ? this.data.poolIndex - 1 : 0;
     this.setData({
       editorVisible: true,
       editorId: null,
-      editor: editorDefaults(this.data.g, poolIndex)
+      nameOptions: this.editorNameOptions(this.data.game, ''),
+      editor: editorDefaults(poolIndex)
     });
   },
 
@@ -376,22 +389,23 @@ Page({
     }
     var g = this.data.g;
     var wishTime = record.wishTime || store.nowStr();
-    var typeIndex = g.itemTypes.indexOf(record.itemType);
     var poolIndex = g.pools.indexOf(record.pool);
+    var name = record.itemName || '';
+    var nameOptions = this.editorNameOptions(this.data.game, name);
     this.setData({
       editorVisible: true,
       editorId: id,
+      nameOptions: nameOptions,
       editor: {
-        itemName: record.itemName || '',
+        itemName: name,
+        nameIndex: name ? nameOptions.indexOf(name) : -1,
+        itemType: record.itemType || inferItemType(this.data.game, name),
         rarity: record.rarity || FIVE_STAR,
-        typeIndex: typeIndex < 0 ? 0 : typeIndex,
         poolIndex: poolIndex < 0 ? 0 : poolIndex,
-        isUp: record.isUp === true,
         capture: record.captureTriggered === true,
         pity: String(record.pityCount || 1),
         date: wishTime.slice(0, 10),
-        time: wishTime.slice(11, 16),
-        note: record.note || ''
+        time: wishTime.slice(11, 16)
       }
     });
   },
@@ -404,19 +418,17 @@ Page({
   },
 
   onEditorName: function (event) {
-    this.setData({ 'editor.itemName': event.detail.value });
-  },
-
-  onEditorType: function (event) {
-    this.setData({ 'editor.typeIndex': Number(event.detail.value) });
+    var index = Number(event.detail.value);
+    var name = this.data.nameOptions[index] || '';
+    this.setData({
+      'editor.nameIndex': index,
+      'editor.itemName': name,
+      'editor.itemType': inferItemType(this.data.game, name)
+    });
   },
 
   onEditorPool: function (event) {
     this.setData({ 'editor.poolIndex': Number(event.detail.value) });
-  },
-
-  onEditorUp: function (event) {
-    this.setData({ 'editor.isUp': event.detail.value });
   },
 
   onEditorCapture: function (event) {
@@ -435,10 +447,6 @@ Page({
     this.setData({ 'editor.time': event.detail.value });
   },
 
-  onEditorNote: function (event) {
-    this.setData({ 'editor.note': event.detail.value });
-  },
-
   saveEditor: function () {
     var editor = this.data.editor;
     var g = this.data.g;
@@ -446,19 +454,20 @@ Page({
     var rarity = Number(editor.rarity) || FIVE_STAR;
     var name = (editor.itemName || '').trim();
     if (!name) {
-      wx.showToast({ title: '请填写五星名称', icon: 'none' });
+      wx.showToast({ title: '请选择角色 / 物品', icon: 'none' });
       return;
     }
     var pity = Math.max(1, Math.min(90, Number(editor.pity) || 1));
+    var pool = g.pools[editor.poolIndex] || g.pools[0];
+    var itemType = inferItemType(this.data.game, name) || g.itemTypes[0];
     var data = {
       itemName: name,
       rarity: rarity,
-      itemType: g.itemTypes[editor.typeIndex] || g.itemTypes[0],
-      pool: g.pools[editor.poolIndex] || g.pools[0],
-      isUp: editor.isUp,
+      itemType: itemType,
+      pool: pool,
+      isUp: inferIsUp(this.data.game, pool, name),
       pityCount: pity,
       wishTime: editor.date + ' ' + editor.time + ':00',
-      note: editor.note,
       captureTriggered: this.data.game === 'genshin' && editor.capture === true
     };
     if (editing) {
@@ -471,66 +480,7 @@ Page({
     wx.showToast({ title: editing ? '修改已保存' : '新增成功', icon: 'success' });
   },
 
-  /* ---------------- 导入 / 导出 ---------------- */
-
-  exportCsv: function () {
-    var records = store.exportRecords(this.data.game);
-    if (!records.length) {
-      wx.showToast({ title: '还没有抽卡记录', icon: 'none' });
-      return;
-    }
-    file.exportFile('southair-wishes-' + this.data.game + '.csv', csv.write(records));
-  },
-
-  exportJson: function () {
-    var records = store.exportRecords(this.data.game);
-    if (!records.length) {
-      wx.showToast({ title: '还没有抽卡记录', icon: 'none' });
-      return;
-    }
-    file.exportFile('southair-wishes-' + this.data.game + '.json', JSON.stringify(records, null, 2));
-  },
-
-  /** 下载 JSON 模板：可先发给电脑编辑，或直接复制文本粘贴回「文本导入」。 */
-  downloadTemplate: function () {
-    file.exportFile('southair-wishes-template.json', csv.templateJson());
-  },
-
-  /** 手机文本录入：直接在弹窗里按行填写，不需要生成 / 编辑文件。 */
-  openTextImport: function () {
-    this.setData({
-      textVisible: true,
-      textContent: csv.templateText()
-    });
-  },
-
-  closeTextImport: function () {
-    this.setData({ textVisible: false });
-  },
-
-  onTextInput: function (event) {
-    this.setData({ textContent: event.detail.value });
-  },
-
-  applyTextImport: function () {
-    var text = (this.data.textContent || '').trim();
-    if (!text) {
-      wx.showToast({ title: '请先填写内容', icon: 'none' });
-      return;
-    }
-    var parsed = parseWishText(text, this.data.game);
-    if (parsed.error) {
-      wx.showToast({ title: parsed.error, icon: 'none' });
-      return;
-    }
-    var records = parsed.records;
-    if (!records.length) {
-      wx.showToast({ title: '没有可导入的记录', icon: 'none' });
-      return;
-    }
-    this.setData({ textVisible: false });
-    this.chooseImportMode(records);
-  },
+  /* ---------------- 链接导入 ---------------- */
 
   openLinkImport: function () {
     this.setData({ linkVisible: true });
@@ -692,37 +642,7 @@ Page({
     nextPool();
   },
 
-  /** 从聊天记录里选择电脑端导出的 CSV / JSON 文件。 */
-  importRecords: function () {
-    this.pickWishFile();
-  },
-
-  pickWishFile: function () {
-    var that = this;
-    file.chooseFile(['csv', 'json']).then(function (picked) {
-      var records = [];
-      if (/\.json$/i.test(picked.name)) {
-        try {
-          var payload = JSON.parse(picked.content);
-          records = Array.isArray(payload) ? payload : (payload.wishes || []);
-        } catch (e) {
-          wx.showToast({ title: '不是有效的 JSON 文件', icon: 'none' });
-          return;
-        }
-      } else {
-        records = csv.parse(picked.content);
-      }
-
-      if (!records.length) {
-        wx.showToast({ title: '文件里没有可导入的记录', icon: 'none' });
-        return;
-      }
-
-      that.chooseImportMode(records);
-    }).catch(function (err) {
-      wx.showToast({ title: err && err.message ? err.message : '导入失败', icon: 'none' });
-    });
-  },
+  /* ---------------- 导入结果 ---------------- */
 
   chooseImportMode: function (records) {
     var that = this;

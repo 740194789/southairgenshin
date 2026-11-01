@@ -2,12 +2,6 @@ var app = getApp();
 var gameLib = require('../../utils/game');
 var collection = require('../../utils/collection');
 
-var MANUAL_LABELS = {
-  characters4: '四星角色',
-  characters5: '五星角色',
-  weapons5: '五星武器 / 光锥'
-};
-
 Page({
   data: {
     statusBarHeight: 20,
@@ -15,7 +9,14 @@ Page({
     g: gameLib.config('genshin'),
     sections: [],
     characterCount: 0,
-    weaponCount: 0
+    weaponCount: 0,
+    manualOpen: false,
+    manualCategory: 'characters4',
+    manualCategories: [],
+    manualNames: [],
+    manualNameIndex: 0,
+    manualCopies: ['1', '2', '3', '4', '5', '6'],
+    manualCopiesIndex: 0
   },
 
   onLoad: function () {
@@ -43,12 +44,23 @@ Page({
         weaponCount += section.items.length;
       }
     });
+    var g = gameLib.config(game);
     this.setData({
       game: game,
-      g: gameLib.config(game),
+      g: g,
       sections: sections,
       characterCount: characterCount,
-      weaponCount: weaponCount
+      weaponCount: weaponCount,
+      manualOpen: false,
+      manualCategory: 'characters4',
+      manualNameIndex: 0,
+      manualCopiesIndex: 0,
+      manualNames: collection.nameOptions(game, 'characters4'),
+      manualCategories: [
+        { key: 'characters4', label: '四星角色' },
+        { key: 'characters5', label: '五星角色' },
+        { key: 'weapons5', label: '五星' + g.itemTypes[1] }
+      ]
     });
   },
 
@@ -60,55 +72,48 @@ Page({
     this.setData(patch);
   },
 
-  addManual: function () {
-    var that = this;
-    var categories = ['characters4', 'characters5', 'weapons5'];
-    var weaponLabel = this.data.g.itemTypes[1] === '光锥' ? '五星光锥' : '五星武器';
-    wx.showActionSheet({
-      itemList: [MANUAL_LABELS.characters4, MANUAL_LABELS.characters5, weaponLabel],
-      success: function (sectionRes) {
-        var category = categories[sectionRes.tapIndex];
-        var categoryLabel = category === 'weapons5' ? weaponLabel : MANUAL_LABELS[category];
-        wx.showModal({
-          title: categoryLabel,
-          editable: true,
-          placeholderText: '输入角色 / 武器名称',
-          success: function (nameRes) {
-            if (!nameRes.confirm) {
-              return;
-            }
-            var name = String(nameRes.content || '').trim();
-            if (!name) {
-              wx.showToast({ title: '请输入名称', icon: 'none' });
-              return;
-            }
-            wx.showModal({
-              title: '额外数量',
-              editable: true,
-              content: '1–6；角色按命座折算，武器按精炼折算',
-              placeholderText: '例如 2',
-              success: function (countRes) {
-                if (!countRes.confirm) {
-                  return;
-                }
-                var text = String(countRes.content || '').trim();
-                if (!text) {
-                  return;
-                }
-                var copies = Math.floor(Number(text));
-                if (!isFinite(copies) || copies < 1 || copies > 6) {
-                  wx.showToast({ title: '数量需在 1–6 之间', icon: 'none' });
-                  return;
-                }
-                collection.addManual(that.data.game, category, name, copies);
-                that.load(that.data.game);
-                wx.showToast({ title: '已补充 ' + name + ' ×' + copies, icon: 'none' });
-              }
-            });
-          }
-        });
-      }
+  openManual: function () {
+    this.setData({
+      manualOpen: true,
+      manualCategory: 'characters4',
+      manualNameIndex: 0,
+      manualCopiesIndex: 0,
+      manualNames: collection.nameOptions(this.data.game, 'characters4')
     });
+  },
+
+  closeManual: function () {
+    this.setData({ manualOpen: false });
+  },
+
+  onManualCategory: function (event) {
+    var category = event.currentTarget.dataset.key;
+    this.setData({
+      manualCategory: category,
+      manualNameIndex: 0,
+      manualNames: collection.nameOptions(this.data.game, category)
+    });
+  },
+
+  onManualName: function (event) {
+    this.setData({ manualNameIndex: Number(event.detail.value) || 0 });
+  },
+
+  onManualCopies: function (event) {
+    this.setData({ manualCopiesIndex: Number(event.detail.value) || 0 });
+  },
+
+  confirmManual: function () {
+    var names = this.data.manualNames;
+    var name = names[this.data.manualNameIndex];
+    if (!name) {
+      wx.showToast({ title: '请选择角色 / 物品', icon: 'none' });
+      return;
+    }
+    var copies = this.data.manualCopiesIndex + 1;
+    collection.addManual(this.data.game, this.data.manualCategory, name, copies);
+    this.load(this.data.game);
+    wx.showToast({ title: '已补充 ' + name + ' ×' + copies, icon: 'none' });
   },
 
   removeManual: function (event) {

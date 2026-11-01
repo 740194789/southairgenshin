@@ -10,7 +10,7 @@
   <view class="section-head">
     <view>
       <view class="section-title">抽卡记录</view>
-      <view class="section-sub">五星出货记录 · 记录抽到五星用了多少抽 · 支持导入导出</view>
+      <view class="section-sub">五星出货记录 · 记录抽到五星用了多少抽 · 支持链接导入</view>
     </view>
   </view>
 
@@ -26,20 +26,7 @@
     <view class="btn btn-primary btn-sm" bindtap="openAdd">录入五星</view>
     <view class="btn btn-text btn-sm {{rows.length ? '' : 'disabled'}}" bindtap="toggleAll">{{allChecked ? '取消全选' : '全选本页'}}</view>
     <view class="btn btn-danger btn-sm {{selectedCount ? '' : 'disabled'}}" bindtap="deleteSelected">批量删除{{selectedCount ? '（' + selectedCount + '）' : ''}}</view>
-    <view class="btn btn-outline btn-sm" bindtap="exportCsv">导出 CSV</view>
-    <view class="btn btn-outline btn-sm" bindtap="exportJson">导出 JSON</view>
-    <view class="btn btn-text btn-sm" bindtap="downloadTemplate">JSON 模板</view>
-    <view class="btn btn-text btn-sm" bindtap="openTextImport">文本导入</view>
-    <view class="btn btn-outline btn-sm" bindtap="importRecords">文件导入</view>
     <view class="btn btn-outline btn-sm" bindtap="openLinkImport">链接导入</view>
-  </view>
-
-  <view class="wish-pity" wx:if="{{pityChips.length}}">
-    <view class="wish-pity-chip {{item.guaranteed ? 'guaranteed' : ''}}" wx:for="{{pityChips}}" wx:key="pool"
-      bindtap="editPity" data-pool="{{item.pool}}" data-cap="{{item.cap}}" data-pity="{{item.currentPity}}">
-      <text>{{item.pool}} 已垫 {{item.currentPity}} / {{item.cap}} 抽 · 距保底 {{item.left}} 抽{{item.guaranteed ? ' · 大保底' : ''}}</text>
-      <text class="wish-pity-manual" wx:if="{{item.manual}}">手动</text>
-    </view>
   </view>
 
   <block wx:if="{{rows.length}}">
@@ -95,25 +82,16 @@
     </view>
     <scroll-view scroll-y class="modal-body">
       <view class="form-row">
-        <text class="form-label">抽到的五星</text>
-        <input class="form-input" value="{{editor.itemName}}" bindinput="onEditorName"
-               placeholder="{{g.itemTypes[0]}} / {{g.itemTypes[1]}}名称"/>
-      </view>
-      <view class="form-row">
-        <text class="form-label">类型</text>
-        <picker class="form-picker" range="{{typeOptions}}" value="{{editor.typeIndex}}" bindchange="onEditorType">
-          <view class="picker-box">{{typeOptions[editor.typeIndex]}}</view>
+        <text class="form-label">选择角色 / 物品</text>
+        <picker class="form-picker" range="{{nameOptions}}" value="{{editor.nameIndex < 0 ? 0 : editor.nameIndex}}" bindchange="onEditorName">
+          <view class="picker-box">{{editor.itemName || '请选择'}}</view>
         </picker>
       </view>
       <view class="form-row">
         <text class="form-label">卡池</text>
-        <picker class="form-picker" range="{{g.pools}}" value="{{editor.poolIndex}}" bindchange="onEditorPool">
-          <view class="picker-box">{{g.pools[editor.poolIndex]}}</view>
+        <picker class="form-picker" range="{{poolLabels}}" value="{{editor.poolIndex}}" bindchange="onEditorPool">
+          <view class="picker-box">{{poolLabels[editor.poolIndex]}}</view>
         </picker>
-      </view>
-      <view class="form-row">
-        <text class="form-label">是否 UP</text>
-        <switch class="switch" color="#d3bc8e" checked="{{editor.isUp}}" bindchange="onEditorUp"/>
       </view>
       <view class="form-row" wx:if="{{game === 'genshin'}}">
         <text class="form-label">触发捕获明光</text>
@@ -134,37 +112,11 @@
           </picker>
         </view>
       </view>
-      <view class="form-row">
-        <text class="form-label">备注</text>
-        <input class="form-input" value="{{editor.note}}" bindinput="onEditorNote" placeholder="可选"/>
-      </view>
-      <view class="foot-tip">只记录四星角色与五星物品；三星物品、四星武器 / 光锥不记录。</view>
+      <view class="foot-tip">类型与是否 UP 会根据名称和卡池自动识别；只记录四星角色与五星物品，三星物品、四星武器 / 光锥不记录。</view>
     </scroll-view>
     <view class="modal-foot">
       <view class="btn btn-text" bindtap="closeEditor">取消</view>
       <view class="btn btn-primary" bindtap="saveEditor">保存</view>
-    </view>
-  </view>
-</view>
-
-<!-- 文本导入：手机直接填写，不需要生成 / 编辑文件 -->
-<view wx:if="{{textVisible}}" class="mask" bindtap="closeTextImport">
-  <view class="modal" catchtap="noop">
-    <view class="modal-head">
-      <text class="modal-title">文本导入 · {{g.fullName}}</text>
-      <view class="modal-close" bindtap="closeTextImport">×</view>
-    </view>
-    <view class="modal-body" style="height:auto; padding-bottom:16rpx;">
-      <view class="text-tip">每行一条，字段用英文逗号分隔：</view>
-      <view class="text-tip">时间, 名称, 星级, 类型, 卡池, 是否UP, 保底计数, 备注</view>
-      <view class="text-tip">也可以粘贴 JSON 文本（记录数组、单游戏备份或全量备份内容）。</view>
-      <textarea class="text-area" value="{{textContent}}" bindinput="onTextInput" maxlength="-1"
-                placeholder="2026-10-31 12:30,神里绫华,5,角色,角色活动,UP,78"></textarea>
-      <view class="foot-tip">示例行是三星物品，导入时会被忽略；时间写成 2026-10-31 12:30 即可，备注可留空。</view>
-    </view>
-    <view class="modal-foot">
-      <view class="btn btn-text" bindtap="closeTextImport">取消</view>
-      <view class="btn btn-primary" bindtap="applyTextImport">导入</view>
     </view>
   </view>
 </view>
@@ -188,4 +140,3 @@
     </view>
   </view>
 </view>
-

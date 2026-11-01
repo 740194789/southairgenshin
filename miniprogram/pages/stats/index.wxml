@@ -61,10 +61,15 @@
     </view>
   </view>
 
-  <!-- 保底 -->
+  <!-- 保底分析 -->
   <view hidden="{{statsTab !== 'pity'}}">
-    <view wx:if="{{capture}}" class="panel">
-      <view class="panel-title">捕获明光<text class="pool-tag inline">角色活动 · 原神</text></view>
+    <view class="pull-pools">
+      <view class="pull-pool {{chartPool === item.key ? 'active' : ''}}" wx:for="{{chartPools}}" wx:key="key"
+            bindtap="onSelectChartPool" data-pool="{{item.key}}">{{item.label}}</view>
+    </view>
+
+    <view wx:if="{{showCapture}}" class="panel">
+      <view class="panel-title">捕获明光<text class="pool-tag inline">角色卡池 · 原神</text></view>
       <view class="pity-bar">
         <view class="pity-bar-fill" style="width:{{capture.percent}}%"></view>
       </view>
@@ -78,11 +83,11 @@
     </view>
 
     <view class="panel">
-      <view class="panel-title">卡池保底统计<text class="pool-tag inline">保底 · 出货</text></view>
-      <view class="pool-stat" wx:for="{{pools}}" wx:key="pool">
+      <view class="panel-title">卡池保底统计<text class="pool-tag inline">{{chartPool === 'all' ? '保底 · 出货' : '按筛选'}}</text></view>
+      <view class="pool-stat" wx:for="{{pityPools}}" wx:key="pool">
         <view class="pool-stat-head">
-          <text class="pool-tag">{{item.pool}}</text>
-          <text class="pool-pity">已垫 {{item.currentPity}} / {{item.cap}} 抽{{item.pityManual ? ' · 手动' : ''}}</text>
+          <text class="pool-tag">{{item.poolLabel}}</text>
+          <text class="pool-pity">已垫 {{item.currentPity}} / {{item.cap}} 抽</text>
         </view>
         <view class="pity-bar">
           <view class="pity-bar-fill" style="width:{{item.percent}}%"></view>
@@ -95,12 +100,9 @@
         </view>
       </view>
     </view>
-  </view>
 
-  <!-- 分析 -->
-  <view hidden="{{statsTab !== 'analysis'}}">
     <view class="panel">
-      <view class="panel-title">抽卡统计<text class="pool-tag inline">角色活动 · {{g.weaponPool}}</text></view>
+      <view class="panel-title">抽卡统计<text class="pool-tag inline">全账号</text></view>
       <view class="stat-grid">
         <view class="stat-card">
           <view class="stat-label">一共抽过</view>
@@ -154,10 +156,6 @@
       <view class="panel-title pull-head">
         <text>五星抽数</text>
         <view class="pull-toggle {{chartReal ? 'active' : ''}}" bindtap="onToggleReal">{{chartReal ? '显示原始抽数' : '显示真实抽数'}}</view>
-      </view>
-      <view class="pull-pools">
-        <view class="pull-pool {{chartPool === item.key ? 'active' : ''}}" wx:for="{{chartPools}}" wx:key="key"
-              bindtap="onSelectChartPool" data-pool="{{item.key}}">{{item.label}}</view>
       </view>
       <view class="pull-summary">{{chart.summary}}</view>
       <view class="pull-chart" wx:if="{{chart.points.length}}">
