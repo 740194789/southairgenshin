@@ -33,7 +33,10 @@
     <view class="record rarity-{{item.rarity}}" wx:for="{{rows}}" wx:key="id">
       <view class="record-top">
         <view class="check {{item.checked ? 'on' : ''}}" data-id="{{item.id}}" bindtap="toggleSelect">{{item.checked ? '✓' : ''}}</view>
-        <view class="record-avatar">{{item.initial}}</view>
+        <view class="record-avatar">
+          <text>{{item.initial}}</text>
+          <image wx:if="{{item.icon}}" src="{{item.icon}}" mode="aspectFill" data-id="{{item.id}}" binderror="onAvatarError"/>
+        </view>
         <view class="record-info">
           <view class="record-line">
             <text class="record-name {{item.rarity === 3 ? 'muted' : ''}}">{{item.displayName}}</text>
@@ -83,9 +86,15 @@
     <scroll-view scroll-y class="modal-body">
       <view class="form-row">
         <text class="form-label">选择角色 / 物品</text>
-        <picker class="form-picker" range="{{nameOptions}}" value="{{editor.nameIndex < 0 ? 0 : editor.nameIndex}}" bindchange="onEditorName">
-          <view class="picker-box">{{editor.itemName || '请选择'}}</view>
-        </picker>
+        <view class="form-picker" bindtap="openNamePicker">
+          <view class="name-field {{editor.itemName ? '' : 'placeholder'}}">
+            <view wx:if="{{editor.icon}}" class="name-field-icon">
+              <image src="{{editor.icon}}" mode="aspectFill"/>
+            </view>
+            <text class="name-field-text">{{editor.itemName || '请选择角色 / 物品'}}</text>
+            <text class="name-field-arrow">›</text>
+          </view>
+        </view>
       </view>
       <view class="form-row">
         <text class="form-label">卡池</text>
@@ -140,3 +149,6 @@
     </view>
   </view>
 </view>
+
+<name-picker visible="{{pickerVisible}}" game="{{game}}" current="{{editor.itemName}}"
+             bind:select="onEditorName" bind:close="closeNamePicker" />

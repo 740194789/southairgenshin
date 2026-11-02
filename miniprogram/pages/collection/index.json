@@ -1,5 +1,6 @@
 {
   "usingComponents": {
-    "game-switch": "/components/game-switch/index"
+    "game-switch": "/components/game-switch/index",
+    "name-picker": "/components/name-picker/index"
   }
 }

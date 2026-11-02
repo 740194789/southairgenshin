@@ -11,6 +11,7 @@ miniprogram/
 ├── app.js / app.json / app.wxss
 ├── project.config.json        # 开发者工具项目配置（appid 已填 wx5b8aba02be73f4b6）
 ├── components/game-switch/    # 顶部「原神 / 星穹铁道」切换
+├── components/name-picker/    # 名称选择弹窗：头像 / 图标 + 名字，一排 5 个
 ├── utils/
 │   ├── game.js                # 两套游戏的卡池 / 货币 / 文案
 │   ├── store.js               # 本地存储、抽卡 CRUD、统计与保底计算

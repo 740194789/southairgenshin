@@ -14,7 +14,9 @@ Page({
     manualCategory: 'characters4',
     manualCategories: [],
     manualNames: [],
-    manualNameIndex: 0,
+    manualName: '',
+    manualIcon: '',
+    pickerVisible: false,
     manualCopies: ['1', '2', '3', '4', '5', '6'],
     manualCopiesIndex: 0
   },
@@ -53,7 +55,9 @@ Page({
       weaponCount: weaponCount,
       manualOpen: false,
       manualCategory: 'characters4',
-      manualNameIndex: 0,
+      manualName: '',
+      manualIcon: '',
+      pickerVisible: false,
       manualCopiesIndex: 0,
       manualNames: collection.nameOptions(game, 'characters4'),
       manualCategories: [
@@ -76,7 +80,8 @@ Page({
     this.setData({
       manualOpen: true,
       manualCategory: 'characters4',
-      manualNameIndex: 0,
+      manualName: '',
+      manualIcon: '',
       manualCopiesIndex: 0,
       manualNames: collection.nameOptions(this.data.game, 'characters4')
     });
@@ -90,13 +95,27 @@ Page({
     var category = event.currentTarget.dataset.key;
     this.setData({
       manualCategory: category,
-      manualNameIndex: 0,
+      manualName: '',
+      manualIcon: '',
       manualNames: collection.nameOptions(this.data.game, category)
     });
   },
 
+  openNamePicker: function () {
+    this.setData({ pickerVisible: true });
+  },
+
+  closeNamePicker: function () {
+    this.setData({ pickerVisible: false });
+  },
+
   onManualName: function (event) {
-    this.setData({ manualNameIndex: Number(event.detail.value) || 0 });
+    var detail = event.detail || {};
+    this.setData({
+      pickerVisible: false,
+      manualName: detail.name || '',
+      manualIcon: detail.icon || ''
+    });
   },
 
   onManualCopies: function (event) {
@@ -104,8 +123,7 @@ Page({
   },
 
   confirmManual: function () {
-    var names = this.data.manualNames;
-    var name = names[this.data.manualNameIndex];
+    var name = this.data.manualName;
     if (!name) {
       wx.showToast({ title: '请选择角色 / 物品', icon: 'none' });
       return;

@@ -22,9 +22,13 @@
       <view class="manual-tab {{manualCategory === item.key ? 'active' : ''}}" wx:for="{{manualCategories}}" wx:key="key"
             bindtap="onManualCategory" data-key="{{item.key}}">{{item.label}}</view>
     </view>
-    <picker mode="selector" range="{{manualNames}}" value="{{manualNameIndex}}" bindchange="onManualName">
-      <view class="manual-field">{{manualNames[manualNameIndex] || '请选择角色 / 物品'}}</view>
-    </picker>
+    <view class="manual-field name-trigger" bindtap="openNamePicker">
+      <view wx:if="{{manualIcon}}" class="name-field-icon">
+        <image src="{{manualIcon}}" mode="aspectFill"/>
+      </view>
+      <text class="{{manualName ? '' : 'placeholder'}}">{{manualName || '请选择角色 / 物品'}}</text>
+      <text class="name-field-arrow">›</text>
+    </view>
     <picker mode="selector" range="{{manualCopies}}" value="{{manualCopiesIndex}}" bindchange="onManualCopies">
       <view class="manual-field">额外数量 <text class="strong">{{manualCopies[manualCopiesIndex]}}</text></view>
     </picker>
@@ -57,3 +61,7 @@
 
   <view class="foot-tip">手动补充保存在本机缓存；导入新的抽卡记录后会自动更新命座与精炼。</view>
 </view>
+
+<name-picker visible="{{pickerVisible}}" game="{{game}}" current="{{manualName}}"
+             names="{{manualNames}}" show-tabs="{{false}}"
+             bind:select="onManualName" bind:close="closeNamePicker" />

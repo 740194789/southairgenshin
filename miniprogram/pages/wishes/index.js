@@ -48,6 +48,13 @@ function inferItemType(game, name) {
   return '';
 }
 
+/** 名称对应的头像 / 武器图标，缺失时返回空字符串 */
+function itemIcon(game, name) {
+  var avatarMap = avatars[game] || {};
+  var weaponMap = weaponIcons[game] || {};
+  return avatarMap[name] || weaponMap[name] || '';
+}
+
 function inferIsUp(game, pool, name) {
   var standard = STANDARD_ITEMS[game];
   if (!standard || !name) {
@@ -113,7 +120,7 @@ function editorDefaults(poolIndex) {
   var parts = nowParts();
   return {
     itemName: '',
-    nameIndex: -1,
+    icon: '',
     itemType: '',
     rarity: FIVE_STAR,
     poolIndex: poolIndex || 0,
@@ -140,7 +147,7 @@ Page({
     selectedCount: 0,
     allChecked: false,
     onlyFive: false,
-    nameOptions: [],
+    pickerVisible: false,
     editorVisible: false,
     editorId: null,
     editor: editorDefaults(0),
@@ -171,6 +178,7 @@ Page({
       selected: [],
       selectedCount: 0,
       allChecked: false,
+      pickerVisible: false,
       editorVisible: false
     });
     this.load();
@@ -189,6 +197,7 @@ Page({
         id: record.id,
         displayName: record.itemName || '未命名',
         initial: (record.itemName || '未命名').charAt(0),
+        icon: itemIcon(game, record.itemName),
         stars: starText(record.rarity),
         rarity: record.rarity,
         itemType: record.itemType || '—',
@@ -210,6 +219,17 @@ Page({
       pages: result.pages,
       total: result.total
     });
+  },
+
+  onAvatarError: function (event) {
+    var id = Number(event.currentTarget.dataset.id);
+    var rows = this.data.rows.map(function (row) {
+      if (row.id === id) {
+        row.icon = '';
+      }
+      return row;
+    });
+    this.setData({ rows: rows });
   },
 
   onPoolChange: function (event) {
@@ -354,21 +374,11 @@ Page({
 
   /* ---------------- 单条编辑 ---------------- */
 
-  editorNameOptions: function (game, currentName) {
-    var lists = allNames(game);
-    var options = lists.characters.concat(lists.weapons);
-    if (currentName && options.indexOf(currentName) < 0) {
-      options.unshift(currentName);
-    }
-    return options;
-  },
-
   openAdd: function () {
     var poolIndex = this.data.poolIndex > 0 ? this.data.poolIndex - 1 : 0;
     this.setData({
       editorVisible: true,
       editorId: null,
-      nameOptions: this.editorNameOptions(this.data.game, ''),
       editor: editorDefaults(poolIndex)
     });
   },
@@ -391,14 +401,12 @@ Page({
     var wishTime = record.wishTime || store.nowStr();
     var poolIndex = g.pools.indexOf(record.pool);
     var name = record.itemName || '';
-    var nameOptions = this.editorNameOptions(this.data.game, name);
     this.setData({
       editorVisible: true,
       editorId: id,
-      nameOptions: nameOptions,
       editor: {
         itemName: name,
-        nameIndex: name ? nameOptions.indexOf(name) : -1,
+        icon: itemIcon(this.data.game, name),
         itemType: record.itemType || inferItemType(this.data.game, name),
         rarity: record.rarity || FIVE_STAR,
         poolIndex: poolIndex < 0 ? 0 : poolIndex,
@@ -418,13 +426,22 @@ Page({
   },
 
   onEditorName: function (event) {
-    var index = Number(event.detail.value);
-    var name = this.data.nameOptions[index] || '';
+    var detail = event.detail || {};
+    var name = detail.name || '';
     this.setData({
-      'editor.nameIndex': index,
+      pickerVisible: false,
       'editor.itemName': name,
+      'editor.icon': detail.icon || itemIcon(this.data.game, name),
       'editor.itemType': inferItemType(this.data.game, name)
     });
+  },
+
+  openNamePicker: function () {
+    this.setData({ pickerVisible: true });
+  },
+
+  closeNamePicker: function () {
+    this.setData({ pickerVisible: false });
   },
 
   onEditorPool: function (event) {

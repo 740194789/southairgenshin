@@ -53,7 +53,12 @@
       <view class="panel-title">最近出货<text class="pool-tag inline">最近 {{recent.length}} 条</text></view>
       <block wx:if="{{recent.length}}">
         <view class="list-row" wx:for="{{recent}}" wx:key="id">
-          <view class="recent-name"><text class="stars">{{item.stars}}</text>{{item.name}}</view>
+          <view class="recent-name">
+            <view wx:if="{{item.icon}}" class="recent-avatar">
+              <image src="{{item.icon}}" mode="aspectFill" data-id="{{item.id}}" binderror="onRecentIconError"/>
+            </view>
+            <text class="stars">{{item.stars}}</text>{{item.name}}
+          </view>
           <text class="recent-time">{{item.time}}</text>
         </view>
       </block>
@@ -160,7 +165,12 @@
       <view class="pull-summary">{{chart.summary}}</view>
       <view class="pull-chart" wx:if="{{chart.points.length}}">
         <view class="pull-row {{item.up ? '' : 'lost'}}" wx:for="{{chart.points}}" wx:key="index">
-          <text class="pull-name">{{item.name}}</text>
+          <view class="pull-label">
+            <view wx:if="{{item.icon}}" class="pull-avatar">
+              <image src="{{item.icon}}" mode="aspectFill" data-index="{{index}}" binderror="onChartIconError"/>
+            </view>
+            <text class="pull-name">{{item.name}}</text>
+          </view>
           <view class="pull-track">
             <view class="pull-bar" style="width:{{item.percent}}%"></view>
           </view>

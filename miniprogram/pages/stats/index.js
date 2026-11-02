@@ -3,6 +3,16 @@ var store = require('../../utils/store');
 var gameLib = require('../../utils/game');
 var file = require('../../utils/file');
 var resourceCsv = require('../../utils/resourceCsv');
+var avatars = require('../../utils/avatars');
+var weaponIcons = require('../../utils/weaponIcons');
+
+/** 记录对应的头像 / 图标，缺失时返回空字符串 */
+function itemIcon(game, item) {
+  var name = (item && item.itemName) || '';
+  var avatarMap = avatars[game] || {};
+  var weaponMap = weaponIcons[game] || {};
+  return avatarMap[name] || weaponMap[name] || '';
+}
 
 function starText(rarity) {
   var count = Math.max(0, Math.min(5, Number(rarity) || 0));
@@ -63,7 +73,7 @@ function filterPools(pools, pool) {
  * 周期按卡池分别累计，避免角色池与武器 / 光锥池混算。
  * pool 为 'all' 时展示全部卡池，否则只展示该卡池。
  */
-function buildChart(list, real, pool) {
+function buildChart(list, real, pool, game) {
   var all = list || [];
   var selected = pool && pool !== 'all'
     ? all.filter(function (item) {
@@ -80,7 +90,7 @@ function buildChart(list, real, pool) {
       var poolName = item.pool || '未知卡池';
       var acc = (cycles[poolName] || 0) + (item.pityCount || 0);
       if (item.isUp === true) {
-        points.push({ name: item.itemName || '未命名', value: acc, up: true });
+        points.push({ name: item.itemName || '未命名', value: acc, up: true, icon: itemIcon(game, item) });
         acc = 0;
       }
       cycles[poolName] = acc;
@@ -90,7 +100,8 @@ function buildChart(list, real, pool) {
       return {
         name: item.itemName || '未命名',
         value: item.pityCount || 0,
-        up: item.isUp === true
+        up: item.isUp === true,
+        icon: itemIcon(game, item)
       };
     });
   }
@@ -420,7 +431,7 @@ Page({
     if (!poolExists) {
       chartPool = 'all';
     }
-    var chart = buildChart(this.fiveStars, this.data.chartReal, chartPool);
+    var chart = buildChart(this.fiveStars, this.data.chartReal, chartPool, game);
 
     var stats = {
       totalPullsText: store.fmt(data.resource.totalPulls),
@@ -479,6 +490,7 @@ Page({
         id: item.id,
         stars: starText(item.rarity),
         name: item.itemName || '未命名',
+        icon: itemIcon(game, item),
         time: (item.wishTime || '').slice(5, 16)
       };
     });
@@ -519,6 +531,24 @@ Page({
     });
   },
 
+  onRecentIconError: function (event) {
+    var id = Number(event.currentTarget.dataset.id);
+    var recent = this.data.recent.map(function (item) {
+      if (item.id === id) {
+        item.icon = '';
+      }
+      return item;
+    });
+    this.setData({ recent: recent });
+  },
+
+  onChartIconError: function (event) {
+    var index = Number(event.currentTarget.dataset.index);
+    var patch = {};
+    patch['chart.points[' + index + '].icon'] = '';
+    this.setData(patch);
+  },
+
   onSwitchGame: function (event) {
     var game = event.detail.game;
     app.setGame(game);
@@ -539,7 +569,7 @@ Page({
     var real = !this.data.chartReal;
     this.setData({
       chartReal: real,
-      chart: buildChart(this.fiveStars || [], real, this.data.chartPool)
+      chart: buildChart(this.fiveStars || [], real, this.data.chartPool, this.data.game)
     });
   },
 
@@ -552,7 +582,7 @@ Page({
       chartPool: pool,
       pityPools: filterPools(this.data.pools, pool),
       showCapture: !!this.data.capture && (pool === 'all' || pool === this.data.g.charPool),
-      chart: buildChart(this.fiveStars || [], this.data.chartReal, pool)
+      chart: buildChart(this.fiveStars || [], this.data.chartReal, pool, this.data.game)
     });
   },
 
