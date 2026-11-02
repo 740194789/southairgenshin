@@ -272,7 +272,10 @@
             opts.body = JSON.stringify(opts.body);
         }
 
-        return fetch(withGame(path, game), opts).then(function (res) {
+        return fetch(withGame(path, game), opts).catch(function () {
+            // 浏览器网络层错误（服务未启动 / 连接被拒绝）统一转成可读提示
+            throw new Error('无法连接服务器，请确认应用已启动后重试');
+        }).then(function (res) {
             return res.text().then(function (text) {
                 var payload = safeParse(text);
                 if (res.status === 401) {
@@ -409,7 +412,9 @@
     }
 
     function errorHtml(error) {
-        return '<p class="empty">' + esc(error && error.message ? error.message : '加载失败') + '</p>';
+        return '<p class="empty">' + esc(error && error.message ? error.message : '加载失败') + '</p>'
+            + '<div class="panel-actions error-retry">'
+            + '<button class="btn btn-outline btn-sm" type="button" data-retry="1">重试</button></div>';
     }
 
     function pagerHtml(data) {
@@ -3635,6 +3640,14 @@
     function openOwnedForm() {
         var g = gameConfig();
         var defs = collectionDefs(g);
+        // 单独持有名称字段，类别切换时直接改它的候选名单
+        var nameField = {
+            key: 'name',
+            label: '名称',
+            type: 'name-picker',
+            full: true,
+            options: ownedNameOptions(state.game, defs[0].key)
+        };
         return openForm('补充已有 · ' + g.fullName, [
             {
                 key: 'category',
@@ -3646,13 +3659,7 @@
                 }),
                 default: defs[0].key
             },
-            {
-                key: 'name',
-                label: '名称',
-                type: 'name-picker',
-                full: true,
-                options: ownedNameOptions(state.game, defs[0].key)
-            },
+            nameField,
             {
                 key: 'copies',
                 label: '额外数量',
@@ -3671,14 +3678,9 @@
                 if (!categoryEl || !nameEl) {
                     return;
                 }
-                var nameField = fields.filter(function (field) {
-                    return field.key === 'name';
-                })[0];
                 var trigger = $('.name-picker-trigger[data-picker-key="name"]', mask);
                 categoryEl.addEventListener('change', function () {
-                    if (nameField) {
-                        nameField.options = ownedNameOptions(state.game, categoryEl.value);
-                    }
+                    nameField.options = ownedNameOptions(state.game, categoryEl.value);
                     nameEl.value = '';
                     if (trigger) {
                         updateNameTrigger(trigger, '');
@@ -5173,6 +5175,14 @@
         $('#logout-btn').addEventListener('click', function () {
             logout(false);
             toast('已退出登录');
+        });
+
+        document.addEventListener('click', function (event) {
+            var target = event.target;
+            var retry = target && target.closest ? target.closest('[data-retry]') : null;
+            if (retry) {
+                switchView(state.view);
+            }
         });
     }
 

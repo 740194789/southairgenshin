@@ -895,10 +895,8 @@ Page({
       text(item.pool || '', 660, y, 15, '#71778e', 'right');
     });
     text('数据来自本机记录 · 个人统计，仅供参考', 60, 944, 13, '#5d6479');
-    ctx.draw();
-
     var that = this;
-    setTimeout(function () {
+    ctx.draw(false, function () {
       wx.canvasToTempFilePath({
         canvasId: 'battleCard',
         x: 0,
@@ -922,7 +920,7 @@ Page({
           wx.showToast({ title: '战绩卡生成失败', icon: 'none' });
         }
       }, that);
-    }, 250);
+    });
   },
 
   /** 卡池日历「用剩余 N 天」：写入攒抽规划的天数。 */
