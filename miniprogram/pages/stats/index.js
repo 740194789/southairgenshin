@@ -2,7 +2,7 @@ var app = getApp();
 var store = require('../../utils/store');
 var gameLib = require('../../utils/game');
 var file = require('../../utils/file');
-var resourceCsv = require('../../utils/resourceCsv');
+var uigf = require('../../utils/uigf');
 var avatars = require('../../utils/avatars');
 var weaponIcons = require('../../utils/weaponIcons');
 
@@ -204,10 +204,14 @@ function expectPrefs(game) {
     raw = null;
   }
   raw = raw && typeof raw === 'object' ? raw : {};
+  var daily = raw.daily === undefined ? 2 : Number(raw.daily);
+  var days = raw.days === undefined ? 21 : Number(raw.days);
   return {
     c: clamp(Number(raw.c) || 0, 0, 6),
     r: clamp(Number(raw.r) || 0, 0, 5),
-    mode: raw.mode === 'theory' ? 'theory' : 'history'
+    mode: raw.mode === 'theory' ? 'theory' : 'history',
+    daily: isFinite(daily) ? clamp(daily, 0, 99) : 2,
+    days: isFinite(days) ? clamp(Math.round(days), 0, 365) : 21
   };
 }
 
@@ -347,6 +351,40 @@ function buildExpectation(data, game, prefs) {
     + (charGuaranteed ? ' · 角色池大保底' : '')
     + (weaponGuaranteed && prefs.r > 0 ? ' · 武器池大保底' : '') + '。';
 
+  var income = Math.round(prefs.daily * prefs.days * 10) / 10;
+  var projected = Math.round((available + income) * 10) / 10;
+  var gapHigh = Math.max(0, totalHigh - projected);
+  var gapLow = Math.max(0, totalLow - projected);
+  var planPercent = totalHigh > 0 ? Math.min(100, Math.round(projected / totalHigh * 100)) : 100;
+  var planEnough = projected >= totalHigh;
+  var planText;
+  if (planEnough) {
+    planText = '到期预计 ' + store.fmt(projected) + ' 抽，已达到区间上限，余 '
+      + store.fmt(projected - totalHigh) + ' 抽';
+  } else if (projected >= totalLow) {
+    planText = '到期预计 ' + store.fmt(projected) + ' 抽，达到区间下限，距上限还差 '
+      + store.fmt(gapHigh) + ' 抽';
+  } else {
+    planText = '到期预计 ' + store.fmt(projected) + ' 抽，还差 '
+      + (gapHigh > gapLow ? store.fmt(gapLow) + '–' + store.fmt(gapHigh) : store.fmt(gapHigh)) + ' 抽';
+  }
+  var planAdvice;
+  if (gapHigh > 0) {
+    var parts = [];
+    if (prefs.days > 0) {
+      parts.push('每天需攒 ' + (Math.round(gapHigh / prefs.days * 10) / 10) + ' 抽');
+    }
+    if (prefs.daily > 0) {
+      var needDays = Math.ceil(gapHigh / prefs.daily);
+      var eta = new Date(Date.now() + needDays * 86400000);
+      parts.push('还需 ' + needDays + ' 天（约 ' + eta.getFullYear() + '-'
+        + ('0' + (eta.getMonth() + 1)).slice(-2) + '-' + ('0' + eta.getDate()).slice(-2) + '）');
+    }
+    planAdvice = parts.join(' · ');
+  } else {
+    planAdvice = '保持当前节奏即可，不必额外投入。';
+  }
+
   return {
     c: prefs.c,
     r: prefs.r,
@@ -370,7 +408,18 @@ function buildExpectation(data, game, prefs) {
     pityNote: pityNote,
     rangeNote: useHistory
       ? '区间取往期 UP 周期的 25%–75% 分位，约一半情况落在此范围。'
-      : '理论值为单点估算，约一半概率在期望抽数内达成。'
+      : '理论值为单点估算，约一半概率在期望抽数内达成。',
+    planner: {
+      daily: prefs.daily,
+      days: prefs.days,
+      incomeText: String(income),
+      projectedText: store.fmt(projected),
+      availableText: store.fmt(available),
+      percent: planPercent,
+      enough: planEnough,
+      statusText: planText,
+      adviceText: planAdvice
+    }
   };
 }
 
@@ -397,16 +446,7 @@ Page({
     chartReal: false,
     chartPool: 'all',
     chartPools: [{ key: 'all', label: '全部' }],
-    chart: { points: [], summary: '' },
-    resourceEditing: false,
-    resourceForm: {
-      primogems: '',
-      mora: '',
-      intertwinedFates: '',
-      acquaintedFates: ''
-    },
-    resourceTextVisible: false,
-    resourceText: ''
+    chart: { points: [], summary: '' }
   },
 
   onLoad: function () {
@@ -552,7 +592,7 @@ Page({
   onSwitchGame: function (event) {
     var game = event.detail.game;
     app.setGame(game);
-    this.setData({ chartReal: false, chartPool: 'all', resourceEditing: false, resourceTextVisible: false });
+    this.setData({ chartReal: false, chartPool: 'all' });
     this.load(game);
   },
 
@@ -613,6 +653,20 @@ Page({
     this.refreshExpectation();
   },
 
+  /** 攒抽规划输入：失焦 / 确认时保存并重算。 */
+  onPlanInput: function (event) {
+    var key = event.currentTarget.dataset.key;
+    var value = Number(event.detail.value);
+    var prefs = expectPrefs(this.data.game);
+    if (key === 'daily') {
+      prefs.daily = isFinite(value) ? clamp(value, 0, 99) : prefs.daily;
+    } else if (key === 'days') {
+      prefs.days = isFinite(value) ? clamp(Math.round(value), 0, 365) : prefs.days;
+    }
+    saveExpectPrefs(this.data.game, prefs);
+    this.refreshExpectation();
+  },
+
   refreshExpectation: function () {
     if (!this.expectSource) {
       return;
@@ -622,153 +676,64 @@ Page({
     });
   },
 
-  /* ---------------- 账号资源导入导出 ---------------- */
+  /* ---------------- UIGF / SRGF ---------------- */
 
-  exportResourceCsv: function () {
+  exportUigf: function () {
     var game = this.data.game;
-    var res = store.getResource(game);
-    file.exportFile('southair-' + game + '-resources.csv', resourceCsv.write(res));
+    var format = game === 'starrail' ? 'SRGF' : 'UIGF';
+    var payload = uigf.build(store.exportRecords(game), game, '');
+    file.exportFile('southair-' + game + '-' + format.toLowerCase() + '-'
+      + store.nowStr().slice(0, 10).replace(/-/g, '') + '.json',
+      JSON.stringify(payload, null, 2));
   },
 
-  exportResourceJson: function () {
+  importUigf: function () {
+    var that = this;
     var game = this.data.game;
-    var res = store.getResource(game);
-    file.exportFile('southair-' + game + '-resources.json', JSON.stringify({
-      primogems: res.primogems,
-      mora: res.mora,
-      intertwinedFates: res.intertwinedFates,
-      acquaintedFates: res.acquaintedFates
-    }, null, 2));
-  },
-
-  /** 手机手动填写资源：不下载模板，直接在弹窗里改 4 个数值。 */
-  openResourceForm: function () {
-    var res = store.getResource(this.data.game);
-    this.setData({
-      resourceEditing: true,
-      resourceForm: {
-        primogems: String(res.primogems),
-        mora: String(res.mora),
-        intertwinedFates: String(res.intertwinedFates),
-        acquaintedFates: String(res.acquaintedFates)
-      }
-    });
-  },
-
-  closeResourceForm: function () {
-    this.setData({ resourceEditing: false });
-  },
-
-  onResourceInput: function (event) {
-    var key = event.currentTarget.dataset.key;
-    var patch = {};
-    patch['resourceForm.' + key] = event.detail.value;
-    this.setData(patch);
-  },
-
-  noop: function () {
-  },
-
-  saveResourceForm: function () {
-    store.updateResource(this.data.game, this.data.resourceForm);
-    this.setData({ resourceEditing: false });
-    this.load(this.data.game);
-    wx.showToast({ title: '资源已保存', icon: 'success' });
-  },
-
-  /** 粘贴导入：支持网页端导出的 JSON，也支持表头 + 一行数值的 CSV。 */
-  openResourceText: function () {
-    this.setData({ resourceTextVisible: true, resourceText: '' });
-  },
-
-  closeResourceText: function () {
-    this.setData({ resourceTextVisible: false });
-  },
-
-  onResourceTextInput: function (event) {
-    this.setData({ resourceText: event.detail.value });
-  },
-
-  applyResourceText: function () {
-    var text = (this.data.resourceText || '').trim();
-    if (!text) {
-      wx.showToast({ title: '请先粘贴内容', icon: 'none' });
-      return;
-    }
-    var values;
-    if (text.charAt(0) === '{') {
-      try {
-        values = JSON.parse(text);
-      } catch (e) {
-        wx.showToast({ title: '不是有效的 JSON', icon: 'none' });
+    var format = game === 'starrail' ? 'SRGF' : 'UIGF';
+    file.chooseFile(['json']).then(function (picked) {
+      var parsed = uigf.parse(picked.content, game);
+      if (parsed.error) {
+        wx.showToast({ title: parsed.error, icon: 'none' });
         return;
       }
-    } else {
-      values = resourceCsv.parse(text);
-    }
-    if (values && values.resource && typeof values.resource === 'object') {
-      values = values.resource;
-    }
-    if (!values || typeof values !== 'object') {
-      wx.showToast({ title: '没有识别到资源数值', icon: 'none' });
-      return;
-    }
-    this.setData({ resourceTextVisible: false });
-    this.applyResourceValues(values);
-  },
-
-  applyResourceValues: function (values) {
-    var that = this;
-    var filled = ['primogems', 'mora', 'intertwinedFates', 'acquaintedFates'].filter(function (key) {
-      return values[key] !== undefined && values[key] !== null;
-    });
-    if (!filled.length) {
-      wx.showToast({ title: '没有识别到资源数值', icon: 'none' });
-      return;
-    }
-    wx.showModal({
-      title: '导入资源',
-      content: '导入会覆盖当前游戏已填写的资源数值，确定继续吗？',
-      success: function (confirm) {
-        if (!confirm.confirm) {
-          return;
+      var preview = store.importRecords(game, parsed.records, 'merge', true);
+      wx.showActionSheet({
+        itemList: ['合并导入（跳过重复）', '覆盖导入（清空当前游戏记录）'],
+        success: function (res) {
+          var mode = res.tapIndex === 1 ? 'replace' : 'merge';
+          var total = parsed.records.length;
+          var willWrite = mode === 'replace' ? total - preview.filtered : preview.imported;
+          var skipText = mode === 'replace' ? '' : '，跳过重复 ' + preview.skipped + ' 条';
+          wx.showModal({
+            title: format + ' 导入预演',
+            content: '共 ' + total + ' 条：将' + (mode === 'replace' ? '写入' : '新增') + ' '
+              + willWrite + ' 条' + skipText + '，忽略 ' + preview.filtered
+              + ' 条（三星 / 四星武器）。'
+              + (mode === 'replace' ? '覆盖导入会先清空当前游戏记录。' : ''),
+            confirmText: '确认导入',
+            confirmColor: mode === 'replace' ? '#ff6b6b' : '#576b95',
+            success: function (confirm) {
+              if (confirm.confirm) {
+                that.applyUigf(parsed.records, mode, format);
+              }
+            }
+          });
         }
-        store.importResource(that.data.game, values);
-        that.load(that.data.game);
-        wx.showToast({ title: '资源已导入', icon: 'success' });
-      }
-    });
-  },
-
-  /** 从聊天记录选择电脑端导出的资源 CSV / JSON 文件。 */
-  importResource: function () {
-    this.pickResourceFile();
-  },
-
-  pickResourceFile: function () {
-    var that = this;
-    file.chooseFile(['csv', 'json']).then(function (picked) {
-      var values;
-      if (/\.json$/i.test(picked.name)) {
-        try {
-          values = JSON.parse(picked.content);
-        } catch (e) {
-          wx.showToast({ title: '不是有效的 JSON 文件', icon: 'none' });
-          return;
-        }
-      } else {
-        values = resourceCsv.parse(picked.content);
-      }
-      if (!values || typeof values !== 'object') {
-        wx.showToast({ title: '文件里没有资源数据', icon: 'none' });
-        return;
-      }
-      if (values.resource && typeof values.resource === 'object') {
-        values = values.resource;
-      }
-      that.applyResourceValues(values);
+      });
     }).catch(function (err) {
       wx.showToast({ title: err && err.message ? err.message : '导入失败', icon: 'none' });
+    });
+  },
+
+  applyUigf: function (records, mode, format) {
+    var result = store.importRecords(this.data.game, records, mode);
+    this.load(this.data.game);
+    wx.showModal({
+      title: format + ' 导入完成',
+      content: '新增 ' + result.imported + ' 条，跳过 ' + result.skipped + ' 条，忽略 '
+        + result.filtered + ' 条（三星 / 四星武器）。',
+      showCancel: false
     });
   },
 

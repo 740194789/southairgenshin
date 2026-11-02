@@ -73,6 +73,10 @@ public class WishRecord extends BaseEntity {
     @Column(name = "capture_triggered")
     private Boolean captureTriggered;
 
+    /** 游戏内 UID：多账号 / 多 UID 时用于区分记录，旧数据为空 */
+    @Column(name = "uid", length = 32)
+    private String uid;
+
     /** 客户端生成的稳定标识，多端同步时用于识别同一条记录 */
     @Column(name = "client_uid", length = 64)
     private String clientUid;
@@ -175,6 +179,14 @@ public class WishRecord extends BaseEntity {
 
     public void setCaptureTriggered(Boolean captureTriggered) {
         this.captureTriggered = captureTriggered;
+    }
+
+    public String getUid() {
+        return uid;
+    }
+
+    public void setUid(String uid) {
+        this.uid = uid;
     }
 
     public String getClientUid() {

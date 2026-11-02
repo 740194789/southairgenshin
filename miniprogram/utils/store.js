@@ -87,6 +87,7 @@ function normalizeRecord(source, game, id) {
   return {
     id: id,
     game: game,
+    uid: truncate(source.uid, 32),
     itemName: normalizeItemName(source.itemName, rarity),
     itemType: truncate(source.itemType, 16),
     pool: truncate(source.pool, 16),
@@ -186,6 +187,7 @@ function updateWish(game, id, data) {
     return null;
   }
   var merged = normalizeRecord({
+    uid: list[index].uid,
     itemName: data.itemName,
     itemType: data.itemType,
     pool: data.pool,
@@ -229,7 +231,9 @@ function ascCompare(a, b) {
   return a.id - b.id;
 }
 
-function pageWishes(game, pool, page, size, rarity) {
+function pageWishes(game, pool, page, size, rarity, filters) {
+  var extra = filters || {};
+  var keyword = String(extra.keyword || '').trim().toLowerCase();
   var list = getWishes(game);
   if (pool) {
     list = list.filter(function (record) {
@@ -239,6 +243,26 @@ function pageWishes(game, pool, page, size, rarity) {
   if (rarity) {
     list = list.filter(function (record) {
       return Number(record.rarity) === Number(rarity);
+    });
+  }
+  if (extra.uid) {
+    list = list.filter(function (record) {
+      return (record.uid || '') === extra.uid;
+    });
+  }
+  if (keyword) {
+    list = list.filter(function (record) {
+      return (record.itemName || '').toLowerCase().indexOf(keyword) >= 0;
+    });
+  }
+  if (extra.start) {
+    list = list.filter(function (record) {
+      return (record.wishTime || '').slice(0, 10) >= extra.start;
+    });
+  }
+  if (extra.end) {
+    list = list.filter(function (record) {
+      return (record.wishTime || '').slice(0, 10) <= extra.end;
     });
   }
   list = list.slice().sort(descCompare);
@@ -533,9 +557,10 @@ function captureInfo(asc) {
 /* ---------------- 导入 / 导出 ---------------- */
 
 /**
- * 导入抽卡记录：merge 模式按「名称 + 卡池 + 时间」去重；replace 模式清空后导入。
+ * 导入抽卡记录：merge 模式按「UID + 名称 + 卡池 + 时间」去重；replace 模式清空后导入。
+ * dryRun 只统计新增 / 跳过 / 忽略条数，不分配 ID、不写缓存，用于导入预演。
  */
-function importRecords(game, records, mode) {
+function importRecords(game, records, mode, dryRun) {
   var replace = mode === 'replace';
   var list = replace ? [] : getWishes(game);
   var existing = replace ? [] : list.slice();
@@ -543,7 +568,7 @@ function importRecords(game, records, mode) {
   var imported = 0;
   var skipped = 0;
   var filtered = 0;
-  var ids = allocIds(game, records.length);
+  var ids = dryRun ? [] : allocIds(game, records.length);
   var idIndex = 0;
 
   records.forEach(function (source) {
@@ -555,16 +580,18 @@ function importRecords(game, records, mode) {
       filtered++;
       return;
     }
+    var uid = truncate(source.uid, 32);
     var itemName = normalizeItemName(source.itemName, rarity);
     var pool = truncate(source.pool, 16);
     var wishTime = source.wishTime || nowStr();
-    var key = itemName + '\u0001' + pool + '\u0001' + wishTime;
+    var key = uid + '\u0001' + itemName + '\u0001' + pool + '\u0001' + wishTime;
     var seenCount = seen[key] || 0;
 
     if (!replace) {
       var sameCount = 0;
       existing.forEach(function (record) {
-        if (record.itemName === itemName && (record.pool || '') === pool && record.wishTime === wishTime) {
+        if ((record.uid || '') === uid && record.itemName === itemName
+            && (record.pool || '') === pool && record.wishTime === wishTime) {
           sameCount++;
         }
       });
@@ -575,7 +602,14 @@ function importRecords(game, records, mode) {
       }
     }
 
+    if (dryRun) {
+      imported++;
+      seen[key] = seenCount + 1;
+      return;
+    }
+
     list.push(normalizeRecord({
+      uid: uid,
       itemName: source.itemName,
       itemType: source.itemType,
       pool: source.pool,
@@ -590,7 +624,9 @@ function importRecords(game, records, mode) {
     seen[key] = seenCount + 1;
   });
 
-  saveWishes(game, list);
+  if (!dryRun) {
+    saveWishes(game, list);
+  }
   return {
     mode: replace ? 'replace' : 'merge',
     imported: imported,
@@ -668,6 +704,62 @@ function importAllBackup(payload, mode) {
   return result;
 }
 
+/** 当前游戏里出现过的 UID 列表（去重、升序）。 */
+function uids(game) {
+  var seen = {};
+  getWishes(game).forEach(function (record) {
+    if (record.uid) {
+      seen[record.uid] = true;
+    }
+  });
+  return Object.keys(seen).sort();
+}
+
+/** 数据体检：按 UID + 名称 + 卡池 + 时间检查重复。 */
+function health(game) {
+  var groups = {};
+  var list = getWishes(game);
+  list.forEach(function (record) {
+    var key = (record.uid || '') + '\u0001' + record.itemName + '\u0001'
+      + (record.pool || '') + '\u0001' + record.wishTime;
+    groups[key] = (groups[key] || 0) + 1;
+  });
+  var duplicateGroups = 0;
+  var duplicateExtra = 0;
+  Object.keys(groups).forEach(function (key) {
+    if (groups[key] > 1) {
+      duplicateGroups++;
+      duplicateExtra += groups[key] - 1;
+    }
+  });
+  return {
+    total: list.length,
+    duplicateGroups: duplicateGroups,
+    duplicateExtra: duplicateExtra,
+    uids: uids(game)
+  };
+}
+
+/** 一键去重：每组保留 id 最小（最早录入）的一条。 */
+function dedupe(game) {
+  var keep = {};
+  var list = getWishes(game).slice().sort(function (a, b) {
+    return a.id - b.id;
+  });
+  var kept = [];
+  list.forEach(function (record) {
+    var key = (record.uid || '') + '\u0001' + record.itemName + '\u0001'
+      + (record.pool || '') + '\u0001' + record.wishTime;
+    if (keep[key]) {
+      return;
+    }
+    keep[key] = true;
+    kept.push(record);
+  });
+  saveWishes(game, kept);
+  return { removed: list.length - kept.length, total: kept.length };
+}
+
 function importResource(game, resource) {
   var patch = {};
   ['primogems', 'mora', 'intertwinedFates', 'acquaintedFates'].forEach(function (key) {
@@ -693,6 +785,9 @@ module.exports = {
   importResource: importResource,
   resourceVO: resourceVO,
   overview: overview,
+  uids: uids,
+  health: health,
+  dedupe: dedupe,
   importRecords: importRecords,
   exportBackup: exportBackup,
   importBackup: importBackup,

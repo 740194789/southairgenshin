@@ -15,6 +15,7 @@ import com.southair.genshin.security.UserContext;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -41,20 +42,49 @@ public class WishController {
     private final WishService wishService;
     private final ObjectMapper objectMapper;
     private final GachaLinkImporter gachaLinkImporter;
+    private final UigfService uigfService;
 
-    public WishController(WishService wishService, ObjectMapper objectMapper, GachaLinkImporter gachaLinkImporter) {
+    public WishController(WishService wishService, ObjectMapper objectMapper,
+                          GachaLinkImporter gachaLinkImporter, UigfService uigfService) {
         this.wishService = wishService;
         this.objectMapper = objectMapper;
         this.gachaLinkImporter = gachaLinkImporter;
+        this.uigfService = uigfService;
     }
 
     @GetMapping
     public R<PageResult<WishRecord>> list(@RequestParam(required = false) String pool,
                                           @RequestParam(required = false) Integer rarity,
+                                          @RequestParam(required = false) String uid,
+                                          @RequestParam(required = false) String keyword,
+                                          @RequestParam(required = false) String start,
+                                          @RequestParam(required = false) String end,
                                           @RequestParam(defaultValue = "genshin") String game,
                                           @RequestParam(defaultValue = "1") int page,
                                           @RequestParam(defaultValue = "10") int size) {
-        return R.ok(wishService.page(UserContext.require(), game, pool, page, size, rarity));
+        return R.ok(wishService.page(UserContext.require(), game, pool, page, size, rarity,
+                uid, keyword, parseStart(start), parseEnd(end)));
+    }
+
+    /** 当前账号出现过的 UID，用于抽卡页筛选。 */
+    @GetMapping("/uids")
+    public R<List<String>> uids(@RequestParam(defaultValue = "genshin") String game) {
+        return R.ok(wishService.uids(UserContext.require(), game));
+    }
+
+    /** 数据体检：重复记录数量与 UID 列表。 */
+    @GetMapping("/health")
+    public R<java.util.Map<String, Object>> health(@RequestParam(defaultValue = "genshin") String game) {
+        return R.ok(wishService.health(UserContext.require(), game));
+    }
+
+    /** 一键去重：每组重复记录保留最早的一条。 */
+    @PostMapping("/dedupe")
+    public R<java.util.Map<String, Object>> dedupe(@RequestParam(defaultValue = "genshin") String game) {
+        int removed = wishService.dedupe(UserContext.require(), game);
+        java.util.Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("removed", removed);
+        return R.ok(result);
     }
 
     /** 收藏图鉴：全部记录按名称 / 类型 / 星级聚合。 */
@@ -208,6 +238,67 @@ public class WishController {
                                              @RequestParam(defaultValue = "genshin") String game,
                                              @RequestParam(defaultValue = "merge") String mode) {
         return R.ok(gachaLinkImporter.importFrom(request.getUrl(), UserContext.require(), game, mode));
+    }
+
+    /**
+     * 导出 UIGF v4.2（原神）/ SRGF v1.0（星穹铁道）。
+     *
+     * @param uid 指定 UID 时只导出该账号；为空导出全部 UID（SRGF 只能容纳一个 UID，取第一个）
+     */
+    @GetMapping("/export-uigf")
+    public ResponseEntity<byte[]> exportUigf(@RequestParam(defaultValue = "genshin") String game,
+                                             @RequestParam(required = false) String uid) {
+        String gameKey = GameType.normalize(game);
+        List<WishRecord> records = wishService.exportAll(UserContext.require(), gameKey, uid);
+        String content = uigfService.export(records, gameKey, uid);
+        String suffix = GameType.isStarRail(gameKey) ? "srgf" : "uigf";
+        String filename = "southair-" + gameKey + "-" + suffix + "-"
+                + LocalDateTime.now().format(FILE_TIME) + ".json";
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .contentType(new MediaType(MediaType.APPLICATION_JSON, StandardCharsets.UTF_8))
+                .body(content.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
+     * 导入 UIGF v4.2 / SRGF v1.0 / UIGF v3。
+     *
+     * @param preview true 时只统计新增 / 重复 / 过滤数量，不写入
+     */
+    @PostMapping("/import-uigf")
+    public R<WishImportResult> importUigf(@RequestBody String body,
+                                          @RequestParam(defaultValue = "genshin") String game,
+                                          @RequestParam(defaultValue = "merge") String mode,
+                                          @RequestParam(defaultValue = "false") boolean preview) {
+        List<WishRecord> records = uigfService.parse(body, game);
+        return R.ok(preview
+                ? wishService.previewRecords(UserContext.require(), game, records, mode)
+                : wishService.importRecords(UserContext.require(), game, records, mode));
+    }
+
+    private LocalDateTime parseStart(String value) {
+        String text = normalizeDateParam(value, false);
+        return StringUtils.hasText(text) ? LocalDateTime.parse(text) : null;
+    }
+
+    private LocalDateTime parseEnd(String value) {
+        String text = normalizeDateParam(value, true);
+        return StringUtils.hasText(text) ? LocalDateTime.parse(text) : null;
+    }
+
+    /** 接受 yyyy-MM-dd 或 yyyy-MM-dd HH:mm:ss；纯日期按开始 / 结束当天处理。 */
+    private String normalizeDateParam(String value, boolean endOfDay) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        String text = value.trim().replace('T', ' ');
+        if (text.length() == 10) {
+            return text + (endOfDay ? " 23:59:59" : " 00:00:00");
+        }
+        if (text.length() == 16) {
+            return text + ":00";
+        }
+        return text;
     }
 
     private List<WishRecord> parseJson(String body) {

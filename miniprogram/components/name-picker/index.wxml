@@ -1,4 +1,4 @@
-<view wx:if="{{visible}}" class="np-mask" bindtap="onMaskTap">
+<view wx:if="{{visible}}" class="np-mask" bindtap="onMaskTap" catchtouchmove="noop">
   <view class="np-modal" catchtap="noop">
     <view class="np-head">
       <text class="np-title">选择角色 / 物品</text>
@@ -13,18 +13,20 @@
     </view>
 
     <scroll-view scroll-y class="np-body">
-      <view wx:if="{{cells.length}}" class="np-grid">
-        <view wx:for="{{cells}}" wx:key="name" class="np-cell {{item.name === current ? 'active' : ''}}"
-              data-name="{{item.name}}" data-icon="{{item.icon}}" bindtap="pick">
-          <view class="np-icon">
-            <text>{{item.initial}}</text>
-            <image wx:if="{{item.icon}}" src="{{item.icon}}" mode="aspectFill"
-                   data-index="{{index}}" binderror="onIconError"/>
+      <view class="np-body-inner">
+        <view wx:if="{{cells.length}}" class="np-grid">
+          <view wx:for="{{cells}}" wx:key="name" class="np-cell {{item.name === current ? 'active' : ''}}"
+                data-name="{{item.name}}" data-icon="{{item.icon}}" bindtap="pick">
+            <view class="np-icon">
+              <text>{{item.initial}}</text>
+              <image wx:if="{{item.icon}}" src="{{item.icon}}" mode="aspectFill"
+                     data-index="{{index}}" binderror="onIconError"/>
+            </view>
+            <view class="np-name">{{item.name}}</view>
           </view>
-          <view class="np-name">{{item.name}}</view>
         </view>
+        <view wx:else class="np-empty">暂无可选名称</view>
       </view>
-      <view wx:else class="np-empty">暂无可选名称</view>
     </scroll-view>
   </view>
 </view>

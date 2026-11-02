@@ -9,12 +9,14 @@
   z-index: 120;
   display: flex;
   align-items: flex-end;
+  overflow: hidden;
   background: rgba(0, 0, 0, 0.66);
 }
 
 .np-modal {
   width: 100%;
-  max-height: 82vh;
+  height: 82vh;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   background: #10141f;
@@ -75,8 +77,11 @@
 
 .np-body {
   flex: 1;
-  height: 60vh;
-  box-sizing: border-box;
+  height: 0;
+  overflow: hidden;
+}
+
+.np-body-inner {
   padding: 0 28rpx 24rpx;
 }
 
@@ -87,7 +92,7 @@
 }
 
 .np-cell {
-  width: calc(20% - 12rpx);
+  width: calc(20% - 13rpx);
   margin: 6rpx;
   padding: 14rpx 4rpx 10rpx;
   box-sizing: border-box;

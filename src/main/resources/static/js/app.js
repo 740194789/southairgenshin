@@ -55,6 +55,10 @@
         pages: { wishes: 1 },
         wishPool: '',
         wishOnlyFive: false,
+        wishUid: '',
+        wishKeyword: '',
+        wishStart: '',
+        wishEnd: '',
         wishSelected: new Set()
     };
 
@@ -133,6 +137,9 @@
         }
         return null;
     }
+
+    /* 主角：只在收藏「补充已有」中可选，抽卡记录不会出现 */
+    var PROTAGONISTS = { genshin: '旅行者', starrail: '开拓者' };
 
     /* 四星角色名单：补充已有按类别选择时用于切分四星 / 五星角色 */
     var FOUR_STAR_CHARACTERS = {
@@ -669,10 +676,14 @@
 
     function expectPrefs() {
         var raw = safeParse(localStorage.getItem(EXPECT_KEY + state.game)) || {};
+        var daily = raw.daily === undefined ? 2 : Number(raw.daily);
+        var days = raw.days === undefined ? 21 : Number(raw.days);
         return {
             c: Math.max(0, Math.min(6, Number(raw.c) || 0)),
             r: Math.max(0, Math.min(5, Number(raw.r) || 0)),
-            mode: raw.mode === 'theory' ? 'theory' : 'history'
+            mode: raw.mode === 'theory' ? 'theory' : 'history',
+            daily: isFinite(daily) ? Math.max(0, Math.min(99, daily)) : 2,
+            days: isFinite(days) ? Math.max(0, Math.min(365, Math.round(days))) : 21
         };
     }
 
@@ -842,6 +853,71 @@
         return hi > lo ? fmt(lo) + '–' + fmt(hi) : fmt(lo);
     }
 
+    /** 攒抽规划：按「每天可攒抽数 + 卡池剩余天数」估算到期时能否攒够目标。 */
+    function plannerHtml(plan, prefs) {
+        var g = gameConfig();
+        var income = Math.round(prefs.daily * prefs.days * 10) / 10;
+        var projected = Math.round((plan.available + income) * 10) / 10;
+        var gapHigh = Math.max(0, plan.totalHigh - projected);
+        var gapLow = Math.max(0, plan.totalLow - projected);
+        var percent = plan.totalHigh > 0
+            ? Math.min(100, Math.round(projected / plan.totalHigh * 100)) : 100;
+        var enoughHigh = projected >= plan.totalHigh;
+        var enoughLow = projected >= plan.totalLow;
+
+        var status;
+        if (enoughHigh) {
+            status = '到期预计 <strong>' + num(projected) + '</strong> 抽，已达到区间上限，余 '
+                + num(projected - plan.totalHigh) + ' 抽';
+        } else if (enoughLow) {
+            status = '到期预计 <strong>' + num(projected) + '</strong> 抽，达到区间下限，距上限还差 '
+                + num(gapHigh) + ' 抽';
+        } else {
+            status = '到期预计 <strong>' + num(projected) + '</strong> 抽，还差 '
+                + (gapHigh > gapLow ? num(gapLow) + '–' + num(gapHigh) : num(gapHigh)) + ' 抽';
+        }
+
+        var advice = '';
+        if (gapHigh > 0) {
+            var parts = [];
+            if (prefs.days > 0) {
+                parts.push('每天需攒 ' + num(gapHigh / prefs.days) + ' 抽');
+            }
+            if (prefs.daily > 0) {
+                var needDays = Math.ceil(gapHigh / prefs.daily);
+                var eta = new Date(Date.now() + needDays * 86400000);
+                parts.push('还需 ' + needDays + ' 天（约 ' + eta.getFullYear() + '-'
+                    + ('0' + (eta.getMonth() + 1)).slice(-2) + '-' + ('0' + eta.getDate()).slice(-2) + '）');
+            }
+            advice = parts.join(' · ');
+        } else {
+            advice = '保持当前节奏即可，不必额外投入。';
+        }
+
+        return '<div class="expect-planner">'
+            + '<div class="planner-head"><strong>攒抽规划</strong>'
+            + '<span>按卡池剩余天数估算到期可抽</span></div>'
+            + '<div class="planner-fields">'
+            + '<label class="planner-field"><span>每天可攒</span>'
+            + '<input id="plan-daily" type="number" min="0" max="99" step="0.1" value="'
+            + num(prefs.daily) + '"/><em>抽</em></label>'
+            + '<label class="planner-field"><span>卡池还剩</span>'
+            + '<input id="plan-days" type="number" min="0" max="365" step="1" value="'
+            + prefs.days + '"/><em>天</em></label>'
+            + '</div>'
+            + '<div class="planner-numbers">'
+            + '<div><span>当前可抽</span><strong>' + fmt(plan.available) + '</strong></div>'
+            + '<div><span>期间可得</span><strong>+' + num(income) + '</strong></div>'
+            + '<div><span>到期合计</span><strong>' + num(projected) + '</strong></div>'
+            + '</div>'
+            + '<div class="expect-bar' + (enoughHigh ? ' done' : '') + '">'
+            + '<span style="width:' + percent + '%"></span></div>'
+            + '<p class="expect-compare">' + status + '</p>'
+            + '<p class="expect-note">' + esc(advice)
+            + '（目标按当前' + esc(g.currency) + '储备折算，不含版本活动等临时收入。）</p>'
+            + '</div>';
+    }
+
     function expectationPanelHtml(data) {
         var g = gameConfig();
         var prefs = expectPrefs();
@@ -953,6 +1029,7 @@
                 ? '区间取往期 UP 周期的 25%–75% 分位，约一半情况落在此范围。'
                 : '理论值为单点估算，约一半概率在期望抽数内达成。')
             + '</p>'
+            + plannerHtml(plan, prefs)
             + '</section>';
     }
 
@@ -985,6 +1062,26 @@
             }
             saveExpectPrefs(prefs);
 
+            var host = $('.expect-panel');
+            if (host) {
+                host.outerHTML = expectationPanelHtml(data);
+                bindExpectation(data);
+            }
+        });
+
+        panel.addEventListener('change', function (event) {
+            var id = event.target && event.target.id;
+            if (id !== 'plan-daily' && id !== 'plan-days') {
+                return;
+            }
+            var prefs = expectPrefs();
+            var value = Number(event.target.value);
+            if (id === 'plan-daily') {
+                prefs.daily = isFinite(value) ? Math.max(0, Math.min(99, value)) : prefs.daily;
+            } else {
+                prefs.days = isFinite(value) ? Math.max(0, Math.min(365, Math.round(value))) : prefs.days;
+            }
+            saveExpectPrefs(prefs);
             var host = $('.expect-panel');
             if (host) {
                 host.outerHTML = expectationPanelHtml(data);
@@ -1271,6 +1368,67 @@
         });
     }
 
+    /** 统计摘要：导出为纯文本，字段口径与页面一致。 */
+    function statsSummaryText(data) {
+        var g = gameConfig();
+        var name = (state.user && (state.user.nickname || state.user.username)) || '旅行者';
+        var lines = [];
+        lines.push('SouthAir Genshin · ' + g.fullName + ' 统计摘要');
+        lines.push('账号：' + name);
+        lines.push('生成时间：' + nowLocal().replace('T', ' '));
+        lines.push('');
+        lines.push('【概览】');
+        lines.push('抽卡记录：' + data.wishCount + ' 条（五星 ' + data.fiveStarWishes
+            + ' / 四星 ' + data.fourStarWishes + '）');
+        lines.push('五星出货率：' + data.fiveStarRate + '%');
+        lines.push('五星平均抽数：' + data.avgFiveStarPity);
+        lines.push('当前可抽：' + fmt(data.resource.totalPulls) + ' 抽 · 总资产 '
+            + fmt(data.resource.totalPrimogems) + ' ' + g.currency);
+        lines.push('');
+        lines.push('【抽卡统计】');
+        lines.push('小保底：' + (data.softPityCount || 0) + ' 次，不歪 '
+            + (data.softPityUpCount || 0) + ' 次（' + (data.softPityUpRate || 0) + '%）');
+        lines.push('歪：' + (data.lostCount || 0) + ' 次 · 最多连歪 ' + (data.maxLossStreak || 0)
+            + ' · 最多连不歪 ' + (data.maxUpStreak || 0));
+        if (state.game === 'genshin') {
+            lines.push('捕获明光：' + (data.captureTriggeredCount || 0) + ' 次');
+        }
+        lines.push('');
+        lines.push('【卡池保底】');
+        (data.poolStats || []).forEach(function (item) {
+            lines.push('- ' + poolLabel(item.pool) + '：已垫 ' + item.currentPity + ' / ' + item.cap
+                + '，五星 ' + item.fiveStarCount + ' 次，平均 ' + item.avgFiveStarPity + ' 抽'
+                + (item.upGuaranteed ? '，大保底 / 命定已满' : ''));
+        });
+        return '\ufeff' + lines.join('\r\n') + '\r\n';
+    }
+
+    function downloadTextFile(filename, text) {
+        var blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+        var url = URL.createObjectURL(blob);
+        var link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(function () {
+            URL.revokeObjectURL(url);
+        }, 1500);
+    }
+
+    function bindStatsSummary(data) {
+        var btn = $('#stats-summary-export');
+        if (!btn) {
+            return;
+        }
+        btn.addEventListener('click', function () {
+            var stamp = nowLocal().slice(0, 10).replace(/-/g, '');
+            downloadTextFile('southair-' + state.game + '-summary-' + stamp + '.txt', statsSummaryText(data));
+            toast('统计摘要已导出');
+        });
+    }
+
     function loadStats() {
         var el = $('#view-stats');
         var g = gameConfig();
@@ -1318,6 +1476,11 @@
                     + (data.wishCount ? Math.round(data.fourStarWishes * 100 / data.wishCount) : 0) + '%', 'purple')
                 + statCard('五星平均抽数', data.avgFiveStarPity, '按记录中的保底进度')
                 + '</div>'
+                + '<section class="panel"><h3>统计摘要<span class="pool-tag">文本导出</span></h3>'
+                + '<p class="panel-desc">把当前游戏的关键指标导出为 txt，方便保存或分享。</p>'
+                + '<div class="panel-actions">'
+                + '<button class="btn btn-outline btn-sm" id="stats-summary-export" type="button">'
+                + '导出统计摘要</button></div></section>'
                 + '<section class="panel"><h3>最近出货<span class="pool-tag">最近 '
                 + (data.recentWishes || []).length + ' 条</span></h3>'
                 + miniWishes(data.recentWishes) + '</section>'
@@ -1346,6 +1509,7 @@
             bindStatsPoolFilter(data);
             bindPullChart();
             bindExpectation(data);
+            bindStatsSummary(data);
         }).catch(function (err) {
             if (state.token) {
                 el.innerHTML = errorHtml(err);
@@ -1360,6 +1524,9 @@
         var rarity = Number(item.rarity) || 3;
         var fiveStar = rarity >= 5;
         var meta = ['<span>' + esc(item.itemType || '—') + '</span>'];
+        if (item.uid) {
+            meta.push('<span class="meta-pill uid-pill">UID ' + esc(item.uid) + '</span>');
+        }
         if (fiveStar) {
             meta.push('<span class="meta-pill ' + (item.isUp ? 'good' : 'bad') + '">'
                 + (item.isUp ? 'UP 内' : '未中 UP') + '</span>');
@@ -1411,9 +1578,15 @@
             + '<div class="toolbar">'
             + '<div class="toolbar-filters">'
             + '<select id="wish-pool" class="input">' + poolOptions + '</select>'
+            + '<select id="wish-uid" class="input"><option value="">全部 UID</option></select>'
+            + '<input id="wish-keyword" class="input wish-search" type="search" placeholder="搜索名称"'
+            + ' value="' + esc(state.wishKeyword) + '"/>'
+            + '<input id="wish-start" class="input wish-date" type="date" value="' + esc(state.wishStart) + '"/>'
+            + '<input id="wish-end" class="input wish-date" type="date" value="' + esc(state.wishEnd) + '"/>'
             + '<label class="filter-check"><input type="checkbox" id="wish-only-five"'
             + (state.wishOnlyFive ? ' checked' : '') + '/>只看五星</label>'
             + '<div class="toolbar-actions">'
+            + '<button class="btn btn-text btn-sm" id="wish-filter-reset" type="button">重置筛选</button>'
             + '<button class="btn btn-text btn-sm" id="wish-batch-edit" type="button">批量编辑本页</button>'
             + '<button class="btn btn-text btn-sm" id="wish-select-all" type="button">全选本页</button>'
             + '<button class="btn btn-text btn-sm btn-danger" id="wish-batch-del" type="button" disabled>批量删除</button>'
@@ -1422,6 +1595,7 @@
             + '<div class="toolbar-tools">'
             + '<button class="btn btn-outline btn-sm" id="wish-ocr" type="button">截图识别</button>'
             + '<button class="btn btn-outline btn-sm" id="wish-link-import" type="button">链接导入</button>'
+            + '<button class="btn btn-text btn-sm" id="wish-health" type="button">数据体检</button>'
             + '</div>'
             + '</div>'
             + '<div id="wish-list"><div class="loading">加载中…</div></div>'
@@ -1438,6 +1612,55 @@
             state.pages.wishes = 1;
             refreshWishList();
         });
+
+        var uidSelect = $('#wish-uid');
+        if (uidSelect) {
+            uidSelect.addEventListener('change', function (event) {
+                state.wishUid = event.target.value;
+                state.pages.wishes = 1;
+                refreshWishList();
+            });
+        }
+
+        var keywordInput = $('#wish-keyword');
+        var keywordTimer = null;
+        if (keywordInput) {
+            keywordInput.addEventListener('input', function (event) {
+                var value = event.target.value.trim();
+                clearTimeout(keywordTimer);
+                keywordTimer = setTimeout(function () {
+                    state.wishKeyword = value;
+                    state.pages.wishes = 1;
+                    refreshWishList();
+                }, 400);
+            });
+        }
+
+        ['#wish-start', '#wish-end'].forEach(function (selector) {
+            var input = $(selector);
+            if (!input) {
+                return;
+            }
+            input.addEventListener('change', function (event) {
+                state[selector === '#wish-start' ? 'wishStart' : 'wishEnd'] = event.target.value;
+                state.pages.wishes = 1;
+                refreshWishList();
+            });
+        });
+
+        var resetBtn = $('#wish-filter-reset');
+        if (resetBtn) {
+            resetBtn.addEventListener('click', function () {
+                state.wishPool = '';
+                state.wishUid = '';
+                state.wishKeyword = '';
+                state.wishStart = '';
+                state.wishEnd = '';
+                state.wishOnlyFive = false;
+                state.pages.wishes = 1;
+                loadWishes();
+            });
+        }
 
         $('#wish-select-all').addEventListener('click', function () {
             var ids = cache.wishes.map(function (item) {
@@ -1487,6 +1710,19 @@
 
         bindWishTools();
 
+        guard(function () {
+            return api('/api/wishes/uids').then(function (uids) {
+                var select = $('#wish-uid');
+                if (!select) {
+                    return;
+                }
+                select.innerHTML = '<option value="">全部 UID</option>' + (uids || []).map(function (uid) {
+                    return '<option value="' + esc(uid) + '"'
+                        + (state.wishUid === uid ? ' selected' : '') + '>' + esc(uid) + '</option>';
+                }).join('');
+            });
+        });
+
         return refreshWishList();
     }
 
@@ -1529,6 +1765,18 @@
         }
         if (state.wishPool) {
             params.set('pool', state.wishPool);
+        }
+        if (state.wishUid) {
+            params.set('uid', state.wishUid);
+        }
+        if (state.wishKeyword) {
+            params.set('keyword', state.wishKeyword);
+        }
+        if (state.wishStart) {
+            params.set('start', state.wishStart);
+        }
+        if (state.wishEnd) {
+            params.set('end', state.wishEnd);
         }
 
         return api('/api/wishes?' + params.toString()).then(function (data) {
@@ -1639,31 +1887,42 @@
             + '</span>';
     }
 
-    /** 头像 + 名字的网格选择弹窗，一排 5 个 */
-    function openNamePicker(currentName, onPick) {
+    /** 头像 + 名字的网格选择弹窗，一排 5 个；opts.names 用于收藏按类别限定名单 */
+    function openNamePicker(currentName, onPick, opts) {
         var g = gameConfig();
+        var options = opts || {};
         var lists = nameLists(state.game);
-        var groups = [
-            { key: 'characters', label: g.itemTypes[0], list: lists.characters },
-            { key: 'weapons', label: g.itemTypes[1], list: lists.weapons }
-        ].filter(function (group) {
-            return group.list.length > 0;
-        });
+        var groups;
+        if (options.names) {
+            groups = [{ key: 'custom', label: options.label || '可选', list: options.names.slice() }];
+        } else {
+            /* 抽卡记录不会出现主角，角色分页里排除 */
+            var protagonist = PROTAGONISTS[state.game];
+            var characters = lists.characters.filter(function (name) {
+                return name !== protagonist;
+            });
+            groups = [
+                { key: 'characters', label: g.itemTypes[0], list: characters },
+                { key: 'weapons', label: g.itemTypes[1], list: lists.weapons }
+            ].filter(function (group) {
+                return group.list.length > 0;
+            });
+        }
         var active = groups[0] ? groups[0].key : '';
-        if (currentName && lists.weapons.indexOf(currentName) >= 0) {
+        if (!options.names && currentName && lists.weapons.indexOf(currentName) >= 0) {
             active = 'weapons';
         }
 
         var mask = document.createElement('div');
         mask.className = 'modal-mask name-picker-mask';
         mask.innerHTML = '<div class="modal name-picker-modal">'
-            + '<header><h3>选择角色 / 物品</h3>'
+            + '<header><h3>' + esc(options.title || '选择角色 / 物品') + '</h3>'
             + '<button class="modal-close" type="button" aria-label="关闭">×</button></header>'
-            + '<div class="name-picker-tabs">' + groups.map(function (group) {
+            + (groups.length > 1 ? '<div class="name-picker-tabs">' + groups.map(function (group) {
                 return '<button type="button" class="name-picker-tab'
                     + (group.key === active ? ' active' : '') + '" data-key="' + group.key + '">'
                     + esc(group.label) + '<span>' + group.list.length + '</span></button>';
-            }).join('') + '</div>'
+            }).join('') + '</div>' : '')
             + '<div class="name-picker-body"><div class="name-picker-grid"></div></div>'
             + '</div>';
 
@@ -1678,9 +1937,10 @@
                 grid.innerHTML = '<div class="name-picker-empty">暂无可选名称</div>';
                 return;
             }
-            /* 原记录名称不在名单时，在当前分组置顶保留，避免改名后无法还原 */
+            /* 原记录名称不在名单时，在当前分组置顶保留，避免改名后无法还原；主角不在此列 */
             var list = group.list.slice();
-            if (currentName && lists.characters.indexOf(currentName) < 0
+            if (currentName && currentName !== PROTAGONISTS[state.game]
+                    && lists.characters.indexOf(currentName) < 0
                     && lists.weapons.indexOf(currentName) < 0) {
                 list.unshift(currentName);
             }
@@ -1845,10 +2105,16 @@
                     if (!input) {
                         return;
                     }
+                    var field = fields.filter(function (item) {
+                        return item.key === key;
+                    })[0];
+                    var pickerOpts = field && field.type === 'name-picker' && field.options
+                        ? { names: field.options.slice(), title: '选择' + field.label }
+                        : null;
                     openNamePicker(input.value, function (name) {
                         input.value = name;
                         updateNameTrigger(btn, name);
-                    });
+                    }, pickerOpts);
                 });
             });
 
@@ -2107,6 +2373,29 @@
         $('#wish-link-import').addEventListener('click', function () {
             guard(importFromLink);
         });
+
+        var healthBtn = $('#wish-health');
+        if (healthBtn) {
+            healthBtn.addEventListener('click', function () {
+                guard(function () {
+                    return api('/api/wishes/health').then(function (health) {
+                        if (!health.duplicateExtra) {
+                            toast('数据体检：' + health.total + ' 条记录，没有发现重复');
+                            return null;
+                        }
+                        if (!window.confirm('发现 ' + health.duplicateGroups + ' 组重复（多出 '
+                                + health.duplicateExtra + ' 条）。保留每组最早一条并删除其余记录？')) {
+                            return null;
+                        }
+                        return api('/api/wishes/dedupe', { method: 'POST' }).then(function (result) {
+                            toast('已去除 ' + result.removed + ' 条重复记录');
+                            refreshWishList();
+                            return result;
+                        });
+                    });
+                });
+            });
+        }
     }
 
     /* 抽卡链接导入：后端代理读取米游社接口，避开浏览器跨域限制 */
@@ -2215,6 +2504,85 @@
                     refreshWishList();
                 }
                 return result;
+            });
+        });
+    }
+
+    /* ---------------- UIGF / SRGF 互转 ---------------- */
+
+    function onUigfFileSelected(event, game) {
+        var file = event.target.files && event.target.files[0];
+        event.target.value = '';
+        if (!file) {
+            return;
+        }
+        if (!/\.json$/i.test(file.name)) {
+            toast('UIGF / SRGF 只支持 .json 文件', 'error');
+            return;
+        }
+        if (file.size > 20 * 1024 * 1024) {
+            toast('文件不能超过 20MB', 'error');
+            return;
+        }
+        var reader = new FileReader();
+        reader.onload = function () {
+            guard(function () {
+                return importUigf(file.name, String(reader.result || ''), game);
+            });
+        };
+        reader.onerror = function () {
+            toast('读取文件失败', 'error');
+        };
+        reader.readAsText(file, 'utf-8');
+    }
+
+    /** UIGF / SRGF 导入：先预演统计，确认后再写入。 */
+    function importUigf(fileName, text, game) {
+        var g = GAMES[game || state.game] || gameConfig();
+        var formatName = (game === 'starrail' ? 'SRGF' : 'UIGF');
+        return api('/api/wishes/import-uigf?preview=true&mode=merge', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json;charset=UTF-8' },
+            body: text
+        }, game).then(function (preview) {
+            return openForm('导入 ' + formatName + ' · ' + g.fullName, [
+                {
+                    key: 'mode',
+                    label: '导入方式',
+                    type: 'select',
+                    full: true,
+                    options: [
+                        { value: 'merge', label: '合并：保留现有记录，自动跳过重复' },
+                        { value: 'replace', label: '覆盖：先清空当前账号的抽卡记录' }
+                    ],
+                    default: 'merge'
+                }
+            ], null, {
+                hint: '文件：' + fileName + '。共 ' + preview.total + ' 条，将新增 '
+                    + preview.imported + ' 条，跳过重复 ' + preview.skipped + ' 条，按规则忽略 '
+                    + preview.filtered + ' 条。多 UID 文件会按 UID 分别保留。',
+                submitText: '确认导入'
+            }).then(function (values) {
+                if (!values) {
+                    return null;
+                }
+                if (values.mode === 'replace'
+                    && !window.confirm('覆盖导入会清空「' + g.fullName + '」的全部抽卡记录，确定继续吗？')) {
+                    return null;
+                }
+                return api('/api/wishes/import-uigf?mode=' + encodeURIComponent(values.mode), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json;charset=UTF-8' },
+                    body: text
+                }, game).then(function (result) {
+                    toast(formatName + ' 导入完成：新增 ' + result.imported + ' 条'
+                        + (result.skipped ? '，跳过 ' + result.skipped + ' 条' : '')
+                        + (result.filtered ? '，忽略 ' + result.filtered + ' 条' : ''));
+                    if ((game || state.game) === state.game) {
+                        switchView(state.view);
+                    }
+                    return result;
+                });
             });
         });
     }
@@ -2586,6 +2954,16 @@
             + '<input id="sg-resource-file-' + game + '" class="sg-file" type="file" '
             + 'accept=".csv,.json,text/csv,application/json" data-sg-file="resource" data-game="' + game + '" hidden/>'
             + '</div></div>'
+            + '<div class="settings-group">'
+            + '<span class="settings-label">' + (game === 'starrail' ? 'SRGF v1.0' : 'UIGF v4.2') + '</span>'
+            + '<div class="panel-actions">'
+            + '<button class="btn btn-outline btn-sm" type="button" data-sg="uigf-export" data-game="'
+            + game + '">导出 ' + (game === 'starrail' ? 'SRGF' : 'UIGF') + '</button>'
+            + '<button class="btn btn-outline btn-sm" type="button" data-sg="uigf-import" data-game="'
+            + game + '">导入 ' + (game === 'starrail' ? 'SRGF' : 'UIGF') + '</button>'
+            + '<input id="sg-uigf-file-' + game + '" class="sg-file" type="file" '
+            + 'accept=".json,application/json" data-sg-file="uigf" data-game="' + game + '" hidden/>'
+            + '</div></div>'
             + '</section>';
     }
 
@@ -2723,21 +3101,6 @@
         }).join('');
     }
 
-    function ownedNameFieldOptions(game, category) {
-        return [{ value: '', label: '请选择角色 / 物品' }].concat(
-            ownedNameOptions(game, category).map(function (name) {
-                return { value: name, label: name };
-            })
-        );
-    }
-
-    function ownedNameOptionHtml(game, category) {
-        return ownedNameFieldOptions(game, category).map(function (option) {
-            return '<option value="' + esc(option.value) + '"'
-                + (option.value ? '' : ' selected') + '>' + esc(option.label) + '</option>';
-        }).join('');
-    }
-
     function openOwnedForm() {
         var g = gameConfig();
         var defs = collectionDefs(g);
@@ -2755,9 +3118,9 @@
             {
                 key: 'name',
                 label: '名称',
-                type: 'select',
+                type: 'name-picker',
                 full: true,
-                options: ownedNameFieldOptions(state.game, defs[0].key)
+                options: ownedNameOptions(state.game, defs[0].key)
             },
             {
                 key: 'copies',
@@ -2773,12 +3136,22 @@
             submitText: '保存',
             onMount: function (mask) {
                 var categoryEl = $('select[name="category"]', mask);
-                var nameEl = $('select[name="name"]', mask);
+                var nameEl = $('input[name="name"]', mask);
                 if (!categoryEl || !nameEl) {
                     return;
                 }
+                var nameField = fields.filter(function (field) {
+                    return field.key === 'name';
+                })[0];
+                var trigger = $('.name-picker-trigger[data-picker-key="name"]', mask);
                 categoryEl.addEventListener('change', function () {
-                    nameEl.innerHTML = ownedNameOptionHtml(state.game, categoryEl.value);
+                    if (nameField) {
+                        nameField.options = ownedNameOptions(state.game, categoryEl.value);
+                    }
+                    nameEl.value = '';
+                    if (trigger) {
+                        updateNameTrigger(trigger, '');
+                    }
                 });
             },
             validate: function (values) {
@@ -2958,6 +3331,17 @@
                 guard(function () {
                     return chooseTemplate(btn.dataset.kind, game);
                 });
+            } else if (action === 'uigf-export') {
+                guard(function () {
+                    return downloadFile('/api/wishes/export-uigf',
+                        'southair-' + game + (game === 'starrail' ? '-srgf.json' : '-uigf.json'),
+                        (game === 'starrail' ? 'SRGF' : 'UIGF') + ' 已导出', game);
+                });
+            } else if (action === 'uigf-import') {
+                var input = document.getElementById('sg-uigf-file-' + game);
+                if (input) {
+                    input.click();
+                }
             }
         });
 
@@ -2968,6 +3352,8 @@
             }
             if (input.dataset.sgFile === 'wish') {
                 onWishFileSelected(event, input.dataset.game);
+            } else if (input.dataset.sgFile === 'uigf') {
+                onUigfFileSelected(event, input.dataset.game);
             } else {
                 onResourceFileSelected(event, input.dataset.game);
             }
@@ -3009,7 +3395,7 @@
 
     var OCR_MODE_HINTS = {
         wishes: '上传游戏内抽卡记录截图，按文字与角色 / 武器头像识别候选记录；核对名称、星级与卡池后再导入。',
-        history: '上传提瓦特小助手「出金历史」截图：每行只认「N抽」次数与左侧头像，'
+        history: '上传第三方助手「出金历史」截图：每行只认「N抽」次数与左侧头像，'
             + '卡池按顶部标签推断，时间默认当前且可逐条修改。'
     };
 

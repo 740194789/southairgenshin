@@ -139,6 +139,11 @@ Page({
     poolOptions: ['全部卡池'].concat(gameLib.config('genshin').pools.map(gameLib.poolLabel)),
     poolLabels: gameLib.config('genshin').pools.map(gameLib.poolLabel),
     poolIndex: 0,
+    uidOptions: ['全部 UID'],
+    uidIndex: 0,
+    keyword: '',
+    startDate: '',
+    endDate: '',
     rows: [],
     page: 1,
     pages: 1,
@@ -174,6 +179,10 @@ Page({
       poolOptions: ['全部卡池'].concat(g.pools.map(gameLib.poolLabel)),
       poolLabels: g.pools.map(gameLib.poolLabel),
       poolIndex: 0,
+      uidIndex: 0,
+      keyword: '',
+      startDate: '',
+      endDate: '',
       page: 1,
       selected: [],
       selectedCount: 0,
@@ -189,8 +198,17 @@ Page({
   load: function () {
     var game = this.data.game;
     var pool = this.data.poolIndex === 0 ? '' : this.data.g.pools[this.data.poolIndex - 1];
+    var uids = store.uids(game);
+    var uidOptions = ['全部 UID'].concat(uids);
+    var uidIndex = Math.min(this.data.uidIndex, uidOptions.length - 1);
+    var uid = uidIndex > 0 ? uidOptions[uidIndex] : '';
     var result = store.pageWishes(game, pool, this.data.page, PAGE_SIZE,
-      this.data.onlyFive ? 5 : null);
+      this.data.onlyFive ? 5 : null, {
+        uid: uid,
+        keyword: this.data.keyword,
+        start: this.data.startDate,
+        end: this.data.endDate
+      });
     var selected = this.data.selected;
     var rows = result.records.map(function (record) {
       return {
@@ -201,6 +219,7 @@ Page({
         stars: starText(record.rarity),
         rarity: record.rarity,
         itemType: record.itemType || '—',
+        uid: record.uid || '',
         pool: gameLib.poolLabel(record.pool) || '未知卡池',
         isUp: record.isUp === true,
         capture: record.captureTriggered === true,
@@ -211,6 +230,8 @@ Page({
     });
 
     this.setData({
+      uidOptions: uidOptions,
+      uidIndex: uidIndex,
       rows: rows,
       allChecked: rows.length > 0 && rows.every(function (row) {
         return row.checked;
@@ -241,6 +262,95 @@ Page({
       allChecked: false
     });
     this.load();
+  },
+
+  onUidChange: function (event) {
+    this.setData({
+      uidIndex: Number(event.detail.value),
+      page: 1,
+      selected: [],
+      selectedCount: 0,
+      allChecked: false
+    });
+    this.load();
+  },
+
+  onKeywordInput: function (event) {
+    var that = this;
+    var value = event.detail.value;
+    this.setData({ keyword: value });
+    clearTimeout(this.keywordTimer);
+    this.keywordTimer = setTimeout(function () {
+      that.setData({ page: 1, selected: [], selectedCount: 0, allChecked: false });
+      that.load();
+    }, 400);
+  },
+
+  onStartDate: function (event) {
+    this.setData({
+      startDate: event.detail.value,
+      page: 1,
+      selected: [],
+      selectedCount: 0,
+      allChecked: false
+    });
+    this.load();
+  },
+
+  onEndDate: function (event) {
+    this.setData({
+      endDate: event.detail.value,
+      page: 1,
+      selected: [],
+      selectedCount: 0,
+      allChecked: false
+    });
+    this.load();
+  },
+
+  resetFilters: function () {
+    this.setData({
+      poolIndex: 0,
+      uidIndex: 0,
+      keyword: '',
+      startDate: '',
+      endDate: '',
+      onlyFive: false,
+      page: 1,
+      selected: [],
+      selectedCount: 0,
+      allChecked: false
+    });
+    this.load();
+  },
+
+  /** 数据体检：检查重复，确认后保留每组最早一条。 */
+  runHealth: function () {
+    var that = this;
+    var health = store.health(this.data.game);
+    if (!health.duplicateExtra) {
+      wx.showModal({
+        title: '数据体检',
+        content: '共 ' + health.total + ' 条记录，没有发现重复。',
+        showCancel: false
+      });
+      return;
+    }
+    wx.showModal({
+      title: '发现重复记录',
+      content: '共 ' + health.total + ' 条，发现 ' + health.duplicateGroups + ' 组重复（多出 '
+        + health.duplicateExtra + ' 条）。保留每组最早录入的一条并删除其余记录？',
+      confirmColor: '#ff6b6b',
+      success: function (res) {
+        if (!res.confirm) {
+          return;
+        }
+        var result = store.dedupe(that.data.game);
+        that.setData({ page: 1, selected: [], selectedCount: 0, allChecked: false });
+        that.load();
+        wx.showToast({ title: '已去除 ' + result.removed + ' 条', icon: 'none' });
+      }
+    });
   },
 
   prevPage: function () {

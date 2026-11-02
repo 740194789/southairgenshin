@@ -157,6 +157,7 @@ public class GachaLinkImporter {
 
         applyPity(items);
 
+        String uid = extractUid(url);
         List<WishRecord> records = new ArrayList<>(items.size());
         long now = System.currentTimeMillis();
         for (GachaItem item : items) {
@@ -168,11 +169,28 @@ public class GachaLinkImporter {
             record.setIsUp(resolveIsUp(item, starrailLink));
             record.setPityCount(item.pity);
             record.setWishTime(item.time);
+            record.setUid(uid);
             record.setClientUid("gacha-" + item.id);
             record.setEditedAt(now);
             records.add(record);
         }
         return wishService.importRecords(userId, gameKey, records, mode, MAX_RECORDS);
+    }
+
+    /** 链接 query 中的 uid，用于多 UID 区分；没有则返回 null。 */
+    private String extractUid(String url) {
+        int queryIndex = url.indexOf('?');
+        if (queryIndex < 0) {
+            return null;
+        }
+        for (String pair : url.substring(queryIndex + 1).split("&")) {
+            int eq = pair.indexOf('=');
+            if (eq > 0 && "uid".equals(pair.substring(0, eq))) {
+                String value = pair.substring(eq + 1).trim();
+                return StringUtils.hasText(value) && value.length() <= 32 ? value : null;
+            }
+        }
+        return null;
     }
 
     /**

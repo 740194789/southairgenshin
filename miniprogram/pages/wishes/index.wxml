@@ -22,6 +22,22 @@
     <view class="toolbar-title">共 {{total}} 条</view>
   </view>
 
+  <view class="wish-filters">
+    <picker class="pool-picker" range="{{uidOptions}}" value="{{uidIndex}}" bindchange="onUidChange">
+      <view class="pool-picker-box">{{uidOptions[uidIndex]}} ▾</view>
+    </picker>
+    <input class="wish-search" type="text" value="{{keyword}}" placeholder="搜索名称"
+           bindinput="onKeywordInput"/>
+    <picker mode="date" value="{{startDate}}" bindchange="onStartDate">
+      <view class="pool-picker-box">{{startDate || '开始日期'}} ▾</view>
+    </picker>
+    <picker mode="date" value="{{endDate}}" bindchange="onEndDate">
+      <view class="pool-picker-box">{{endDate || '结束日期'}} ▾</view>
+    </picker>
+    <view class="filter-toggle" bindtap="resetFilters">重置筛选</view>
+    <view class="filter-toggle" bindtap="runHealth">数据体检</view>
+  </view>
+
   <view class="btn-row">
     <view class="btn btn-primary btn-sm" bindtap="openAdd">录入五星</view>
     <view class="btn btn-text btn-sm {{rows.length ? '' : 'disabled'}}" bindtap="toggleAll">{{allChecked ? '取消全选' : '全选本页'}}</view>
@@ -44,6 +60,7 @@
           </view>
           <view class="record-meta">
             <text>{{item.itemType}}</text>
+            <text wx:if="{{item.uid}}" class="uid-pill">UID {{item.uid}}</text>
             <text wx:if="{{item.rarity === 5}}" class="{{item.isUp ? 'up-text' : 'lost-text'}}">{{item.isUp ? 'UP 内' : '未中 UP'}}</text>
             <text wx:if="{{item.rarity === 5}}">用了 {{item.pityCount}} 抽</text>
             <text wx:if="{{item.rarity === 5 && item.capture}}" class="capture">捕获明光</text>
@@ -73,7 +90,7 @@
     <view class="btn btn-text btn-sm {{page >= pages ? 'disabled' : ''}}" bindtap="nextPage">下一页</view>
   </view>
 
-  <view class="foot-tip">每页 10 条；勾选仅对当前页有效，翻页 / 切卡池 / 切游戏会自动清空。只记录四星角色与五星物品，导入合并时按「名称 + 卡池 + 时间」去重。</view>
+  <view class="foot-tip">每页 10 条；勾选仅对当前页有效，翻页 / 切卡池 / 切游戏会自动清空。只记录四星角色与五星物品，导入合并时按「UID + 名称 + 卡池 + 时间」去重。</view>
 </view>
 
 <!-- 单条编辑 -->
@@ -151,4 +168,5 @@
 </view>
 
 <name-picker visible="{{pickerVisible}}" game="{{game}}" current="{{editor.itemName}}"
+             exclude-protagonist="{{true}}"
              bind:select="onEditorName" bind:close="closeNamePicker" />

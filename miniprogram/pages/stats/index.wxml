@@ -254,22 +254,59 @@
 
       <view class="expect-note">{{expect.sourceNote}}</view>
       <view class="expect-note">{{expect.pityNote}}{{expect.rangeNote}}</view>
+
+      <view class="expect-planner">
+        <view class="planner-head">
+          <text class="planner-title">攒抽规划</text>
+          <text class="planner-sub">按卡池剩余天数估算到期可抽</text>
+        </view>
+        <view class="planner-fields">
+          <view class="planner-field">
+            <text>每天可攒</text>
+            <input class="planner-input" type="digit" value="{{expect.planner.daily}}"
+                   data-key="daily" bindblur="onPlanInput" bindconfirm="onPlanInput"/>
+            <text>抽</text>
+          </view>
+          <view class="planner-field">
+            <text>卡池还剩</text>
+            <input class="planner-input" type="number" value="{{expect.planner.days}}"
+                   data-key="days" bindblur="onPlanInput" bindconfirm="onPlanInput"/>
+            <text>天</text>
+          </view>
+        </view>
+        <view class="planner-numbers">
+          <view class="planner-num">
+            <text class="planner-num-label">当前可抽</text>
+            <text class="planner-num-value">{{expect.planner.availableText}}</text>
+          </view>
+          <view class="planner-num">
+            <text class="planner-num-label">期间可得</text>
+            <text class="planner-num-value">+{{expect.planner.incomeText}}</text>
+          </view>
+          <view class="planner-num">
+            <text class="planner-num-label">到期合计</text>
+            <text class="planner-num-value">{{expect.planner.projectedText}}</text>
+          </view>
+        </view>
+        <view class="expect-bar">
+          <view class="expect-bar-fill {{expect.planner.enough ? 'done' : ''}}"
+                style="width:{{expect.planner.percent}}%"></view>
+        </view>
+        <view class="expect-compare">{{expect.planner.statusText}}</view>
+        <view class="expect-note">{{expect.planner.adviceText}}（目标按当前{{g.currency}}储备折算，不含版本活动等临时收入。）</view>
+      </view>
     </view>
   </view>
 
-  <!-- 资源 -->
+  <!-- 资源：只保留全局备份，账号资源在「资源」页编辑 -->
   <view hidden="{{statsTab !== 'resource'}}">
     <view class="panel">
-      <view class="panel-title">账号资源导入导出 · {{g.fullName}}</view>
-      <view class="panel-desc">手机上可直接手动填写，或粘贴 JSON / CSV 文本（{{g.currency}}、{{g.credit}}、{{g.fateLimited}}、{{g.fateStandard}}），也可以导入电脑端导出的文件。抽卡记录请到「抽卡」页处理。</view>
+      <view class="panel-title">{{game === 'starrail' ? 'SRGF v1.0' : 'UIGF v4.2'}}</view>
+      <view class="panel-desc">与第三方抽卡记录工具互导当前游戏的记录。导入会先让你选择合并或覆盖，多 UID 文件按 UID 分别保留。</view>
       <view class="toolbar">
-        <view class="btn btn-primary btn-sm" bindtap="openResourceForm">手动填写</view>
-        <view class="btn btn-text btn-sm" bindtap="openResourceText">粘贴导入</view>
-        <view class="btn btn-outline btn-sm" bindtap="exportResourceCsv">导出 CSV</view>
-        <view class="btn btn-outline btn-sm" bindtap="exportResourceJson">导出 JSON</view>
-        <view class="btn btn-text btn-sm" bindtap="importResource">文件导入</view>
+        <view class="btn btn-outline" bindtap="exportUigf">导出 {{game === 'starrail' ? 'SRGF' : 'UIGF'}}</view>
+        <view class="btn btn-outline" bindtap="importUigf">导入 {{game === 'starrail' ? 'SRGF' : 'UIGF'}}</view>
       </view>
-      <view class="foot-tip">手动填写会覆盖当前数值；文件导入只覆盖文件里填写的字段，空着的保持原值。</view>
     </view>
 
     <view class="panel">
@@ -279,60 +316,7 @@
         <view class="btn btn-primary" bindtap="exportAllBackup">导出全部数据</view>
         <view class="btn btn-outline" bindtap="importAllBackup">导入全部数据</view>
       </view>
-      <view class="foot-tip">离线版数据只存在本机缓存；卸载、清理缓存或换机会丢失，建议定期导出备份。</view>
-    </view>
-  </view>
-</view>
-
-<!-- 手动填写资源：手机直接输入，不需要模板文件 -->
-<view wx:if="{{resourceEditing}}" class="mask" bindtap="closeResourceForm">
-  <view class="modal" catchtap="noop">
-    <view class="modal-head">
-      <text class="modal-title">填写资源 · {{g.fullName}}</text>
-      <view class="modal-close" bindtap="closeResourceForm">×</view>
-    </view>
-    <view class="modal-body" style="height:auto; padding-bottom:16rpx;">
-      <view class="form-row">
-        <text class="form-label">{{g.currency}}</text>
-        <input class="form-input" type="number" value="{{resourceForm.primogems}}" data-key="primogems" bindinput="onResourceInput" placeholder="0"/>
-      </view>
-      <view class="form-row">
-        <text class="form-label">{{g.credit}}</text>
-        <input class="form-input" type="number" value="{{resourceForm.mora}}" data-key="mora" bindinput="onResourceInput" placeholder="0"/>
-      </view>
-      <view class="form-row">
-        <text class="form-label">{{g.fateLimited}}</text>
-        <input class="form-input" type="number" value="{{resourceForm.intertwinedFates}}" data-key="intertwinedFates" bindinput="onResourceInput" placeholder="0"/>
-      </view>
-      <view class="form-row">
-        <text class="form-label">{{g.fateStandard}}</text>
-        <input class="form-input" type="number" value="{{resourceForm.acquaintedFates}}" data-key="acquaintedFates" bindinput="onResourceInput" placeholder="0"/>
-      </view>
-      <view class="foot-tip">留空按 0 处理；只填数量，不需要单位。</view>
-    </view>
-    <view class="modal-foot">
-      <view class="btn btn-text" bindtap="closeResourceForm">取消</view>
-      <view class="btn btn-primary" bindtap="saveResourceForm">保存</view>
-    </view>
-  </view>
-</view>
-
-<!-- 粘贴导入资源：JSON 或 CSV 文本直接粘贴，不需要文件 -->
-<view wx:if="{{resourceTextVisible}}" class="mask" bindtap="closeResourceText">
-  <view class="modal" catchtap="noop">
-    <view class="modal-head">
-      <text class="modal-title">粘贴导入资源 · {{g.fullName}}</text>
-      <view class="modal-close" bindtap="closeResourceText">×</view>
-    </view>
-    <view class="modal-body" style="height:auto; padding-bottom:16rpx;">
-      <view class="text-tip">粘贴网页端导出的 JSON，或「表头 + 一行数值」的 CSV：</view>
-      <textarea class="text-area" value="{{resourceText}}" bindinput="onResourceTextInput" maxlength="-1"
-                placeholder='{"primogems":4335,"mora":22760028,"intertwinedFates":200,"acquaintedFates":5}'></textarea>
-      <view class="foot-tip">只覆盖文本里出现的字段，没有出现的字段保持原值。</view>
-    </view>
-    <view class="modal-foot">
-      <view class="btn btn-text" bindtap="closeResourceText">取消</view>
-      <view class="btn btn-primary" bindtap="applyResourceText">导入</view>
+      <view class="foot-tip">离线版数据只存在本机缓存；卸载、清理缓存或换机会丢失。账号资源可直接在「资源」页修改。</view>
     </view>
   </view>
 </view>

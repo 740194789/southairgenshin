@@ -4,6 +4,9 @@ var avatars = require('../../utils/avatars');
 var weaponIcons = require('../../utils/weaponIcons');
 var gameLib = require('../../utils/game');
 
+/* 主角不在抽卡记录里出现，抽卡页选择时排除；收藏「补充已有」仍可选 */
+var PROTAGONISTS = { genshin: '旅行者', starrail: '开拓者' };
+
 function sortNames(list) {
   return list.slice().sort(function (a, b) {
     return a.localeCompare(b, 'zh-CN');
@@ -17,7 +20,8 @@ Component({
     current: { type: String, value: '' },
     // 自定义名单：收藏「补充已有」按类别传入，此时不显示分页
     names: { type: Array, value: [] },
-    showTabs: { type: Boolean, value: true }
+    showTabs: { type: Boolean, value: true },
+    excludeProtagonist: { type: Boolean, value: false }
   },
 
   data: {
@@ -27,20 +31,24 @@ Component({
   },
 
   observers: {
-    'visible, game, current, names, showTabs': function (visible, game, current, names, showTabs) {
-      if (!visible) {
-        return;
+    'visible, game, current, names, showTabs, excludeProtagonist':
+      function (visible, game, current, names, showTabs, excludeProtagonist) {
+        if (!visible) {
+          return;
+        }
+        this.build(game, current, names, showTabs, excludeProtagonist);
       }
-      this.build(game, current, names, showTabs);
-    }
   },
 
   methods: {
-    build: function (game, current, names, showTabs, forcedTab) {
+    build: function (game, current, names, showTabs, excludeProtagonist, forcedTab) {
       var g = gameLib.config(game);
       var avatarMap = avatars[game] || {};
       var weaponMap = weaponIcons[game] || {};
-      var characters = sortNames(Object.keys(avatarMap));
+      var protagonist = PROTAGONISTS[game];
+      var characters = sortNames(Object.keys(avatarMap)).filter(function (name) {
+        return !excludeProtagonist || name !== protagonist;
+      });
       var weapons = sortNames(Object.keys(weaponMap));
 
       var tabs;
@@ -57,7 +65,8 @@ Component({
       }
 
       var list = active === 'weapons' ? weapons : (active === 'custom' ? (names || []).slice() : characters);
-      if (current && list.indexOf(current) < 0) {
+      var skipCurrent = excludeProtagonist && current === protagonist;
+      if (current && !skipCurrent && list.indexOf(current) < 0) {
         list = [current].concat(list);
       }
 
@@ -77,7 +86,8 @@ Component({
       if (!key || key === this.data.activeTab) {
         return;
       }
-      this.build(this.data.game, this.data.current, this.data.names, this.data.showTabs, key);
+      this.build(this.data.game, this.data.current, this.data.names, this.data.showTabs,
+        this.data.excludeProtagonist, key);
     },
 
     pick: function (event) {

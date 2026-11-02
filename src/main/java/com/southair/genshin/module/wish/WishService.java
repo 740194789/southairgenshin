@@ -48,23 +48,26 @@ public class WishService {
     @Transactional(readOnly = true)
     public PageResult<WishRecord> page(Long userId, String game, String pool, int page, int size,
                                        Integer rarity) {
+        return page(userId, game, pool, page, size, rarity, null, null, null, null);
+    }
+
+    /**
+     * 抽卡记录分页：支持卡池、星级、UID、名称关键词与时间范围筛选。
+     */
+    @Transactional(readOnly = true)
+    public PageResult<WishRecord> page(Long userId, String game, String pool, int page, int size,
+                                       Integer rarity, String uid, String keyword,
+                                       LocalDateTime start, LocalDateTime end) {
         String gameKey = GameType.normalize(game);
         Pageable pageable = PageRequest.of(Math.max(page - 1, 0), normalizeSize(size),
                 Sort.by(Sort.Direction.DESC, "wishTime").and(Sort.by(Sort.Direction.DESC, "id")));
-
-        boolean hasPool = StringUtils.hasText(pool);
-        boolean hasRarity = rarity != null;
-        Page<WishRecord> result;
-        if (hasPool && hasRarity) {
-            result = repository.findByUserIdAndGameAndPoolAndRarity(
-                    userId, gameKey, pool.trim(), rarity, pageable);
-        } else if (hasPool) {
-            result = repository.findByUserIdAndGameAndPool(userId, gameKey, pool.trim(), pageable);
-        } else if (hasRarity) {
-            result = repository.findByUserIdAndGameAndRarity(userId, gameKey, rarity, pageable);
-        } else {
-            result = repository.findByUserIdAndGame(userId, gameKey, pageable);
-        }
+        Page<WishRecord> result = repository.search(
+                userId, gameKey,
+                StringUtils.hasText(pool) ? pool.trim() : null,
+                rarity,
+                StringUtils.hasText(uid) ? uid.trim() : null,
+                StringUtils.hasText(keyword) ? keyword.trim() : null,
+                start, end, pageable);
         return PageResult.of(result);
     }
 
@@ -186,14 +189,47 @@ public class WishService {
 
     @Transactional(readOnly = true)
     public List<WishRecord> exportAll(Long userId, String game) {
-        return repository.findByUserIdAndGameOrderByWishTimeAsc(userId, GameType.normalize(game));
+        return exportAll(userId, game, null);
+    }
+
+    @Transactional(readOnly = true)
+    public List<WishRecord> exportAll(Long userId, String game, String uid) {
+        String gameKey = GameType.normalize(game);
+        List<WishRecord> records = repository.findByUserIdAndGameOrderByWishTimeAsc(userId, gameKey);
+        if (!StringUtils.hasText(uid)) {
+            return records;
+        }
+        String value = uid.trim();
+        List<WishRecord> filtered = new ArrayList<>();
+        for (WishRecord record : records) {
+            if (value.equals(record.getUid())) {
+                filtered.add(record);
+            }
+        }
+        return filtered;
+    }
+
+    /** 当前账号出现过的 UID 列表。 */
+    @Transactional(readOnly = true)
+    public List<String> uids(Long userId, String game) {
+        return repository.listUids(userId, GameType.normalize(game));
+    }
+
+    /**
+     * 导入预演：与真实导入使用同一套规则，只统计不写入。
+     */
+    @Transactional(readOnly = true)
+    public WishImportResult previewRecords(Long userId, String game, List<WishRecord> records, String mode) {
+        WishImportResult result = doImport(userId, game, records, mode, MAX_IMPORT_RECORDS, false);
+        result.setPreview(true);
+        return result;
     }
 
     /**
      * 导入抽卡记录。
      *
      * <p>只记录四星角色与五星物品：三星物品、四星武器 / 光锥在导入时直接忽略。
-     * merge 模式下按「名称 + 卡池 + 时间」判重。</p>
+     * merge 模式下按「UID + 名称 + 卡池 + 时间」判重。</p>
      */
     @Transactional
     public WishImportResult importRecords(Long userId, String game, List<WishRecord> records, String mode) {
@@ -206,6 +242,11 @@ public class WishService {
     @Transactional
     public WishImportResult importRecords(Long userId, String game, List<WishRecord> records, String mode,
                                           int limit) {
+        return doImport(userId, game, records, mode, limit, true);
+    }
+
+    private WishImportResult doImport(Long userId, String game, List<WishRecord> records, String mode,
+                                      int limit, boolean save) {
         if (records == null || records.isEmpty()) {
             throw new BusinessException("没有可导入的抽卡记录");
         }
@@ -215,8 +256,8 @@ public class WishService {
 
         String gameKey = GameType.normalize(game);
         boolean replace = "replace".equalsIgnoreCase(mode);
-        if (replace) {
-            List<WishRecord> existing = repository.findByUserIdAndGameOrderByWishTimeAsc(userId, gameKey);
+        List<WishRecord> existing = repository.findByUserIdAndGameOrderByWishTimeAsc(userId, gameKey);
+        if (replace && save) {
             for (WishRecord record : existing) {
                 writeTombstone(userId, record);
             }
@@ -225,12 +266,13 @@ public class WishService {
 
         WishImportResult result = new WishImportResult();
         result.setMode(replace ? "replace" : "merge");
+        result.setTotal(records.size());
 
         Map<String, Integer> existingCounts = new HashMap<>();
         if (!replace) {
-            for (WishRecord saved : repository.findByUserIdAndGameOrderByWishTimeAsc(userId, gameKey)) {
-                existingCounts.merge(recordKey(saved.getItemName(), saved.getPool(), saved.getWishTime()),
-                        1, Integer::sum);
+            for (WishRecord saved : existing) {
+                existingCounts.merge(recordKey(saved.getUid(), saved.getItemName(), saved.getPool(),
+                        saved.getWishTime()), 1, Integer::sum);
             }
         }
 
@@ -243,8 +285,9 @@ public class WishService {
             }
             String itemName = normalizeItemName(source.getItemName(), rarity);
             String pool = trim(source.getPool());
+            String uid = truncate(trim(source.getUid()), 32);
             LocalDateTime wishTime = source.getWishTime() == null ? LocalDateTime.now() : source.getWishTime();
-            String key = recordKey(itemName, pool, wishTime);
+            String key = recordKey(uid, itemName, pool, wishTime);
 
             int seenCount = seen.containsKey(key) ? seen.get(key) : 0;
             int available = existingCounts.containsKey(key) ? existingCounts.get(key) : 0;
@@ -254,15 +297,70 @@ public class WishService {
                 continue;
             }
 
-            WishRecord saved = repository.save(
-                    toRecord(userId, gameKey, source, itemName, pool, rarity, wishTime));
-            // 导入的记录重新出现时，清除同 clientUid 的旧墓碑
-            tombstoneRepository.deleteByUserIdAndGameAndClientUid(
-                    userId, gameKey, saved.getClientUid());
+            if (save) {
+                WishRecord saved = repository.save(
+                        toRecord(userId, gameKey, source, itemName, pool, rarity, wishTime));
+                // 导入的记录重新出现时，清除同 clientUid 的旧墓碑
+                tombstoneRepository.deleteByUserIdAndGameAndClientUid(
+                        userId, gameKey, saved.getClientUid());
+            }
             result.setImported(result.getImported() + 1);
             seen.put(key, seenCount + 1);
         }
         return result;
+    }
+
+    /**
+     * 数据体检：统计重复记录（UID + 名称 + 卡池 + 时间相同），并可按组只保留一条。
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> health(Long userId, String game) {
+        String gameKey = GameType.normalize(game);
+        List<WishRecord> records = repository.findByUserIdAndGameOrderByWishTimeAsc(userId, gameKey);
+        Map<String, List<WishRecord>> grouped = new LinkedHashMap<>();
+        for (WishRecord record : records) {
+            grouped.computeIfAbsent(recordKey(record.getUid(), record.getItemName(), record.getPool(),
+                    record.getWishTime()), key -> new ArrayList<>()).add(record);
+        }
+        int duplicateGroups = 0;
+        int duplicateExtra = 0;
+        for (List<WishRecord> group : grouped.values()) {
+            if (group.size() > 1) {
+                duplicateGroups++;
+                duplicateExtra += group.size() - 1;
+            }
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("total", records.size());
+        result.put("duplicateGroups", duplicateGroups);
+        result.put("duplicateExtra", duplicateExtra);
+        result.put("uids", uids(userId, gameKey));
+        return result;
+    }
+
+    /** 一键去重：每组重复记录保留 id 最小的一条。 */
+    @Transactional
+    public int dedupe(Long userId, String game) {
+        String gameKey = GameType.normalize(game);
+        List<WishRecord> records = repository.findByUserIdAndGameOrderByWishTimeAsc(userId, gameKey);
+        Map<String, List<WishRecord>> grouped = new LinkedHashMap<>();
+        for (WishRecord record : records) {
+            grouped.computeIfAbsent(recordKey(record.getUid(), record.getItemName(), record.getPool(),
+                    record.getWishTime()), key -> new ArrayList<>()).add(record);
+        }
+        int removed = 0;
+        for (List<WishRecord> group : grouped.values()) {
+            if (group.size() <= 1) {
+                continue;
+            }
+            group.sort(Comparator.comparing(WishRecord::getId));
+            for (int i = 1; i < group.size(); i++) {
+                writeTombstone(userId, group.get(i));
+                repository.delete(group.get(i));
+                removed++;
+            }
+        }
+        return removed;
     }
 
     /**
@@ -310,6 +408,7 @@ public class WishService {
         target.setWishTime(wishTime);
         target.setNote(truncate(trim(source.getNote()), 255));
         target.setCaptureTriggered(Boolean.TRUE.equals(source.getCaptureTriggered()));
+        target.setUid(truncate(trim(source.getUid()), 32));
         target.setClientUid(StringUtils.hasText(source.getClientUid())
                 ? truncate(source.getClientUid().trim(), 64)
                 : newClientUid());
@@ -348,8 +447,9 @@ public class WishService {
         }
     }
 
-    private String recordKey(String itemName, String pool, LocalDateTime wishTime) {
-        return (itemName == null ? "" : itemName) + "\u0001" + (pool == null ? "" : pool) + "\u0001" + wishTime;
+    private String recordKey(String uid, String itemName, String pool, LocalDateTime wishTime) {
+        return (uid == null ? "" : uid) + "\u0001" + (itemName == null ? "" : itemName)
+                + "\u0001" + (pool == null ? "" : pool) + "\u0001" + wishTime;
     }
 
     private String trim(String value) {

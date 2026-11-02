@@ -137,6 +137,13 @@ public class BackupService {
                     wishRepository.findByUserIdAndGameOrderByWishTimeAsc(userId, gameKey));
         }
 
+        Map<String, Integer> existingCounts = new HashMap<>();
+        if (!replace) {
+            for (WishRecord saved : wishRepository.findByUserIdAndGameOrderByWishTimeAsc(userId, gameKey)) {
+                existingCounts.merge(backupKey(saved), 1, Integer::sum);
+            }
+        }
+
         int skipped = 0;
         Map<String, Integer> seen = new HashMap<>();
         for (WishRecord source : wishes) {
@@ -150,9 +157,10 @@ public class BackupService {
             String itemName = WishService.normalizeItemName(source.getItemName(), rarity);
             LocalDateTime wishTime = source.getWishTime() == null ? LocalDateTime.now() : source.getWishTime();
             String pool = trim(source.getPool());
-            String key = itemName + "\u0001" + (pool == null ? "" : pool) + "\u0001" + wishTime;
+            String uid = trim(source.getUid());
+            String key = backupKey(uid, itemName, pool, wishTime);
             int seenCount = seen.containsKey(key) ? seen.get(key) : 0;
-            if (!replace && wishRepository.countDuplicate(userId, gameKey, itemName, pool, wishTime) > seenCount) {
+            if (!replace && existingCounts.getOrDefault(key, 0) > seenCount) {
                 skipped++;
                 seen.put(key, seenCount + 1);
                 continue;
@@ -194,7 +202,17 @@ public class BackupService {
         target.setWishTime(wishTime);
         target.setNote(truncate(trim(source.getNote()), 255));
         target.setCaptureTriggered(Boolean.TRUE.equals(source.getCaptureTriggered()));
+        target.setUid(truncate(trim(source.getUid()), 32));
         return target;
+    }
+
+    private String backupKey(WishRecord record) {
+        return backupKey(record.getUid(), record.getItemName(), record.getPool(), record.getWishTime());
+    }
+
+    private String backupKey(String uid, String itemName, String pool, LocalDateTime wishTime) {
+        return (uid == null ? "" : uid) + "\u0001" + (itemName == null ? "" : itemName)
+                + "\u0001" + (pool == null ? "" : pool) + "\u0001" + wishTime;
     }
 
     private String trim(String value) {

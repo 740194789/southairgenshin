@@ -24,6 +24,30 @@ public interface WishRecordRepository extends JpaRepository<WishRecord, Long> {
     Page<WishRecord> findByUserIdAndGameAndPoolAndRarity(
             Long userId, String game, String pool, Integer rarity, Pageable pageable);
 
+    /** 抽卡页筛选：卡池 / 星级 / UID / 名称关键词 / 时间范围，参数为空时不过滤。 */
+    @Query("select w from WishRecord w where w.userId = :userId and w.game = :game"
+            + " and (:pool is null or w.pool = :pool)"
+            + " and (:rarity is null or w.rarity = :rarity)"
+            + " and (:uid is null or w.uid = :uid)"
+            + " and (:keyword is null or w.itemName like concat('%', :keyword, '%'))"
+            + " and (:start is null or w.wishTime >= :start)"
+            + " and (:end is null or w.wishTime <= :end)")
+    Page<WishRecord> search(@Param("userId") Long userId,
+                            @Param("game") String game,
+                            @Param("pool") String pool,
+                            @Param("rarity") Integer rarity,
+                            @Param("uid") String uid,
+                            @Param("keyword") String keyword,
+                            @Param("start") LocalDateTime start,
+                            @Param("end") LocalDateTime end,
+                            Pageable pageable);
+
+    /** 当前账号已出现过的 UID 列表，用于抽卡页筛选。 */
+    @Query("select distinct w.uid from WishRecord w"
+            + " where w.userId = :userId and w.game = :game and w.uid is not null and w.uid <> ''"
+            + " order by w.uid")
+    List<String> listUids(@Param("userId") Long userId, @Param("game") String game);
+
     List<WishRecord> findTop5ByUserIdAndGameOrderByWishTimeDesc(Long userId, String game);
 
     List<WishRecord> findByUserIdAndGameOrderByWishTimeAsc(Long userId, String game);
