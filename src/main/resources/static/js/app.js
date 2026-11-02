@@ -3429,8 +3429,70 @@
         });
     }
 
+    /* 图鉴源直连：Yatta / StarRailRes 都允许跨域，优先由浏览器直接获取 */
+    var CATALOG_URLS = {
+        genshin: 'https://gi.yatta.moe/api/v2/chs/avatar',
+        starrail: 'https://fastly.jsdelivr.net/gh/Mar-7th/StarRailRes@master/index_min/cn/characters.json'
+    };
+
+    function parseCatalog(game, root) {
+        var map = {};
+        if (game === 'starrail') {
+            Object.keys(root || {}).forEach(function (id) {
+                var name = root[id] && root[id].name;
+                if (name) {
+                    map[name] = 'https://enka.network/ui/hsr/SpriteOutput/AvatarRoundIcon/' + id + '.png';
+                }
+            });
+            return map;
+        }
+        var items = root && root.data && root.data.items ? root.data.items : {};
+        Object.keys(items).forEach(function (id) {
+            var item = items[id] || {};
+            var icon = String(item.icon || '');
+            if (item.name && icon) {
+                map[item.name] = 'https://gi.yatta.moe/assets/UI/' + icon
+                    + (icon.slice(-4) === '.png' ? '' : '.png');
+            }
+        });
+        return map;
+    }
+
+    function fetchCatalogDirect(game) {
+        var url = CATALOG_URLS[game];
+        if (!url) {
+            return Promise.reject(new Error('不支持的游戏'));
+        }
+        var opts = { headers: { Accept: 'application/json' }, cache: 'no-store' };
+        var timer = null;
+        if (typeof AbortController !== 'undefined') {
+            var controller = new AbortController();
+            opts.signal = controller.signal;
+            timer = setTimeout(function () {
+                controller.abort();
+            }, 15000);
+        }
+        return fetch(url, opts).then(function (res) {
+            clearTimeout(timer);
+            if (!res.ok) {
+                throw new Error('HTTP ' + res.status);
+            }
+            return res.json();
+        }).then(function (root) {
+            return parseCatalog(game, root);
+        });
+    }
+
     function refreshCatalog(game) {
-        return api('/api/catalog', null, game).then(function (map) {
+        return fetchCatalogDirect(game).catch(function () {
+            return null;
+        }).then(function (directMap) {
+            if (directMap && Object.keys(directMap).length) {
+                return directMap;
+            }
+            // 浏览器直连失败时回退到本机服务代取
+            return api('/api/catalog', null, game);
+        }).then(function (map) {
             if (!map) {
                 throw new Error('图鉴数据为空');
             }
@@ -3783,9 +3845,9 @@
 
             + '<section class="panel">'
             + '<h3>图鉴数据源<span class="pool-tag">在线刷新 · 本机缓存</span></h3>'
-            + '<p class="panel-desc">头像默认使用内置静态数据；联网时可从 Project Amber / Yatta（原神）与 '
-            + 'StarRailRes（星穹铁道）刷新，结果缓存在本机，离线时继续使用内置或上次缓存。'
-            + '数据仅用于非商业个人记录。</p>'
+            + '<p class="panel-desc">头像默认使用内置静态数据；联网时优先由浏览器直接获取 '
+            + 'Yatta（原神）与 StarRailRes（星穹铁道）的数据，失败再尝试本机服务，结果缓存在本机，'
+            + '离线时继续使用内置或上次缓存。数据仅用于非商业个人记录。</p>'
             + '<div class="panel-actions">'
             + '<button class="btn btn-outline" id="catalog-refresh-genshin" type="button">刷新原神图鉴</button>'
             + '<button class="btn btn-outline" id="catalog-refresh-starrail" type="button">刷新星铁图鉴</button>'

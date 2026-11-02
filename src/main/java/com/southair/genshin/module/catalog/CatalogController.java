@@ -6,6 +6,9 @@ import com.southair.genshin.common.BusinessException;
 import com.southair.genshin.common.GameType;
 import com.southair.genshin.common.R;
 import org.springframework.beans.factory.annotation.Value;
+
+import java.util.ArrayList;
+import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -20,6 +23,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 图鉴数据源：按需拉取 Project Amber / Yatta（原神）与 StarRailRes（星穹铁道）的公开 JSON，
@@ -40,7 +44,7 @@ public class CatalogController {
     @Value("${app.catalog.genshin-url:https://gi.yatta.moe/api/v2/chs/avatar}")
     private String genshinUrl;
 
-    @Value("${app.catalog.starrail-url:https://raw.githubusercontent.com/Mar-7th/StarRailRes/master/index_min/cn/characters.json}")
+    @Value("${app.catalog.starrail-url:https://fastly.jsdelivr.net/gh/Mar-7th/StarRailRes@master/index_min/cn/characters.json}")
     private String starrailUrl;
 
     public CatalogController(ObjectMapper objectMapper) {
@@ -97,27 +101,91 @@ public class CatalogController {
         return map;
     }
 
+    /**
+     * 先走 JDK 自带的 HttpURLConnection；部分网络（如 Cloudflare）会重置 Java 的 TLS 连接，
+     * 此时自动改用系统 curl（Windows 10+ / 多数 Linux 自带）再试一次。
+     */
     private JsonNode getJson(String url) throws Exception {
+        Exception javaError;
+        try {
+            return getJsonByJava(url);
+        } catch (Exception e) {
+            javaError = e;
+        }
+        String body = getJsonByCurl(url);
+        if (body == null || body.trim().isEmpty()) {
+            throw javaError;
+        }
+        return objectMapper.readTree(body);
+    }
+
+    private JsonNode getJsonByJava(String url) throws Exception {
         HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
         connection.setConnectTimeout(TIMEOUT);
         connection.setReadTimeout(TIMEOUT);
-        connection.setRequestProperty("User-Agent", "SouthAirGenshin/1.0");
+        connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+        connection.setRequestProperty("Accept", "application/json");
         try {
             if (connection.getResponseCode() != 200) {
                 throw new BusinessException(500, "HTTP " + connection.getResponseCode());
             }
             try (InputStream in = connection.getInputStream();
                  BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
-                StringBuilder sb = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    sb.append(line);
-                }
-                return objectMapper.readTree(sb.toString());
+                return objectMapper.readTree(readAll(reader));
             }
         } finally {
             connection.disconnect();
         }
+    }
+
+    private String getJsonByCurl(String url) {
+        List<String> commands = new ArrayList<>();
+        if (System.getProperty("os.name", "").toLowerCase().contains("win")) {
+            String systemRoot = System.getenv("SystemRoot");
+            commands.add((systemRoot == null ? "C:\\Windows" : systemRoot) + "\\System32\\curl.exe");
+            commands.add("curl.exe");
+        }
+        commands.add("curl");
+        for (String command : commands) {
+            String body = runCurl(command, url);
+            if (body != null && !body.trim().isEmpty()) {
+                return body;
+            }
+        }
+        return null;
+    }
+
+    private String runCurl(String command, String url) {
+        ProcessBuilder builder = new ProcessBuilder(
+                command, "-sL", "--max-time", "20", "--compressed",
+                "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                "-H", "Accept: application/json", url);
+        builder.redirectErrorStream(true);
+        try {
+            Process process = builder.start();
+            if (!process.waitFor(25, TimeUnit.SECONDS)) {
+                process.destroyForcibly();
+                return null;
+            }
+            if (process.exitValue() != 0) {
+                return null;
+            }
+            try (InputStream in = process.getInputStream();
+                 BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
+                return readAll(reader);
+            }
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private String readAll(BufferedReader reader) throws Exception {
+        StringBuilder sb = new StringBuilder();
+        String line;
+        while ((line = reader.readLine()) != null) {
+            sb.append(line);
+        }
+        return sb.toString();
     }
 
     private static class CacheEntry {

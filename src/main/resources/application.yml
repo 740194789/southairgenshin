@@ -56,7 +56,8 @@ app:
   # 图鉴数据源（仅在线刷新时使用，可替换为镜像地址）
   catalog:
     genshin-url: https://gi.yatta.moe/api/v2/chs/avatar
-    starrail-url: https://raw.githubusercontent.com/Mar-7th/StarRailRes/master/index_min/cn/characters.json
+    # 使用 jsDelivr 镜像，raw.githubusercontent.com 在部分网络下不可达
+    starrail-url: https://fastly.jsdelivr.net/gh/Mar-7th/StarRailRes@master/index_min/cn/characters.json
 
   # 图像识别：本地 Tesseract 与浏览器 OCR 两种引擎
   ocr:
