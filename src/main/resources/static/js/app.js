@@ -1298,12 +1298,18 @@
         var phase = item.phase;
         var left = Math.max(0, daysUntil(phase.end));
         var income = Number(phase.incomePrimogems) || 0;
+        var names = (phase.banners || []).map(function (banner) {
+            return typeof banner === 'string' ? banner : (banner && banner.name) || '';
+        }).filter(function (name) {
+            return name;
+        }).join(' / ');
         return '<div class="calendar-row' + (current ? ' is-current' : '') + '">'
             + '<span class="calendar-badge">' + (current ? '进行中' : '下一期') + '</span>'
             + '<div class="calendar-body">'
             + '<strong>' + esc(item.version) + ' · ' + esc(phase.name || '') + '</strong>'
             + '<span>' + esc(dateOnly(phase.start)) + ' ~ ' + esc(dateOnly(phase.end))
             + ' · ' + (current ? '剩余 ' : '还有 ') + left + ' 天</span>'
+            + (names ? '<span>' + esc(names) + '</span>' : '')
             + (income > 0
                 ? '<span>本期预估 +' + fmt(income) + ' ' + esc(g.currency)
                     + ' ≈ ' + num(income / unit) + ' 抽</span>'
@@ -1331,15 +1337,59 @@
         if (!rows) {
             rows = '<p class="panel-desc">当前没有进行中或即将开始的卡池。</p>';
         }
+        var live = !!calendar._live;
         return '<section class="panel calendar-panel">'
-            + '<h3>卡池日历<span class="pool-tag">内置 · '
+            + '<h3>卡池日历<span class="pool-tag">' + (live ? '实时' : '内置') + ' · '
             + esc(dateOnly(calendar.updatedAt) || '未标注') + '</span></h3>'
             + '<div class="calendar-list">' + rows + '</div>'
             + '<p class="panel-desc">' + esc(calendar.note || '按官方公告维护版本与卡池时间。') + '</p>'
+            + (state.game === 'genshin'
+                ? '<div class="panel-actions"><button class="btn btn-outline btn-sm"'
+                    + ' id="calendar-live" type="button">联网更新卡池</button></div>'
+                : '<p class="panel-desc">星穹铁道暂未提供公开卡池接口，使用内置日历。</p>')
             + '</section>';
     }
 
+    var LIVE_CALENDAR_KEY = 'sg_calendar_live_';
+
+    /** 读取 24 小时内的实时卡池缓存 */
+    function loadLiveCalendar(game) {
+        var cached = safeParse(localStorage.getItem(LIVE_CALENDAR_KEY + game));
+        if (!cached || !cached.data || !cached.data.versions) {
+            return null;
+        }
+        if (Date.now() - (Number(cached.savedAt) || 0) > 24 * 3600 * 1000) {
+            return null;
+        }
+        var data = cached.data;
+        data._live = true;
+        return data;
+    }
+
+    function refreshLiveCalendar() {
+        return api('/api/calendar/live').then(function (live) {
+            if (!live || !(live.versions || []).length) {
+                throw new Error('官方公告里没有可用卡池');
+            }
+            live._live = true;
+            try {
+                localStorage.setItem(LIVE_CALENDAR_KEY + state.game,
+                    JSON.stringify({ savedAt: Date.now(), data: live }));
+            } catch (e) {
+                /* 忽略隐私模式下的写入失败 */
+            }
+            toast('卡池日历已更新（官方公告）');
+            loadStats();
+        });
+    }
+
     function bindCalendar(data) {
+        var liveBtn = $('#calendar-live');
+        if (liveBtn) {
+            liveBtn.addEventListener('click', function () {
+                guard(refreshLiveCalendar);
+            });
+        }
         var btn = $('#calendar-use-days');
         if (!btn) {
             return;
@@ -1913,7 +1963,7 @@
             })
         ]).then(function (responses) {
             var data = responses[0];
-            var calendar = responses[1];
+            var calendar = loadLiveCalendar(state.game) || responses[1];
             var resource = data.resource;
             var name = (state.user && (state.user.nickname || state.user.username)) || '旅行者';
             cache.stats = data;
