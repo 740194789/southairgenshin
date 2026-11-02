@@ -41,6 +41,7 @@
   <view class="btn-row">
     <view class="btn btn-primary btn-sm" bindtap="openAdd">录入五星</view>
     <view class="btn btn-text btn-sm {{rows.length ? '' : 'disabled'}}" bindtap="toggleAll">{{allChecked ? '取消全选' : '全选本页'}}</view>
+    <view class="btn btn-outline btn-sm {{rows.length ? '' : 'disabled'}}" bindtap="openBatchEdit">批量编辑本页</view>
     <view class="btn btn-danger btn-sm {{selectedCount ? '' : 'disabled'}}" bindtap="deleteSelected">批量删除{{selectedCount ? '（' + selectedCount + '）' : ''}}</view>
     <view class="btn btn-outline btn-sm" bindtap="openLinkImport">链接导入</view>
   </view>
@@ -143,6 +144,32 @@
     <view class="modal-foot">
       <view class="btn btn-text" bindtap="closeEditor">取消</view>
       <view class="btn btn-primary" bindtap="saveEditor">保存</view>
+    </view>
+  </view>
+</view>
+
+<!-- 批量编辑本页 -->
+<view wx:if="{{batchVisible}}" class="mask" bindtap="closeBatchEdit">
+  <view class="modal" catchtap="noop">
+    <view class="modal-head">
+      <text class="modal-title">批量编辑本页 · {{g.fullName}}</text>
+      <view class="modal-close" bindtap="closeBatchEdit">×</view>
+    </view>
+    <scroll-view scroll-y class="modal-body">
+      <view class="batch-edit-row" wx:for="{{batchRows}}" wx:key="id">
+        <text class="batch-edit-index">{{item.index}}</text>
+        <input class="form-input batch-edit-name" value="{{item.name}}" data-index="{{index}}"
+               bindinput="onBatchName" placeholder="名称"/>
+        <input class="form-input batch-edit-pity" type="number" value="{{item.pityCount}}"
+               data-index="{{index}}" bindinput="onBatchPity" placeholder="抽数"/>
+        <switch class="switch" color="#d3bc8e" checked="{{item.isUp}}"
+                data-index="{{index}}" bindchange="onBatchUp"/>
+      </view>
+      <view class="foot-tip">可修改名称 / 抽数 / 是否 UP；星级、卡池与类型保持不变。</view>
+    </scroll-view>
+    <view class="modal-foot">
+      <view class="btn btn-text" bindtap="closeBatchEdit">取消</view>
+      <view class="btn btn-primary" bindtap="saveBatchEdit">保存修改</view>
     </view>
   </view>
 </view>

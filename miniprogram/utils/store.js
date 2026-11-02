@@ -1,6 +1,7 @@
 /* 离线数据层：所有数据存放在小程序本地缓存（wx storage），按游戏隔离 */
 
 var gameLib = require('./game');
+var checksum = require('./checksum');
 
 var PER_PULL = 160;
 var WISH_KEY = 'sg_wishes_';
@@ -34,6 +35,27 @@ function nowStr(date) {
   var d = date || new Date();
   return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
     + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+}
+
+/** 本地自然日 yyyy-MM-dd */
+function dateStr(date) {
+  var d = date || new Date();
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+}
+
+/** 两个 yyyy-MM-dd 之间的整日差（to - from），解析失败返回 0 */
+function daysBetween(fromText, toText) {
+  var a = String(fromText || '').split('-');
+  var b = String(toText || '').split('-');
+  if (a.length !== 3 || b.length !== 3) {
+    return 0;
+  }
+  var from = new Date(Number(a[0]), Number(a[1]) - 1, Number(a[2]));
+  var to = new Date(Number(b[0]), Number(b[1]) - 1, Number(b[2]));
+  if (isNaN(from.getTime()) || isNaN(to.getTime())) {
+    return 0;
+  }
+  return Math.round((to.getTime() - from.getTime()) / 86400000);
 }
 
 function fmt(value) {
@@ -116,12 +138,34 @@ function getResource(game) {
   if (!res || typeof res !== 'object') {
     res = {};
   }
-  return {
+  return accrueResource(game, {
     primogems: Math.max(0, toInt(res.primogems)),
     mora: Math.max(0, toInt(res.mora)),
     intertwinedFates: Math.max(0, toInt(res.intertwinedFates)),
-    acquaintedFates: Math.max(0, toInt(res.acquaintedFates))
-  };
+    acquaintedFates: Math.max(0, toInt(res.acquaintedFates)),
+    dailyPrimogems: Math.max(0, toInt(res.dailyPrimogems)),
+    lastAccrualDate: String(res.lastAccrualDate || '')
+  });
+}
+
+/** 按自然日把每日原石累加进资源；同一天重复读取不会重复累加。 */
+function accrueResource(game, res) {
+  var today = dateStr();
+  if (!res.lastAccrualDate) {
+    res.lastAccrualDate = today;
+    return res;
+  }
+  var days = daysBetween(res.lastAccrualDate, today);
+  if (days <= 0) {
+    return res;
+  }
+  var daily = Math.max(0, toInt(res.dailyPrimogems));
+  if (daily > 0) {
+    res.primogems += daily * days;
+  }
+  res.lastAccrualDate = today;
+  saveResource(game, res);
+  return res;
 }
 
 function saveResource(game, res) {
@@ -129,7 +173,9 @@ function saveResource(game, res) {
     primogems: Math.max(0, toInt(res.primogems)),
     mora: Math.max(0, toInt(res.mora)),
     intertwinedFates: Math.max(0, toInt(res.intertwinedFates)),
-    acquaintedFates: Math.max(0, toInt(res.acquaintedFates))
+    acquaintedFates: Math.max(0, toInt(res.acquaintedFates)),
+    dailyPrimogems: clamp(res.dailyPrimogems, 0, 999999, 0),
+    lastAccrualDate: String(res.lastAccrualDate || '')
   });
 }
 
@@ -140,6 +186,13 @@ function updateResource(game, patch) {
       next[key] = Math.max(0, toInt(patch[key]));
     }
   });
+  if (patch.dailyPrimogems !== undefined) {
+    next.dailyPrimogems = clamp(patch.dailyPrimogems, 0, 999999, 0);
+  }
+  // 手动修改资产或每日额度后，从今天重新开始累积
+  if (patch.primogems !== undefined || patch.dailyPrimogems !== undefined) {
+    next.lastAccrualDate = dateStr();
+  }
   saveResource(game, next);
   return next;
 }
@@ -298,7 +351,9 @@ function resourceVO(res) {
     primogemsRemainder: res.primogems % unit,
     primogemsFromFates: res.intertwinedFates * unit,
     totalPulls: pulls + res.intertwinedFates,
-    totalPrimogems: res.primogems + res.intertwinedFates * unit
+    totalPrimogems: res.primogems + res.intertwinedFates * unit,
+    dailyPrimogems: res.dailyPrimogems || 0,
+    dailyPulls: Math.floor((res.dailyPrimogems || 0) / unit * 10) / 10
   };
 }
 
@@ -406,6 +461,32 @@ function overview(game) {
     }
   });
 
+  var fourMap = {};
+  var fourUp = 0;
+  asc.forEach(function (record) {
+    if (record.rarity !== 4 || (record.itemType || '') !== '角色') {
+      return;
+    }
+    var name = String(record.itemName || '').trim();
+    if (!name) {
+      return;
+    }
+    var item = fourMap[name] || (fourMap[name] = { name: name, count: 0, upCount: 0 });
+    item.count++;
+    if (record.isUp === true) {
+      item.upCount++;
+      fourUp++;
+    }
+  });
+  var fourStarCharacters = Object.keys(fourMap).map(function (key) {
+    return fourMap[key];
+  }).sort(function (a, b) {
+    if (a.count !== b.count) {
+      return b.count - a.count;
+    }
+    return a.name.localeCompare(b.name, 'zh-Hans-CN');
+  });
+
   var poolStats = defs.map(function (def) {
     var pool = def[0];
     var cap = def[1];
@@ -433,6 +514,15 @@ function overview(game) {
       currentPity = latest.rarity === 5 ? 0 : (latest.pityCount || 0);
     }
 
+    var fatePoints = 0;
+    if (game !== 'starrail' && pool === '武器活动') {
+      asc.forEach(function (record) {
+        if (record.pool !== pool || record.rarity !== 5) {
+          return;
+        }
+        fatePoints = record.isUp === true ? 0 : Math.min(1, fatePoints + 1);
+      });
+    }
 
     return {
       pool: pool,
@@ -443,6 +533,7 @@ function overview(game) {
       fiveStarCount: five,
       avgFiveStarPity: five === 0 ? 0 : round1(poolPitySum / five),
       upGuaranteed: pool !== '常驻' && latestFive !== null && latestFive.isUp !== true,
+      fatePoints: fatePoints,
       percent: cap > 0 ? Math.min(100, Math.round(currentPity / cap * 100)) : 0
     };
   });
@@ -486,6 +577,8 @@ function overview(game) {
     avgPrimogemsPerUpCharacter: luck.charAvg > 0 ? Math.round(luck.charAvg * PER_PULL) : 0,
     avgPrimogemsPerUpWeapon: luck.weaponAvg > 0 ? Math.round(luck.weaponAvg * PER_PULL) : 0,
     poolDistribution: distribution,
+    fourStarCharacters: fourStarCharacters,
+    fourStarUpWishes: fourUp,
     recentWishes: recent,
     fiveStarHistory: asc.filter(function (record) {
       return record.rarity === 5;
@@ -667,12 +760,16 @@ function exportAllBackup() {
       wishes: exportRecords(game)
     };
   });
-  return {
+  var payload = {
     app: 'SouthAir Genshin',
     version: 5,
     exportedAt: nowStr(),
     games: games
   };
+  // 小程序自带 SHA-256 实现；网页端校验时会跳过非网页端生成的校验值
+  payload.checksumApp = 'southair-mini';
+  payload.checksum = checksum.compute(payload);
+  return payload;
 }
 
 function importAllBackup(payload, mode) {
@@ -683,6 +780,11 @@ function importAllBackup(payload, mode) {
     filtered: 0
   };
   if (!payload || typeof payload !== 'object' || !payload.games) {
+    return result;
+  }
+  var check = checksum.verify(payload);
+  if (!check.ok) {
+    result.error = check.error;
     return result;
   }
   ['genshin', 'starrail'].forEach(function (game) {

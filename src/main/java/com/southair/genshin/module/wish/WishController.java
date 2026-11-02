@@ -8,6 +8,7 @@ import com.southair.genshin.common.PageResult;
 import com.southair.genshin.common.R;
 import com.southair.genshin.module.wish.dto.CollectionItemVO;
 import com.southair.genshin.module.wish.dto.GachaLinkRequest;
+import com.southair.genshin.module.wish.dto.UigfParseResult;
 import com.southair.genshin.module.wish.dto.WishBatchRequest;
 import com.southair.genshin.module.wish.dto.WishImportResult;
 import com.southair.genshin.module.wish.dto.WishRequest;
@@ -70,6 +71,13 @@ public class WishController {
     @GetMapping("/uids")
     public R<List<String>> uids(@RequestParam(defaultValue = "genshin") String game) {
         return R.ok(wishService.uids(UserContext.require(), game));
+    }
+
+    /** UID + 由 UID 推断的区服 + 记录数，用于抽卡页筛选展示。 */
+    @GetMapping("/accounts")
+    public R<List<java.util.Map<String, Object>>> accounts(
+            @RequestParam(defaultValue = "genshin") String game) {
+        return R.ok(wishService.accounts(UserContext.require(), game));
     }
 
     /** 数据体检：重复记录数量与 UID 列表。 */
@@ -270,10 +278,15 @@ public class WishController {
                                           @RequestParam(defaultValue = "genshin") String game,
                                           @RequestParam(defaultValue = "merge") String mode,
                                           @RequestParam(defaultValue = "false") boolean preview) {
-        List<WishRecord> records = uigfService.parse(body, game);
-        return R.ok(preview
-                ? wishService.previewRecords(UserContext.require(), game, records, mode)
-                : wishService.importRecords(UserContext.require(), game, records, mode));
+        UigfParseResult parsed = uigfService.parse(body, game);
+        WishImportResult result = preview
+                ? wishService.previewRecords(UserContext.require(), game, parsed.getRecords(), mode)
+                : wishService.importRecords(UserContext.require(), game, parsed.getRecords(), mode);
+        // 预览与导入都回填文件级计数，前端可展示「新增 / 重复 / 忽略 / 无效」
+        result.setTotal(parsed.getTotal());
+        result.setInvalid(parsed.getInvalid());
+        result.setFiltered(parsed.getFiltered());
+        return R.ok(result);
     }
 
     private LocalDateTime parseStart(String value) {

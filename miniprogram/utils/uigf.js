@@ -114,9 +114,25 @@ function applyPity(items) {
   });
 }
 
+/** 严格校验 UIGF / SRGF 时间，格式不符返回空字符串（计入 invalid）。 */
+function strictTime(value) {
+  var text = String(value || '').trim().replace('T', ' ');
+  if (text.length > 19) {
+    text = text.slice(0, 19);
+  }
+  if (text.length === 16) {
+    text += ':00';
+  }
+  if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(text)) {
+    return '';
+  }
+  var date = new Date(text.replace(' ', 'T'));
+  return isNaN(date.getTime()) ? '' : text;
+}
+
 /**
- * 解析 UIGF v4.2 / SRGF v1.0 / UIGF v3 文本。
- * 返回 { records } 或 { error }。
+ * 解析 UIGF v4.2 / SRGF v1.0 / UIGF v3 文本，并做结构校验。
+ * 返回 { records, total, invalid } 或 { error }。
  */
 function parse(text, game) {
   var content = String(text || '').trim();
@@ -133,50 +149,84 @@ function parse(text, game) {
     return { error: '不是有效的 UIGF / SRGF 文件' };
   }
   var starrail = game === 'starrail';
+  var info = root.info;
   var lists = [];
   if (root.hk4e || root.hkrpg) {
-    var section = starrail ? root.hkrpg : root.hk4e;
+    if (!info || typeof info !== 'object') {
+      return { error: 'UIGF 格式错误：缺少 info' };
+    }
+    if (!starrail && !String(info.version || '').trim()) {
+      return { error: 'UIGF 格式错误：info.version 不能为空' };
+    }
+    var sectionName = starrail ? 'hkrpg' : 'hk4e';
+    var section = root[sectionName];
     if (!section) {
       return { error: starrail ? '文件里没有星穹铁道（hkrpg）记录' : '文件里没有原神（hk4e）记录' };
     }
-    if (Array.isArray(section)) {
-      section.forEach(function (account) {
-        lists.push({ list: account.gachaLog || [], uid: account.uid || '' });
-      });
-    } else {
-      lists.push({ list: section.gachaLog || [], uid: section.uid || '' });
+    var accounts = Array.isArray(section) ? section : [section];
+    for (var i = 0; i < accounts.length; i++) {
+      var account = accounts[i];
+      if (!account || typeof account !== 'object') {
+        return { error: 'UIGF 格式错误：' + sectionName + '[' + i + '] 不是对象' };
+      }
+      var accountUid = String(account.uid || '').trim();
+      if (!accountUid) {
+        return { error: 'UIGF 格式错误：' + sectionName + '[' + i + '].uid 不能为空' };
+      }
+      if (!Array.isArray(account.gachaLog)) {
+        return { error: 'UIGF 格式错误：' + sectionName + '[' + i + '].gachaLog 不是数组' };
+      }
+      lists.push({ list: account.gachaLog, uid: accountUid, starrail: starrail });
     }
   } else if (Array.isArray(root.list)) {
+    if (!info || typeof info !== 'object') {
+      return { error: 'UIGF / SRGF 格式错误：缺少 info' };
+    }
+    var infoUid = String(info.uid || '').trim();
+    if (info.srgf_version && !infoUid) {
+      return { error: 'SRGF 格式错误：info.uid 不能为空' };
+    }
     lists.push({
       list: root.list,
-      uid: (root.info && root.info.uid) || '',
-      starrail: (root.info && root.info.srgf_version) ? true : starrail
+      uid: infoUid,
+      starrail: info.srgf_version ? true : starrail
     });
   } else {
     return { error: '未识别的 UIGF / SRGF 结构' };
   }
 
   var items = [];
+  var total = 0;
+  var invalid = 0;
   var order = 0;
   lists.forEach(function (group) {
     var isSR = group.starrail === true || starrail;
     (group.list || []).forEach(function (node) {
+      total++;
       if (!node || typeof node !== 'object') {
+        invalid++;
+        return;
+      }
+      var uid = String(node.uid || group.uid || '').trim();
+      var name = String(node.name || '').trim();
+      var itemType = String(node.item_type || '').trim();
+      var rarity = Number(node.rank_type !== undefined ? node.rank_type : node.rarity);
+      var time = strictTime(node.time);
+      if (!uid || !name || !itemType || !(rarity >= 1 && rarity <= 5) || !time) {
+        invalid++;
         return;
       }
       order++;
-      var rarity = Number(node.rank_type || node.rarity || 3);
-      var gachaType = String(node.gacha_type || '');
       items.push({
         order: order,
         starrail: isSR,
-        uid: String(node.uid || group.uid || ''),
-        name: String(node.name || ''),
-        itemType: String(node.item_type || ''),
+        uid: uid,
+        name: name,
+        itemType: itemType,
         rarity: rarity,
         count: Math.max(1, Number(node.count) || 1),
-        time: parseTime(node.time),
-        pool: poolOf(gachaType, isSR),
+        time: time,
+        pool: poolOf(String(node.gacha_type || ''), isSR),
         pityOverride: Number(node.pity) || 0,
         isUpOverride: node.is_up === true ? true : (node.is_up === false ? false : null),
         captureOverride: node.capture_triggered === true ? true : null
@@ -184,15 +234,19 @@ function parse(text, game) {
     });
   });
   if (!items.length) {
-    return { error: '文件中没有抽卡记录' };
+    return {
+      error: '记录格式不符合 UIGF / SRGF：缺少 uid / name / item_type / rank_type，或 time 格式错误'
+    };
   }
   applyPity(items);
 
   var records = [];
+  var filtered = 0;
   items.forEach(function (item) {
     var recordable = item.rarity >= 5
       || (item.rarity === 4 && (item.itemType || '').trim() === '角色');
     if (!recordable) {
+      filtered++;
       return;
     }
     records.push({
@@ -212,7 +266,7 @@ function parse(text, game) {
   if (!records.length) {
     return { error: '文件中的记录都被规则过滤（只保留四星角色与五星物品）' };
   }
-  return { records: records };
+  return { records: records, total: total, invalid: invalid, filtered: filtered };
 }
 
 function groupByUid(records, uid) {

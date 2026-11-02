@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.southair.genshin.common.BusinessException;
 import com.southair.genshin.common.GameType;
+import com.southair.genshin.module.wish.dto.UigfParseResult;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -28,6 +29,9 @@ import java.util.Set;
  * <p>导入时保留文件中的 UID，多 UID 文件会拆成同 UID 的多组记录；
  * 导出时按 UID 分组输出。UIGF / SRGF 本身不含「第几抽」与「是否 UP」，
  * 这里附带 pity / is_up 扩展字段，其它工具会忽略，本项目重新导入时可原样恢复。</p>
+ *
+ * <p>导入前做结构校验（对齐 schema.uigf.org 的必填字段）：文件级校验失败直接报错，
+ * 单条缺少 uid / name / item_type / rank_type 或时间格式错误时计入 invalid 并跳过。</p>
  */
 @Service
 public class UigfService {
@@ -86,24 +90,38 @@ public class UigfService {
         this.objectMapper = objectMapper;
     }
 
-    /** 解析 UIGF v4.2 / SRGF v1.0 / UIGF v3 文件，返回当前游戏的记录。 */
-    public List<WishRecord> parse(String body, String game) {
+    /** 解析 UIGF v4.2 / SRGF v1.0 / UIGF v3 文件，返回当前游戏的有效记录与无效条数。 */
+    public UigfParseResult parse(String body, String game) {
         if (!StringUtils.hasText(body)) {
             throw new BusinessException("导入内容为空");
         }
+        String gameKey = GameType.normalize(game);
         try {
             JsonNode root = objectMapper.readTree(body);
             if (root == null || !root.isObject()) {
                 throw new BusinessException("不是有效的 UIGF / SRGF 文件");
             }
             if (root.has("hk4e") || root.has("hkrpg")) {
-                return parseUigfV4(root, GameType.normalize(game));
+                return parseUigfV4(root, gameKey);
             }
             if (root.path("list").isArray()) {
                 // SRGF v1.0 与旧版 UIGF v3 都是 info + list 结构
-                boolean starrail = root.path("info").has("srgf_version")
-                        || GameType.isStarRail(game);
-                return parseItems(root.path("list"), starrail, root.path("info").path("uid").asText(""));
+                JsonNode info = root.path("info");
+                boolean starrail = info.has("srgf_version") || GameType.isStarRail(gameKey);
+                if (!info.isObject()) {
+                    throw new BusinessException("UIGF / SRGF 格式错误：缺少 info");
+                }
+                String uid = info.path("uid").asText("").trim();
+                if (info.has("srgf_version") && !StringUtils.hasText(uid)) {
+                    throw new BusinessException("SRGF 格式错误：info.uid 不能为空");
+                }
+                Batch batch = parseItems(root.path("list"), starrail, uid, "list");
+                UigfParseResult result = new UigfParseResult();
+                result.setRecords(batch.records);
+                result.setTotal(batch.total);
+                result.setInvalid(batch.invalid);
+                result.setFiltered(batch.filtered);
+                return result;
             }
             throw new BusinessException("未识别的 UIGF / SRGF 结构");
         } catch (BusinessException e) {
@@ -131,39 +149,103 @@ public class UigfService {
         }
     }
 
-    private List<WishRecord> parseUigfV4(JsonNode root, String gameKey) {
+    private UigfParseResult parseUigfV4(JsonNode root, String gameKey) {
         boolean starrail = GameType.isStarRail(gameKey);
+        JsonNode info = root.path("info");
+        if (!info.isObject()) {
+            throw new BusinessException("UIGF 格式错误：缺少 info");
+        }
+        if (!starrail && root.has("hk4e") && !StringUtils.hasText(info.path("version").asText(""))) {
+            throw new BusinessException("UIGF 格式错误：info.version 不能为空");
+        }
         JsonNode section = starrail ? root.path("hkrpg") : root.path("hk4e");
         if (section.isMissingNode() || section.isNull()) {
             throw new BusinessException(starrail
                     ? "文件里没有星穹铁道（hkrpg）记录，请切换游戏后重试"
                     : "文件里没有原神（hk4e）记录，请切换游戏后重试");
         }
+        String sectionName = starrail ? "hkrpg" : "hk4e";
+
+        UigfParseResult result = new UigfParseResult();
         List<WishRecord> records = new ArrayList<>();
+        int total = 0;
+        int invalid = 0;
+        int filtered = 0;
         if (section.isArray()) {
-            for (JsonNode account : section) {
-                records.addAll(parseItems(account.path("gachaLog"), starrail, account.path("uid").asText("")));
+            for (int i = 0; i < section.size(); i++) {
+                JsonNode account = section.get(i);
+                String path = sectionName + "[" + i + "]";
+                if (!account.isObject()) {
+                    throw new BusinessException("UIGF 格式错误：" + path + " 不是对象");
+                }
+                String uid = account.path("uid").asText("").trim();
+                if (!StringUtils.hasText(uid)) {
+                    throw new BusinessException("UIGF 格式错误：" + path + ".uid 不能为空");
+                }
+                JsonNode logs = account.path("gachaLog");
+                if (!logs.isArray()) {
+                    throw new BusinessException("UIGF 格式错误：" + path + ".gachaLog 不是数组");
+                }
+                Batch batch = parseItems(logs, starrail, uid, path + ".gachaLog");
+                records.addAll(batch.records);
+                total += batch.total;
+                invalid += batch.invalid;
+                filtered += batch.filtered;
             }
+        } else if (section.isObject()) {
+            String uid = section.path("uid").asText("").trim();
+            if (!StringUtils.hasText(uid)) {
+                throw new BusinessException("UIGF 格式错误：" + sectionName + ".uid 不能为空");
+            }
+            JsonNode logs = section.path("gachaLog");
+            if (!logs.isArray()) {
+                throw new BusinessException("UIGF 格式错误：" + sectionName + ".gachaLog 不是数组");
+            }
+            Batch batch = parseItems(logs, starrail, uid, sectionName + ".gachaLog");
+            records.addAll(batch.records);
+            total += batch.total;
+            invalid += batch.invalid;
+            filtered += batch.filtered;
         } else {
-            records.addAll(parseItems(section.path("gachaLog"), starrail, section.path("uid").asText("")));
+            throw new BusinessException("UIGF 格式错误：" + sectionName + " 既不是数组也不是对象");
         }
-        return records;
+
+        result.setRecords(records);
+        result.setTotal(total);
+        result.setInvalid(invalid);
+        result.setFiltered(filtered);
+        return result;
     }
 
-    private List<WishRecord> parseItems(JsonNode list, boolean starrail, String defaultUid) {
+    private Batch parseItems(JsonNode list, boolean starrail, String defaultUid, String path) {
         if (list == null || !list.isArray() || list.size() == 0) {
-            throw new BusinessException("文件中没有抽卡记录");
+            throw new BusinessException("文件中没有抽卡记录（" + path + " 为空）");
         }
         List<Item> items = new ArrayList<>();
+        int invalid = 0;
         for (JsonNode node : list) {
+            if (!node.isObject()) {
+                invalid++;
+                continue;
+            }
+            String entryUid = node.path("uid").asText("").trim();
+            String uid = StringUtils.hasText(entryUid) ? entryUid : defaultUid;
+            String name = node.path("name").asText("").trim();
+            String itemType = node.path("item_type").asText("").trim();
+            int rarity = node.path("rank_type").asInt(node.path("rarity").asInt(0));
+            LocalDateTime time = parseTimeStrict(node.path("time").asText(""));
+            if (!StringUtils.hasText(uid) || !StringUtils.hasText(name)
+                    || !StringUtils.hasText(itemType) || rarity < 1 || rarity > 5 || time == null) {
+                invalid++;
+                continue;
+            }
             Item item = new Item();
-            item.uid = StringUtils.hasText(node.path("uid").asText(""))
-                    ? node.path("uid").asText("") : defaultUid;
+            item.uid = uid;
             item.gachaType = node.path("gacha_type").asText("");
-            item.name = node.path("name").asText("");
-            item.itemType = node.path("item_type").asText("");
-            item.rarity = node.path("rank_type").asInt(node.path("rarity").asInt(3));
-            item.time = parseTime(node.path("time").asText(""));
+            item.name = name;
+            item.itemType = itemType;
+            item.rarity = rarity;
+            item.time = time;
             item.count = Math.max(1, node.path("count").asInt(1));
             item.itemId = node.path("id").asText("");
             item.pool = resolvePool(item.gachaType, starrail);
@@ -173,11 +255,17 @@ public class UigfService {
                     ? node.path("capture_triggered").asBoolean(false) : null;
             items.add(item);
         }
+        if (items.isEmpty()) {
+            throw new BusinessException("记录格式不符合 UIGF / SRGF："
+                    + "缺少 uid / name / item_type / rank_type，或 time 不是 yyyy-MM-dd HH:mm:ss");
+        }
         applyPity(items);
 
         List<WishRecord> records = new ArrayList<>();
+        int filtered = 0;
         for (Item item : items) {
             if (!WishService.isRecordable(item.rarity, item.itemType)) {
+                filtered++;
                 continue;
             }
             WishRecord record = new WishRecord();
@@ -197,7 +285,7 @@ public class UigfService {
         if (records.isEmpty()) {
             throw new BusinessException("文件中的记录都被规则过滤（只保留四星角色与五星物品）");
         }
-        return records;
+        return new Batch(records, list.size(), invalid, filtered);
     }
 
     /** 按 UID + 卡池累计抽数，命中五星时记录本次保底并清零。 */
@@ -339,18 +427,22 @@ public class UigfService {
         return starrail ? "11" : "301";
     }
 
-    private LocalDateTime parseTime(String value) {
+    /** 严格解析 UIGF / SRGF 时间，格式不符返回 null（计入 invalid）。 */
+    private LocalDateTime parseTimeStrict(String value) {
         if (!StringUtils.hasText(value)) {
-            return LocalDateTime.now();
+            return null;
         }
         String text = value.trim().replace('T', ' ');
         if (text.length() > 19) {
             text = text.substring(0, 19);
         }
+        if (text.length() == 16) {
+            text += ":00";
+        }
         try {
             return LocalDateTime.parse(text, TIME_FORMAT);
         } catch (Exception e) {
-            return LocalDateTime.now();
+            return null;
         }
     }
 
@@ -376,5 +468,19 @@ public class UigfService {
         Boolean isUpOverride;
         Boolean captureOverride;
         LocalDateTime time;
+    }
+
+    private static class Batch {
+        final List<WishRecord> records;
+        final int total;
+        final int invalid;
+        final int filtered;
+
+        Batch(List<WishRecord> records, int total, int invalid, int filtered) {
+            this.records = records;
+            this.total = total;
+            this.invalid = invalid;
+            this.filtered = filtered;
+        }
     }
 }

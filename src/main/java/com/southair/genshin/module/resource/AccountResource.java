@@ -52,6 +52,14 @@ public class AccountResource extends BaseEntity {
     @Column(name = "acquainted_fates", nullable = false)
     private Long acquaintedFates = 0L;
 
+    /** 每天自动累积的原石 / 星琼（旧数据为 null，按 0 处理） */
+    @Column(name = "daily_primogems")
+    private Long dailyPrimogems = 0L;
+
+    /** 上次自动累积日期（yyyy-MM-dd），为空表示尚未开始累积 */
+    @Column(name = "last_accrual_date", length = 10)
+    private String lastAccrualDate;
+
     /** 客户端编辑时间（epoch 毫秒），用于多端合并时判定新旧 */
     @Column(name = "edited_at")
     private Long editedAt;
@@ -118,5 +126,21 @@ public class AccountResource extends BaseEntity {
 
     public void setEditedAt(Long editedAt) {
         this.editedAt = editedAt;
+    }
+
+    public Long getDailyPrimogems() {
+        return dailyPrimogems;
+    }
+
+    public void setDailyPrimogems(Long dailyPrimogems) {
+        this.dailyPrimogems = dailyPrimogems;
+    }
+
+    public String getLastAccrualDate() {
+        return lastAccrualDate;
+    }
+
+    public void setLastAccrualDate(String lastAccrualDate) {
+        this.lastAccrualDate = lastAccrualDate;
     }
 }

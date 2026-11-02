@@ -1057,6 +1057,24 @@ body.game-starrail {
     color: var(--muted);
 }
 
+.asset-daily {
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px dashed var(--line);
+}
+
+.asset-daily .asset-value {
+    font-size: 22px;
+    color: var(--gold-2);
+}
+
+.asset-note {
+    display: block;
+    margin-top: 5px;
+    font-size: 11.5px;
+    color: #71778e;
+}
+
 .fortune-actions {
     display: flex;
     flex-direction: column;
@@ -1608,7 +1626,7 @@ body.game-starrail {
 }
 
 .planner-field input {
-    width: 74px;
+    width: 92px;
     padding: 7px 10px;
     border-radius: 9px;
     border: 1px solid rgba(255, 255, 255, 0.08);
@@ -1628,6 +1646,197 @@ body.game-starrail {
     font-style: normal;
     font-size: 11.5px;
     color: #71778e;
+}
+
+.planner-rate {
+    margin: -2px 0 12px;
+    font-size: 11.5px;
+    color: #71778e;
+}
+
+.planner-rate strong {
+    font-weight: 600;
+    color: var(--gold-2);
+}
+
+/* 卡池日历（内置数据） */
+.calendar-list {
+    display: grid;
+    gap: 10px;
+    margin: 12px 0 10px;
+}
+
+.calendar-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.calendar-row.is-current {
+    border-color: rgba(231, 197, 128, 0.35);
+    background: rgba(231, 197, 128, 0.06);
+}
+
+.calendar-badge {
+    flex: 0 0 auto;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    color: #71778e;
+    border: 1px solid var(--line);
+}
+
+.calendar-row.is-current .calendar-badge {
+    color: var(--gold-2);
+    border-color: rgba(231, 197, 128, 0.4);
+}
+
+.calendar-body {
+    flex: 1 1 auto;
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.calendar-body strong {
+    font-size: 14px;
+    color: var(--text);
+}
+
+.calendar-row .btn {
+    flex: 0 0 auto;
+}
+
+@media (max-width: 560px) {
+    .calendar-row {
+        flex-wrap: wrap;
+    }
+
+    .calendar-row .btn {
+        width: 100%;
+    }
+}
+
+/* 四星角色分布 */
+.four-list {
+    display: grid;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.four-stat {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.four-name {
+    flex: 0 0 96px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    color: var(--text);
+}
+
+.four-bar {
+    flex: 1 1 auto;
+    height: 6px;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.06);
+    overflow: hidden;
+}
+
+.four-bar span {
+    display: block;
+    height: 100%;
+    background: linear-gradient(90deg, #a78bfa, #7c5cff);
+}
+
+.four-count {
+    flex: 0 0 auto;
+    min-width: 44px;
+    text-align: right;
+}
+
+/* 定轨目标 / 命定值 */
+.fate-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+}
+
+.fate-target {
+    max-width: 190px;
+    padding: 6px 10px;
+    font-size: 12px;
+}
+
+.fate-note {
+    font-size: 11.5px;
+    color: #71778e;
+}
+
+/* 抽卡模拟器 */
+.sim-fields {
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin: 12px 0;
+}
+
+.sim-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.sim-field .input {
+    min-width: 110px;
+    padding: 7px 10px;
+    font-size: 12px;
+}
+
+.sim-result:empty {
+    display: none;
+}
+
+.sim-number {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--gold-2);
+}
+
+.sim-number span {
+    margin-left: 6px;
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--muted);
+}
+
+.sim-meta {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-top: 6px;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.sim-meta strong {
+    color: var(--text);
 }
 
 .planner-numbers {

@@ -3,6 +3,7 @@ package com.southair.genshin.module.wish;
 import com.southair.genshin.common.BusinessException;
 import com.southair.genshin.common.GameType;
 import com.southair.genshin.common.PageResult;
+import com.southair.genshin.common.UidRegion;
 import com.southair.genshin.module.wish.dto.CollectionItemVO;
 import com.southair.genshin.module.wish.dto.WishBatchRequest;
 import com.southair.genshin.module.wish.dto.WishImportResult;
@@ -213,6 +214,33 @@ public class WishService {
     @Transactional(readOnly = true)
     public List<String> uids(Long userId, String game) {
         return repository.listUids(userId, GameType.normalize(game));
+    }
+
+    /**
+     * 当前账号出现过的 UID 及其区服、记录数，用于抽卡页 UID 筛选。
+     * 区服由 UID 首位推断，不额外落库。
+     */
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> accounts(Long userId, String game) {
+        String gameKey = GameType.normalize(game);
+        List<WishRecord> records = repository.findByUserIdAndGameOrderByWishTimeAsc(userId, gameKey);
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        for (WishRecord record : records) {
+            String uid = StringUtils.hasText(record.getUid()) ? record.getUid().trim() : "";
+            if (!uid.isEmpty()) {
+                counts.merge(uid, 1, Integer::sum);
+            }
+        }
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Map.Entry<String, Integer> entry : counts.entrySet()) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("uid", entry.getKey());
+            item.put("region", UidRegion.regionOf(entry.getKey(), gameKey));
+            item.put("count", entry.getValue());
+            result.add(item);
+        }
+        result.sort(Comparator.comparing(item -> String.valueOf(item.get("uid"))));
+        return result;
     }
 
     /**

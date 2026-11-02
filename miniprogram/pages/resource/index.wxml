@@ -44,6 +44,14 @@
 
     <view class="convert-item">
       <view class="convert-line">
+        <text class="convert-label">每日积累</text>
+        <text class="convert-value">+{{res.dailyPrimogemsText}} {{g.currency}}/天</text>
+      </view>
+      <view class="convert-note">≈ {{res.dailyPulls}} 抽/天 · 每天自动计入资源</view>
+    </view>
+
+    <view class="convert-item">
+      <view class="convert-line">
         <text class="convert-label">{{g.currency}}可兑换</text>
         <text class="convert-value">{{res.pullsFromPrimogemsText}} 抽</text>
       </view>
@@ -99,7 +107,11 @@
         <text class="form-label">{{g.fateStandard}}</text>
         <input class="form-input" type="number" value="{{form.acquaintedFates}}" data-key="acquaintedFates" bindinput="onInput" placeholder="0"/>
       </view>
-      <view class="foot-tip">留空按 0 处理；只填写数量，不需要单位。</view>
+      <view class="form-row">
+        <text class="form-label">每天自动增加 {{g.currency}}</text>
+        <input class="form-input" type="number" value="{{form.dailyPrimogems}}" data-key="dailyPrimogems" bindinput="onInput" placeholder="0"/>
+      </view>
+      <view class="foot-tip">每日额度按自然日自动累加到资源，修改资产或额度后从当天重新计；留空按 0 处理。</view>
     </view>
     <view class="modal-foot">
       <view class="btn btn-text" bindtap="closeEdit">取消</view>

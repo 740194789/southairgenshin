@@ -24,6 +24,10 @@ public class ResourceRequest {
     @Max(value = 99999, message = "相遇之缘数量过大")
     private Long acquaintedFates;
 
+    @Min(value = 0, message = "每日原石不能为负数")
+    @Max(value = 999999, message = "每日原石数值过大")
+    private Long dailyPrimogems;
+
     public Long getPrimogems() {
         return primogems;
     }
@@ -54,5 +58,13 @@ public class ResourceRequest {
 
     public void setAcquaintedFates(Long acquaintedFates) {
         this.acquaintedFates = acquaintedFates;
+    }
+
+    public Long getDailyPrimogems() {
+        return dailyPrimogems;
+    }
+
+    public void setDailyPrimogems(Long dailyPrimogems) {
+        this.dailyPrimogems = dailyPrimogems;
     }
 }

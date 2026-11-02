@@ -153,6 +153,8 @@ Page({
     allChecked: false,
     onlyFive: false,
     pickerVisible: false,
+    batchVisible: false,
+    batchRows: [],
     editorVisible: false,
     editorId: null,
     editor: editorDefaults(0),
@@ -199,9 +201,12 @@ Page({
     var game = this.data.game;
     var pool = this.data.poolIndex === 0 ? '' : this.data.g.pools[this.data.poolIndex - 1];
     var uids = store.uids(game);
-    var uidOptions = ['全部 UID'].concat(uids);
+    var uidLabels = uids.map(function (uid) {
+      return uid + ' · ' + gameLib.regionOf(uid, game);
+    });
+    var uidOptions = ['全部 UID'].concat(uidLabels);
     var uidIndex = Math.min(this.data.uidIndex, uidOptions.length - 1);
-    var uid = uidIndex > 0 ? uidOptions[uidIndex] : '';
+    var uid = uidIndex > 0 ? uids[uidIndex - 1] : '';
     var result = store.pageWishes(game, pool, this.data.page, PAGE_SIZE,
       this.data.onlyFive ? 5 : null, {
         uid: uid,
@@ -209,6 +214,7 @@ Page({
         start: this.data.startDate,
         end: this.data.endDate
       });
+    this.pageRecords = result.records;
     var selected = this.data.selected;
     var rows = result.records.map(function (record) {
       return {
@@ -526,6 +532,83 @@ Page({
         time: wishTime.slice(11, 16)
       }
     });
+  },
+
+  /* ---------------- 批量编辑本页 ---------------- */
+
+  openBatchEdit: function () {
+    var records = this.pageRecords || [];
+    if (!records.length) {
+      wx.showToast({ title: '当前页没有可编辑的记录', icon: 'none' });
+      return;
+    }
+    this.setData({
+      batchVisible: true,
+      batchRows: records.map(function (record, index) {
+        return {
+          id: record.id,
+          index: index + 1,
+          name: record.itemName || '',
+          isUp: record.isUp === true,
+          pityCount: record.pityCount || 1
+        };
+      })
+    });
+  },
+
+  closeBatchEdit: function () {
+    this.setData({ batchVisible: false, batchRows: [] });
+  },
+
+  onBatchName: function (event) {
+    var index = Number(event.currentTarget.dataset.index);
+    this.setData({ ['batchRows[' + index + '].name']: event.detail.value });
+  },
+
+  onBatchPity: function (event) {
+    var index = Number(event.currentTarget.dataset.index);
+    this.setData({ ['batchRows[' + index + '].pityCount']: event.detail.value });
+  },
+
+  onBatchUp: function (event) {
+    var index = Number(event.currentTarget.dataset.index);
+    this.setData({ ['batchRows[' + index + '].isUp']: event.detail.value });
+  },
+
+  saveBatchEdit: function () {
+    var game = this.data.game;
+    var records = this.pageRecords || [];
+    var rows = this.data.batchRows || [];
+    var byId = {};
+    records.forEach(function (record) {
+      byId[record.id] = record;
+    });
+    var saved = 0;
+    rows.forEach(function (row) {
+      var original = byId[row.id];
+      if (!original) {
+        return;
+      }
+      var name = String(row.name || '').trim();
+      if (!name) {
+        return;
+      }
+      store.updateWish(game, row.id, {
+        itemName: name,
+        itemType: original.itemType,
+        pool: original.pool,
+        rarity: original.rarity,
+        isUp: row.isUp === true,
+        pityCount: Math.max(1, Number(row.pityCount) || 1),
+        wishTime: original.wishTime,
+        note: original.note,
+        captureTriggered: original.captureTriggered === true
+      });
+      saved++;
+    });
+    this.setData({ batchVisible: false, batchRows: [] });
+    wx.showToast({ title: '已保存 ' + saved + ' 条修改', icon: 'none' });
+    this.load();
   },
 
   closeEditor: function () {

@@ -49,6 +49,25 @@
       </view>
     </view>
 
+    <view wx:if="{{fourStars.length}}" class="panel">
+      <view class="panel-title">四星角色<text class="pool-tag inline">共 {{stats.fourStarWishes}} 次{{fourStarUp ? ' · UP ' + fourStarUp + ' 次' : ''}}</text></view>
+      <view class="four-stat" wx:for="{{fourStars}}" wx:key="name">
+        <text class="four-name">{{item.name}}</text>
+        <view class="four-bar"><view class="four-bar-fill" style="width:{{item.percent}}%"></view></view>
+        <text class="four-count">{{item.count}} 次</text>
+        <text wx:if="{{item.upCount}}" class="pool-tag up">UP {{item.upCount}}</text>
+      </view>
+      <view class="foot-tip">四星只记录角色；UP 次数按记录中手动标记的 UP 统计。</view>
+    </view>
+
+    <view class="panel">
+      <view class="panel-title">战绩卡<text class="pool-tag inline">PNG · UID 打码</text></view>
+      <view class="panel-desc">把当前账号的关键指标生成一张图片，可保存到相册或分享。</view>
+      <view class="toolbar">
+        <view class="btn btn-primary btn-sm" bindtap="onBattleCard">生成战绩卡</view>
+      </view>
+    </view>
+
     <view class="panel">
       <view class="panel-title">最近出货<text class="pool-tag inline">最近 {{recent.length}} 条</text></view>
       <block wx:if="{{recent.length}}">
@@ -102,6 +121,15 @@
           <text>平均 {{item.avgFiveStarPity}} 抽</text>
           <text>距保底 {{item.pullsToPity}} 抽</text>
           <text wx:if="{{item.upGuaranteed}}" class="pool-tag up">{{item.guaranteeText}}</text>
+        </view>
+        <view wx:if="{{item.showFate}}" class="fate-row">
+          <picker range="{{weaponOptions}}" value="{{item.weaponTargetIndex}}" bindchange="onFateTarget">
+            <view class="fate-picker">{{item.weaponTarget || '选择定轨目标'}} ▾</view>
+          </picker>
+          <text class="pool-tag {{item.fatePoints ? 'up' : ''}}">命定值 {{item.fatePoints}} / 1</text>
+        </view>
+        <view wx:if="{{item.showFate && item.fatePoints}}" class="pity-note">
+          下次五星必定定轨{{item.weaponTarget ? '「' + item.weaponTarget + '」' : ''}}
         </view>
       </view>
     </view>
@@ -197,6 +225,28 @@
 
   <!-- 期望 -->
   <view hidden="{{statsTab !== 'expect'}}">
+    <view wx:if="{{calendar && (calendar.current || calendar.next)}}" class="panel calendar-panel">
+      <view class="panel-title">卡池日历<text class="pool-tag inline">内置 · {{calendar.updatedAt}}</text></view>
+      <view wx:if="{{calendar.current}}" class="calendar-row is-current">
+        <text class="calendar-badge">进行中</text>
+        <view class="calendar-body">
+          <text class="calendar-title">{{calendar.current.version}} · {{calendar.current.name}}</text>
+          <text class="calendar-line">{{calendar.current.start}} ~ {{calendar.current.end}} · 剩余 {{calendar.current.left}} 天</text>
+          <text class="calendar-line">本期预估 +{{calendar.current.incomeText}} {{g.currency}} ≈ {{calendar.current.pullsText}} 抽</text>
+        </view>
+        <view class="btn btn-outline btn-sm" bindtap="onCalendarUseDays"
+              data-days="{{calendar.current.left}}">用剩余 {{calendar.current.left}} 天</view>
+      </view>
+      <view wx:if="{{calendar.next}}" class="calendar-row">
+        <text class="calendar-badge">下一期</text>
+        <view class="calendar-body">
+          <text class="calendar-title">{{calendar.next.version}} · {{calendar.next.name}}</text>
+          <text class="calendar-line">{{calendar.next.start}} ~ {{calendar.next.end}} · 还有 {{calendar.next.left}} 天</text>
+        </view>
+      </view>
+      <view class="foot-tip">{{calendar.note}}</view>
+    </view>
+
     <view wx:if="{{expect}}" class="panel expect-panel">
       <view class="panel-title">抽卡期望<text class="pool-tag inline">目标模拟</text></view>
       <view class="expect-modes">
@@ -263,9 +313,9 @@
         <view class="planner-fields">
           <view class="planner-field">
             <text>每天可攒</text>
-            <input class="planner-input" type="digit" value="{{expect.planner.daily}}"
+            <input class="planner-input" type="number" value="{{expect.planner.dailyPrimogems}}"
                    data-key="daily" bindblur="onPlanInput" bindconfirm="onPlanInput"/>
-            <text>抽</text>
+            <text>{{expect.planner.currency}}</text>
           </view>
           <view class="planner-field">
             <text>卡池还剩</text>
@@ -274,6 +324,7 @@
             <text>天</text>
           </view>
         </view>
+        <view class="planner-rate">≈ {{expect.planner.dailyPullsText}} 抽/天 · {{expect.planner.days}} 天共 +{{expect.planner.incomeText}}（每天自动计入资源）</view>
         <view class="planner-numbers">
           <view class="planner-num">
             <text class="planner-num-label">当前可抽</text>
@@ -294,6 +345,32 @@
         </view>
         <view class="expect-compare">{{expect.planner.statusText}}</view>
         <view class="expect-note">{{expect.planner.adviceText}}（目标按当前{{g.currency}}储备折算，不含版本活动等临时收入。）</view>
+      </view>
+    </view>
+
+    <view class="panel">
+      <view class="panel-title">抽卡模拟器<text class="pool-tag inline">本地蒙特卡洛</text></view>
+      <view class="panel-desc">按理论概率模拟抽数分布（含歪 / 大保底），只在本机运行，不请求服务器。</view>
+      <view class="sim-fields">
+        <picker class="pool-picker" range="{{simPools}}" value="{{simPool}}" bindchange="onSimPool">
+          <view class="pool-picker-box">{{simPools[simPool]}} ▾</view>
+        </picker>
+        <picker class="pool-picker" range="{{simCopiesOptions}}" value="{{simCopies}}" bindchange="onSimCopies">
+          <view class="pool-picker-box">{{simCopiesOptions[simCopies]}}</view>
+        </picker>
+        <picker class="pool-picker" range="{{simRunsOptions}}" value="{{simRuns}}" bindchange="onSimRuns">
+          <view class="pool-picker-box">{{simRunsOptions[simRuns]}}</view>
+        </picker>
+        <view class="btn btn-primary btn-sm" bindtap="onSimRun">开始模拟</view>
+      </view>
+      <view wx:if="{{simResult}}" class="sim-result">
+        <view class="sim-number">{{simResult.avg}}<text>抽 / 平均</text></view>
+        <view class="sim-meta">
+          <text>25% 分位 {{simResult.low}} 抽</text>
+          <text>75% 分位 {{simResult.high}} 抽</text>
+          <text>最少 {{simResult.min}} · 最多 {{simResult.max}}</text>
+          <text>模拟 {{simResult.runs}} 次</text>
+        </view>
       </view>
     </view>
   </view>
@@ -319,4 +396,7 @@
       <view class="foot-tip">离线版数据只存在本机缓存；卸载、清理缓存或换机会丢失。账号资源可直接在「资源」页修改。</view>
     </view>
   </view>
+
+  <!-- 战绩卡离屏画布 -->
+  <canvas canvas-id="battleCard" class="battle-canvas"></canvas>
 </view>

@@ -21,6 +21,8 @@ public class WishImportResult implements Serializable {
     private int skipped;
     /** 按记录规则被忽略的条数（三星物品、四星武器 / 光锥） */
     private int filtered;
+    /** 结构不符合 UIGF / SRGF 的条数（缺少字段或时间格式错误） */
+    private int invalid;
 
     public String getMode() {
         return mode;
@@ -68,5 +70,13 @@ public class WishImportResult implements Serializable {
 
     public void setFiltered(int filtered) {
         this.filtered = filtered;
+    }
+
+    public int getInvalid() {
+        return invalid;
+    }
+
+    public void setInvalid(int invalid) {
+        this.invalid = invalid;
     }
 }

@@ -5,6 +5,7 @@ var file = require('../../utils/file');
 var uigf = require('../../utils/uigf');
 var avatars = require('../../utils/avatars');
 var weaponIcons = require('../../utils/weaponIcons');
+var calendarLib = require('../../utils/calendar');
 
 /** 记录对应的头像 / 图标，缺失时返回空字符串 */
 function itemIcon(game, item) {
@@ -204,13 +205,11 @@ function expectPrefs(game) {
     raw = null;
   }
   raw = raw && typeof raw === 'object' ? raw : {};
-  var daily = raw.daily === undefined ? 2 : Number(raw.daily);
   var days = raw.days === undefined ? 21 : Number(raw.days);
   return {
     c: clamp(Number(raw.c) || 0, 0, 6),
     r: clamp(Number(raw.r) || 0, 0, 5),
     mode: raw.mode === 'theory' ? 'theory' : 'history',
-    daily: isFinite(daily) ? clamp(daily, 0, 99) : 2,
     days: isFinite(days) ? clamp(Math.round(days), 0, 365) : 21
   };
 }
@@ -351,7 +350,9 @@ function buildExpectation(data, game, prefs) {
     + (charGuaranteed ? ' · 角色池大保底' : '')
     + (weaponGuaranteed && prefs.r > 0 ? ' · 武器池大保底' : '') + '。';
 
-  var income = Math.round(prefs.daily * prefs.days * 10) / 10;
+  var dailyPrimogems = Math.max(0, Math.round(Number(data.resource.dailyPrimogems) || 0));
+  var dailyPulls = dailyPrimogems / currencyPerPull;
+  var income = Math.round(dailyPulls * prefs.days * 10) / 10;
   var projected = Math.round((available + income) * 10) / 10;
   var gapHigh = Math.max(0, totalHigh - projected);
   var gapLow = Math.max(0, totalLow - projected);
@@ -372,10 +373,10 @@ function buildExpectation(data, game, prefs) {
   if (gapHigh > 0) {
     var parts = [];
     if (prefs.days > 0) {
-      parts.push('每天需攒 ' + (Math.round(gapHigh / prefs.days * 10) / 10) + ' 抽');
+      parts.push('每天需攒 ' + store.fmt(Math.ceil(gapHigh * currencyPerPull / prefs.days)) + ' ' + g.currency);
     }
-    if (prefs.daily > 0) {
-      var needDays = Math.ceil(gapHigh / prefs.daily);
+    if (dailyPrimogems > 0) {
+      var needDays = Math.ceil(gapHigh * currencyPerPull / dailyPrimogems);
       var eta = new Date(Date.now() + needDays * 86400000);
       parts.push('还需 ' + needDays + ' 天（约 ' + eta.getFullYear() + '-'
         + ('0' + (eta.getMonth() + 1)).slice(-2) + '-' + ('0' + eta.getDate()).slice(-2) + '）');
@@ -410,7 +411,10 @@ function buildExpectation(data, game, prefs) {
       ? '区间取往期 UP 周期的 25%–75% 分位，约一半情况落在此范围。'
       : '理论值为单点估算，约一半概率在期望抽数内达成。',
     planner: {
-      daily: prefs.daily,
+      dailyPrimogems: dailyPrimogems,
+      dailyPrimogemsText: store.fmt(dailyPrimogems),
+      dailyPullsText: String(Math.round(dailyPulls * 10) / 10),
+      currency: g.currency,
       days: prefs.days,
       incomeText: String(income),
       projectedText: store.fmt(projected),
@@ -420,6 +424,98 @@ function buildExpectation(data, game, prefs) {
       statusText: planText,
       adviceText: planAdvice
     }
+  };
+}
+
+/** 四星角色分布：按次数排序并换算进度条宽度 */
+function buildFourStars(data) {
+  var list = data.fourStarCharacters || [];
+  var max = 1;
+  list.forEach(function (item) {
+    max = Math.max(max, item.count);
+  });
+  return list.map(function (item) {
+    return {
+      name: item.name,
+      count: item.count,
+      upCount: item.upCount || 0,
+      percent: Math.max(8, Math.round(item.count / max * 100))
+    };
+  });
+}
+
+/** 抽卡模拟器：与网页端同一套理论概率 */
+function simulatePulls(weapon, copies, runs, game) {
+  var cap = weapon ? 80 : 90;
+  var winRate = weapon ? 0.75 : (game === 'genshin' ? 0.55 : 0.5);
+  var results = [];
+  for (var i = 0; i < runs; i++) {
+    var pulls = 0;
+    var got = 0;
+    var pity = 0;
+    var guaranteed = false;
+    while (got < copies && pulls < 3000) {
+      pulls++;
+      pity++;
+      var rate = weapon
+        ? (pity >= 63 ? Math.min(1, 0.007 + (pity - 62) * 0.07) : 0.007)
+        : (pity >= 74 ? Math.min(1, 0.006 + (pity - 73) * 0.06) : 0.006);
+      if (pity >= cap || Math.random() < rate) {
+        pity = 0;
+        if (guaranteed || Math.random() < winRate) {
+          got++;
+          guaranteed = false;
+        } else {
+          guaranteed = true;
+        }
+      }
+    }
+    results.push(pulls);
+  }
+  results.sort(function (a, b) {
+    return a - b;
+  });
+  var sum = 0;
+  results.forEach(function (value) {
+    sum += value;
+  });
+  function at(percent) {
+    var index = Math.round((results.length - 1) * percent);
+    return results[Math.max(0, Math.min(results.length - 1, index))];
+  }
+  return {
+    avg: Math.round(sum / results.length * 10) / 10,
+    low: at(0.25),
+    high: at(0.75),
+    min: results[0],
+    max: results[results.length - 1],
+    runs: runs
+  };
+}
+
+/** 卡池日历：当前与下一期，附带剩余天数与预估收入换算 */
+function buildCalendar(game, unit) {
+  var info = calendarLib.info(game);
+  function row(item) {
+    if (!item) {
+      return null;
+    }
+    var income = Number(item.phase.incomePrimogems) || 0;
+    return {
+      version: item.version,
+      name: item.phase.name || '',
+      start: item.phase.start,
+      end: item.phase.end,
+      left: Math.max(0, calendarLib.daysUntil(item.phase.end)),
+      incomeText: store.fmt(income),
+      pullsText: String(Math.round(income / unit * 10) / 10)
+    };
+  }
+  return {
+    updatedAt: info.calendar.updatedAt || '',
+    note: info.calendar.note || '',
+    current: row(info.current),
+    next: row(info.next)
   };
 }
 
@@ -443,6 +539,18 @@ Page({
     recent: [],
     capture: null,
     expect: null,
+    calendar: null,
+    fourStars: [],
+    fourStarUp: 0,
+    weaponOptions: [],
+    simPool: 0,
+    simCopies: 0,
+    simRuns: 1,
+    simWeapon: false,
+    simPools: ['角色活动', '武器活动'],
+    simCopiesOptions: ['1 个', '2 个', '3 个', '4 个', '5 个', '6 个'],
+    simRunsOptions: ['200 次', '500 次', '1000 次'],
+    simResult: null,
     chartReal: false,
     chartPool: 'all',
     chartPools: [{ key: 'all', label: '全部' }],
@@ -498,6 +606,16 @@ Page({
       weaponCostText: data.weaponUpSamples ? store.fmt(data.avgPrimogemsPerUpWeapon) : '—'
     };
 
+    var weaponOptions = Object.keys(weaponIcons[game] || {}).sort(function (a, b) {
+      return a.localeCompare(b, 'zh-Hans-CN');
+    });
+    var weaponTarget = '';
+    try {
+      weaponTarget = wx.getStorageSync('sg_weapon_target_' + game) || '';
+    } catch (e) {
+      weaponTarget = '';
+    }
+
     var pools = data.poolStats.map(function (item) {
       return {
         pool: item.pool,
@@ -509,7 +627,11 @@ Page({
         avgFiveStarPity: item.avgFiveStarPity,
         pullsToPity: item.pullsToPity,
         upGuaranteed: item.upGuaranteed,
-        guaranteeText: guaranteeText(item.pool)
+        guaranteeText: guaranteeText(item.pool),
+        showFate: game === 'genshin' && item.pool === '武器活动',
+        fatePoints: item.fatePoints || 0,
+        weaponTarget: weaponTarget,
+        weaponTargetIndex: weaponOptions.indexOf(weaponTarget)
       };
     });
 
@@ -565,6 +687,11 @@ Page({
       recent: recent,
       capture: capture,
       expect: buildExpectation(data, game, expectPrefs(game)),
+      calendar: buildCalendar(game, data.resource.primogemsPerPull || 160),
+      fourStars: buildFourStars(data),
+      fourStarUp: data.fourStarUpWishes || 0,
+      weaponOptions: weaponOptions,
+      simPools: [g.charPool, g.weaponPool],
       chartPool: chartPool,
       chartPools: chartPools,
       chart: chart
@@ -653,17 +780,180 @@ Page({
     this.refreshExpectation();
   },
 
+  /** 原神武器池定轨目标：仅本机记录，用于命定值提示。 */
+  onFateTarget: function (event) {
+    var index = Number(event.detail.value);
+    var name = this.data.weaponOptions[index] || '';
+    try {
+      wx.setStorageSync('sg_weapon_target_' + this.data.game, name);
+    } catch (e) {
+      /* 忽略存储失败 */
+    }
+    wx.showToast({ title: name ? '定轨目标：' + name : '已清除定轨目标', icon: 'none' });
+    this.load(this.data.game);
+  },
+
+  /* ---------------- 抽卡模拟器 ---------------- */
+
+  onSimPool: function (event) {
+    this.setData({ simWeapon: Number(event.detail.value) === 1 });
+  },
+
+  onSimCopies: function (event) {
+    this.setData({ simCopies: Number(event.detail.value) });
+  },
+
+  onSimRuns: function (event) {
+    var values = [200, 500, 1000];
+    this.setData({ simRuns: Math.min(values.length - 1, Number(event.detail.value)) });
+  },
+
+  onSimRun: function () {
+    var runs = [200, 500, 1000][this.data.simRuns] || 500;
+    var copies = Math.max(1, (this.data.simCopies || 0) + 1);
+    var result = simulatePulls(this.data.simWeapon, copies, runs, this.data.game);
+    this.setData({ simResult: result });
+  },
+
+  /* ---------------- 战绩卡（Canvas） ---------------- */
+
+  onBattleCard: function () {
+    var data = store.overview(this.data.game);
+    var g = this.data.g;
+    var ctx = wx.createCanvasContext('battleCard', this);
+    function text(value, x, y, size, color, align) {
+      ctx.setFillStyle(color || '#e8ebf2');
+      ctx.setFontSize(size);
+      ctx.setTextAlign(align || 'left');
+      ctx.fillText(String(value), x, y);
+    }
+    function mask(uid) {
+      var value = String(uid || '').trim();
+      if (!value) {
+        return 'UID 未标注';
+      }
+      return value.length <= 5 ? ('UID ' + value)
+        : ('UID ' + value.slice(0, 3) + '***' + value.slice(-3));
+    }
+    var recentAll = data.recentWishes || [];
+    var uid = '';
+    for (var i = 0; i < recentAll.length; i++) {
+      if (recentAll[i].uid) {
+        uid = recentAll[i].uid;
+        break;
+      }
+    }
+    var fives = (data.fiveStarHistory || []).slice(-6).reverse();
+
+    ctx.setFillStyle('#0b0d16');
+    ctx.fillRect(0, 0, 720, 1000);
+    ctx.setStrokeStyle('rgba(231,197,128,0.55)');
+    ctx.setLineWidth(2);
+    ctx.strokeRect(26, 26, 668, 948);
+
+    text('SouthAir Genshin', 60, 96, 24, '#e7c580');
+    text(g.fullName + ' · 战绩卡', 60, 130, 18, '#9aa1b5');
+    text(mask(uid), 660, 96, 18, '#9aa1b5', 'right');
+    text(store.nowStr().slice(0, 10), 660, 128, 15, '#71778e', 'right');
+
+    text('合计可抽', 60, 196, 18, '#9aa1b5');
+    text(store.fmt(data.resource.totalPulls), 60, 280, 54, '#ffffff');
+    text('抽', 60 + 10 + 32 * String(store.fmt(data.resource.totalPulls)).length, 280, 20, '#9aa1b5');
+
+    var cards = [
+      ['抽卡记录', store.fmt(data.wishCount)],
+      ['五星出货', store.fmt(data.fiveStarWishes)],
+      ['五星出货率', data.fiveStarRate + '%'],
+      ['四星出货', store.fmt(data.fourStarWishes)]
+    ];
+    cards.forEach(function (item, index) {
+      var x = 60 + (index % 2) * 310;
+      var y = 350 + Math.floor(index / 2) * 118;
+      ctx.setFillStyle('rgba(255,255,255,0.04)');
+      ctx.fillRect(x, y, 280, 96);
+      text(item[0], x + 20, y + 30, 15, '#9aa1b5');
+      text(item[1], x + 20, y + 70, 28);
+    });
+
+    text('五星平均抽数', 60, 636, 16, '#9aa1b5');
+    text(data.avgFiveStarPity, 300, 636, 16, '#e8ebf2');
+    text('小保底不歪率', 400, 636, 16, '#9aa1b5');
+    text(data.softPityUpRate + '%', 660, 636, 16, '#e8ebf2', 'right');
+    text('连歪纪录', 60, 682, 16, '#9aa1b5');
+    text(data.maxLossStreak + ' 次', 300, 682, 16, '#e8ebf2');
+    text('连不歪纪录', 400, 682, 16, '#9aa1b5');
+    text(data.maxUpStreak + ' 次', 660, 682, 16, '#e8ebf2', 'right');
+
+    text('最近五星', 60, 744, 18, '#e7c580');
+    if (!fives.length) {
+      text('还没有五星记录', 60, 786, 16, '#71778e');
+    }
+    fives.forEach(function (item, index) {
+      var y = 786 + index * 38;
+      text(item.itemName || '未命名', 60, y, 17);
+      text((item.pityCount || 1) + ' 抽', 460, y, 15, '#9aa1b5');
+      text(item.pool || '', 660, y, 15, '#71778e', 'right');
+    });
+    text('数据来自本机记录 · 个人统计，仅供参考', 60, 944, 13, '#5d6479');
+    ctx.draw();
+
+    var that = this;
+    setTimeout(function () {
+      wx.canvasToTempFilePath({
+        canvasId: 'battleCard',
+        x: 0,
+        y: 0,
+        width: 720,
+        height: 1000,
+        destWidth: 720,
+        destHeight: 1000,
+        success: function (res) {
+          wx.saveImageToPhotosAlbum({
+            filePath: res.tempFilePath,
+            success: function () {
+              wx.showToast({ title: '战绩卡已保存到相册', icon: 'none' });
+            },
+            fail: function () {
+              wx.previewImage({ urls: [res.tempFilePath] });
+            }
+          });
+        },
+        fail: function () {
+          wx.showToast({ title: '战绩卡生成失败', icon: 'none' });
+        }
+      }, that);
+    }, 250);
+  },
+
+  /** 卡池日历「用剩余 N 天」：写入攒抽规划的天数。 */
+  onCalendarUseDays: function (event) {
+    var days = clamp(Math.round(Number(event.currentTarget.dataset.days) || 0), 0, 365);
+    var prefs = expectPrefs(this.data.game);
+    prefs.days = days;
+    saveExpectPrefs(this.data.game, prefs);
+    this.refreshExpectation();
+    wx.showToast({ title: '已填入卡池剩余 ' + days + ' 天', icon: 'none' });
+  },
+
   /** 攒抽规划输入：失焦 / 确认时保存并重算。 */
   onPlanInput: function (event) {
     var key = event.currentTarget.dataset.key;
     var value = Number(event.detail.value);
-    var prefs = expectPrefs(this.data.game);
+    var game = this.data.game;
     if (key === 'daily') {
-      prefs.daily = isFinite(value) ? clamp(value, 0, 99) : prefs.daily;
-    } else if (key === 'days') {
+      var daily = isFinite(value) ? clamp(value, 0, 999999) : 0;
+      store.updateResource(game, { dailyPrimogems: daily });
+      if (this.expectSource) {
+        this.expectSource.resource = store.resourceVO(store.getResource(game));
+      }
+      this.refreshExpectation();
+      return;
+    }
+    var prefs = expectPrefs(game);
+    if (key === 'days') {
       prefs.days = isFinite(value) ? clamp(Math.round(value), 0, 365) : prefs.days;
     }
-    saveExpectPrefs(this.data.game, prefs);
+    saveExpectPrefs(game, prefs);
     this.refreshExpectation();
   },
 
@@ -702,14 +992,17 @@ Page({
         itemList: ['合并导入（跳过重复）', '覆盖导入（清空当前游戏记录）'],
         success: function (res) {
           var mode = res.tapIndex === 1 ? 'replace' : 'merge';
-          var total = parsed.records.length;
-          var willWrite = mode === 'replace' ? total - preview.filtered : preview.imported;
+          var total = parsed.total;
+          var ignored = parsed.filtered || 0;
+          var validCount = parsed.records.length;
+          var willWrite = mode === 'replace' ? validCount : preview.imported;
           var skipText = mode === 'replace' ? '' : '，跳过重复 ' + preview.skipped + ' 条';
+          var invalidText = parsed.invalid ? '，格式无效 ' + parsed.invalid + ' 条' : '';
           wx.showModal({
             title: format + ' 导入预演',
             content: '共 ' + total + ' 条：将' + (mode === 'replace' ? '写入' : '新增') + ' '
-              + willWrite + ' 条' + skipText + '，忽略 ' + preview.filtered
-              + ' 条（三星 / 四星武器）。'
+              + willWrite + ' 条' + skipText + '，忽略 ' + ignored
+              + ' 条（三星 / 四星武器）' + invalidText + '。'
               + (mode === 'replace' ? '覆盖导入会先清空当前游戏记录。' : ''),
             confirmText: '确认导入',
             confirmColor: mode === 'replace' ? '#ff6b6b' : '#576b95',
@@ -793,6 +1086,14 @@ Page({
 
   applyAllImport: function (payload, mode) {
     var result = store.importAllBackup(payload, mode);
+    if (result.error) {
+      wx.showModal({
+        title: '备份校验失败',
+        content: result.error,
+        showCancel: false
+      });
+      return;
+    }
     this.load(this.data.game);
     wx.showToast({
       title: '导入 ' + result.imported + ' 条'

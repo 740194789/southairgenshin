@@ -90,7 +90,8 @@ public class ResourceController {
                 ? parseJson(body)
                 : ResourceCsv.parse(body);
         if (request.getPrimogems() == null && request.getMora() == null
-                && request.getIntertwinedFates() == null && request.getAcquaintedFates() == null) {
+                && request.getIntertwinedFates() == null && request.getAcquaintedFates() == null
+                && request.getDailyPrimogems() == null) {
             throw new BusinessException("没有可导入的资源数据，请先在模板中填写数值");
         }
         return R.ok(resourceService.update(UserContext.require(), game, request));
@@ -115,6 +116,7 @@ public class ResourceController {
         request.setMora(resource.getMora());
         request.setIntertwinedFates(resource.getIntertwinedFates());
         request.setAcquaintedFates(resource.getAcquaintedFates());
+        request.setDailyPrimogems(resource.getDailyPrimogems());
         return request;
     }
 

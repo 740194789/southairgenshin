@@ -13,7 +13,8 @@ Page({
       primogems: '',
       mora: '',
       intertwinedFates: '',
-      acquaintedFates: ''
+      acquaintedFates: '',
+      dailyPrimogems: ''
     }
   },
 
@@ -37,6 +38,7 @@ Page({
     res.primogemsFromFatesText = store.fmt(res.primogemsFromFates);
     res.totalPullsText = store.fmt(res.totalPulls);
     res.totalPrimogemsText = store.fmt(res.totalPrimogems);
+    res.dailyPrimogemsText = store.fmt(res.dailyPrimogems || 0);
 
     this.setData({
       game: game,
@@ -60,7 +62,8 @@ Page({
         primogems: String(resource.primogems),
         mora: String(resource.mora),
         intertwinedFates: String(resource.intertwinedFates),
-        acquaintedFates: String(resource.acquaintedFates)
+        acquaintedFates: String(resource.acquaintedFates),
+        dailyPrimogems: String(resource.dailyPrimogems || 0)
       }
     });
   },
@@ -85,7 +88,8 @@ Page({
       primogems: form.primogems,
       mora: form.mora,
       intertwinedFates: form.intertwinedFates,
-      acquaintedFates: form.acquaintedFates
+      acquaintedFates: form.acquaintedFates,
+      dailyPrimogems: form.dailyPrimogems
     });
     this.setData({ editing: false });
     this.load(this.data.game);

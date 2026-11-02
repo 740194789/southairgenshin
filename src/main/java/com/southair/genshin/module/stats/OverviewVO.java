@@ -4,6 +4,7 @@ import com.southair.genshin.module.resource.dto.ResourceVO;
 import com.southair.genshin.module.wish.WishRecord;
 
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -96,6 +97,10 @@ public class OverviewVO implements Serializable {
     private List<WishRecord> fiveStarRecords;
     /** 按卡池拆分的保底与出货统计 */
     private List<PoolStat> poolStats;
+    /** 四星角色出货分布（按名称聚合） */
+    private List<FourStarStat> fourStarCharacters = new ArrayList<>();
+    /** 四星角色中标记为 UP 的次数（手动标记，仅作参考） */
+    private long fourStarUpWishes;
 
     public ResourceVO getResource() {
         return resource;
@@ -417,6 +422,22 @@ public class OverviewVO implements Serializable {
         this.poolStats = poolStats;
     }
 
+    public List<FourStarStat> getFourStarCharacters() {
+        return fourStarCharacters;
+    }
+
+    public void setFourStarCharacters(List<FourStarStat> fourStarCharacters) {
+        this.fourStarCharacters = fourStarCharacters;
+    }
+
+    public long getFourStarUpWishes() {
+        return fourStarUpWishes;
+    }
+
+    public void setFourStarUpWishes(long fourStarUpWishes) {
+        this.fourStarUpWishes = fourStarUpWishes;
+    }
+
     /**
      * 单个卡池的保底 / 出货统计。
      */
@@ -439,6 +460,8 @@ public class OverviewVO implements Serializable {
         private double avgFiveStarPity;
         /** 最近一个五星未中 UP / 定轨，下次五星必定命中 */
         private boolean upGuaranteed;
+        /** 武器定轨命定值（0–2，仅武器活动池有值） */
+        private int fatePoints;
 
         public String getPool() {
             return pool;
@@ -502,6 +525,50 @@ public class OverviewVO implements Serializable {
 
         public void setUpGuaranteed(boolean upGuaranteed) {
             this.upGuaranteed = upGuaranteed;
+        }
+
+        public int getFatePoints() {
+            return fatePoints;
+        }
+
+        public void setFatePoints(int fatePoints) {
+            this.fatePoints = fatePoints;
+        }
+    }
+
+    /**
+     * 四星角色出货统计项。
+     */
+    public static class FourStarStat implements Serializable {
+
+        private static final long serialVersionUID = 1L;
+
+        private String name;
+        private long count;
+        private long upCount;
+
+        public String getName() {
+            return name;
+        }
+
+        public void setName(String name) {
+            this.name = name;
+        }
+
+        public long getCount() {
+            return count;
+        }
+
+        public void setCount(long count) {
+            this.count = count;
+        }
+
+        public long getUpCount() {
+            return upCount;
+        }
+
+        public void setUpCount(long upCount) {
+            this.upCount = upCount;
         }
     }
 

@@ -48,6 +48,35 @@ function poolLabel(pool) {
   return POOL_LABELS[pool] || pool || '';
 }
 
+/** 由 UID 首位推断区服，与网页端 UidRegion 口径一致 */
+function regionOf(uid, game) {
+  var text = String(uid || '').trim();
+  if (!text) {
+    return '未知区服';
+  }
+  var first = text.charAt(0);
+  if ((game || 'genshin') === 'starrail') {
+    if (first === '1' || first === '2') {
+      return '国服';
+    }
+  } else if (first >= '1' && first <= '5') {
+    return '国服';
+  }
+  if (first === '6') {
+    return '美服';
+  }
+  if (first === '7') {
+    return '欧服';
+  }
+  if (first === '8') {
+    return '亚服';
+  }
+  if (first === '9') {
+    return '港澳台服';
+  }
+  return '未知区服';
+}
+
 /* 四星角色名单：收藏「补充已有」按类别选择时用于切分四星 / 五星角色 */
 var FOUR_STAR_CHARACTERS = {
   genshin: ['丽莎', '芭芭拉', '凯亚', '雷泽', '安柏', '香菱', '北斗', '行秋', '凝光', '菲谢尔',
@@ -70,5 +99,6 @@ module.exports = {
   POOL_LABELS: POOL_LABELS,
   FOUR_STAR_CHARACTERS: FOUR_STAR_CHARACTERS,
   poolLabel: poolLabel,
+  regionOf: regionOf,
   config: config
 };

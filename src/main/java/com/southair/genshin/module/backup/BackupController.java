@@ -40,6 +40,8 @@ public class BackupController {
     @GetMapping("/export")
     public ResponseEntity<byte[]> export(@RequestParam(defaultValue = "genshin") String game) {
         BackupVO backup = backupService.export(UserContext.require(), game);
+        backup.setChecksumApp("southair-web");
+        backup.setChecksum(BackupChecksum.compute(objectMapper, backup));
         byte[] content;
         try {
             content = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(backup);
@@ -61,6 +63,12 @@ public class BackupController {
     @GetMapping("/export-all")
     public ResponseEntity<byte[]> exportAll() {
         FullBackupVO backup = backupService.exportAll(UserContext.require());
+        for (BackupVO game : backup.getGames().values()) {
+            game.setChecksumApp("southair-web");
+            game.setChecksum(BackupChecksum.compute(objectMapper, game));
+        }
+        backup.setChecksumApp("southair-web");
+        backup.setChecksum(BackupChecksum.compute(objectMapper, backup));
         byte[] content;
         try {
             content = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(backup);
@@ -84,6 +92,15 @@ public class BackupController {
     @PostMapping("/import-all")
     public R<ImportResultVO> importAll(@RequestBody FullBackupVO backup,
                                        @RequestParam(defaultValue = "merge") String mode) {
+        // 导入前先校验快照完整性；旧备份没有 checksum 时跳过
+        BackupChecksum.verify(objectMapper, backup, backup.getChecksum(), backup.getChecksumApp());
+        if (backup.getGames() != null) {
+            for (BackupVO game : backup.getGames().values()) {
+                if (game != null) {
+                    BackupChecksum.verify(objectMapper, game, game.getChecksum(), game.getChecksumApp());
+                }
+            }
+        }
         return R.ok(backupService.importAll(UserContext.require(), backup, mode));
     }
 
@@ -94,6 +111,7 @@ public class BackupController {
     public R<ImportResultVO> importData(@RequestBody BackupVO backup,
                                         @RequestParam(defaultValue = "genshin") String game,
                                         @RequestParam(defaultValue = "merge") String mode) {
+        BackupChecksum.verify(objectMapper, backup, backup.getChecksum(), backup.getChecksumApp());
         return R.ok(backupService.importData(UserContext.require(), game, backup, mode));
     }
 }

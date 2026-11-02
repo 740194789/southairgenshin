@@ -628,9 +628,323 @@
                         ? '<span class="pool-tag up">' + esc(guaranteeText(item.pool)) + '</span>'
                         : '')
                     + '</div>'
+                    + (item.pool === '武器活动' && state.game === 'genshin'
+                        ? fateRowHtml(item) : '')
                     + '</div>';
             }).join('')
             + '</div></section>';
+    }
+
+    var WEAPON_TARGET_KEY = 'sg_weapon_target_';
+
+    function weaponTargetName() {
+        try {
+            return localStorage.getItem(WEAPON_TARGET_KEY + state.game) || '';
+        } catch (e) {
+            return '';
+        }
+    }
+
+    /** 原神武器池的定轨目标与命定值：目标仅本地记录，用于提示 */
+    function fateRowHtml(item) {
+        var weapons = nameLists(state.game).weapons;
+        var target = weaponTargetName();
+        var points = Number(item.fatePoints) || 0;
+        var options = '<option value="">选择定轨目标</option>' + weapons.map(function (name) {
+            return '<option value="' + esc(name) + '"'
+                + (target === name ? ' selected' : '') + '>' + esc(name) + '</option>';
+        }).join('');
+        return '<div class="fate-row">'
+            + '<select class="input fate-target" id="fate-target">' + options + '</select>'
+            + '<span class="pool-tag' + (points > 0 ? ' up' : '') + '">命定值 ' + points + ' / 1</span>'
+            + '<span class="fate-note">'
+            + (points > 0
+                ? (target ? '下次五星必定定轨「' + esc(target) + '」' : '下次五星必定定轨')
+                : (target ? '目标「' + esc(target) + '」：未命中定轨后命定值 +1' : '未选择定轨目标'))
+            + '</span></div>';
+    }
+
+    function fourStarPanelHtml(data) {
+        var list = data.fourStarCharacters || [];
+        if (!list.length) {
+            return '';
+        }
+        var max = 1;
+        list.forEach(function (item) {
+            max = Math.max(max, item.count);
+        });
+        var rows = list.map(function (item) {
+            var percent = Math.max(8, Math.round(item.count / max * 100));
+            return '<div class="four-stat">'
+                + '<span class="four-name">' + esc(item.name) + '</span>'
+                + '<div class="four-bar"><span style="width:' + percent + '%"></span></div>'
+                + '<span class="four-count">' + item.count + ' 次</span>'
+                + (item.upCount
+                    ? '<span class="pool-tag up">UP ' + item.upCount + '</span>'
+                    : '')
+                + '</div>';
+        }).join('');
+        return '<section class="panel four-panel">'
+            + '<h3>四星角色<span class="pool-tag">共 ' + data.fourStarWishes + ' 次'
+            + (data.fourStarUpWishes ? ' · UP ' + data.fourStarUpWishes + ' 次' : '')
+            + '</span></h3>'
+            + '<div class="four-list">' + rows + '</div>'
+            + '<p class="panel-desc">四星只记录角色；UP 次数按记录中手动标记的 UP 统计。</p>'
+            + '</section>';
+    }
+
+    /* ---------------- 抽卡模拟器（本地蒙特卡洛） ---------------- */
+
+    function simulatePulls(weapon, copies, runs) {
+        var cap = weapon ? 80 : 90;
+        var winRate = weapon ? 0.75 : (state.game === 'genshin' ? 0.55 : 0.5);
+        var results = [];
+        for (var i = 0; i < runs; i++) {
+            var pulls = 0;
+            var got = 0;
+            var pity = 0;
+            var guaranteed = false;
+            while (got < copies && pulls < 3000) {
+                pulls++;
+                pity++;
+                var rate;
+                if (weapon) {
+                    rate = pity >= 63 ? Math.min(1, 0.007 + (pity - 62) * 0.07) : 0.007;
+                } else {
+                    rate = pity >= 74 ? Math.min(1, 0.006 + (pity - 73) * 0.06) : 0.006;
+                }
+                if (pity >= cap || Math.random() < rate) {
+                    pity = 0;
+                    if (guaranteed || Math.random() < winRate) {
+                        got++;
+                        guaranteed = false;
+                    } else {
+                        guaranteed = true;
+                    }
+                }
+            }
+            results.push(pulls);
+        }
+        results.sort(function (a, b) {
+            return a - b;
+        });
+        var sum = 0;
+        results.forEach(function (value) {
+            sum += value;
+        });
+        function at(percent) {
+            var index = Math.round((results.length - 1) * percent);
+            return results[Math.max(0, Math.min(results.length - 1, index))];
+        }
+        return {
+            avg: Math.round(sum / results.length * 10) / 10,
+            low: at(0.25),
+            high: at(0.75),
+            min: results[0],
+            max: results[results.length - 1],
+            runs: runs
+        };
+    }
+
+    function simulatorPanelHtml() {
+        var g = gameConfig();
+        var copyOptions = '';
+        for (var i = 1; i <= 6; i++) {
+            copyOptions += '<option value="' + i + '">' + i + ' 个</option>';
+        }
+        return '<section class="panel simulator-panel">'
+            + '<h3>抽卡模拟器<span class="pool-tag">本地蒙特卡洛</span></h3>'
+            + '<p class="panel-desc">按理论概率模拟抽数分布（含歪 / 大保底），只在本机运行，不请求服务器。</p>'
+            + '<div class="sim-fields">'
+            + '<label class="sim-field"><span>卡池</span>'
+            + '<select class="input" id="sim-pool">'
+            + '<option value="char">' + esc(g.charPool) + '</option>'
+            + '<option value="weapon">' + esc(g.weaponPool) + '</option>'
+            + '</select></label>'
+            + '<label class="sim-field"><span>目标</span>'
+            + '<select class="input" id="sim-copies">' + copyOptions + '</select></label>'
+            + '<label class="sim-field"><span>次数</span>'
+            + '<select class="input" id="sim-runs">'
+            + '<option value="200">200</option><option value="500" selected>500</option>'
+            + '<option value="1000">1000</option></select></label>'
+            + '<button class="btn btn-primary btn-sm" type="button" id="sim-run">开始模拟</button>'
+            + '</div>'
+            + '<div id="sim-result" class="sim-result"></div>'
+            + '</section>';
+    }
+
+    function bindSimulator() {
+        var btn = $('#sim-run');
+        if (!btn) {
+            return;
+        }
+        btn.addEventListener('click', function () {
+            var weapon = $('#sim-pool').value === 'weapon';
+            var copies = Math.max(1, Math.min(6, Number($('#sim-copies').value) || 1));
+            var runs = Math.max(50, Math.min(2000, Number($('#sim-runs').value) || 500));
+            var result = simulatePulls(weapon, copies, runs);
+            var g = gameConfig();
+            $('#sim-result').innerHTML =
+                '<div class="sim-number">' + fmt(result.avg) + '<span>抽 / 平均</span></div>'
+                + '<div class="sim-meta">'
+                + '<span>25% 分位 <strong>' + fmt(result.low) + '</strong> 抽</span>'
+                + '<span>75% 分位 <strong>' + fmt(result.high) + '</strong> 抽</span>'
+                + '<span>最少 <strong>' + result.min + '</strong> · 最多 <strong>' + result.max + '</strong></span>'
+                + '<span>模拟 ' + result.runs + ' 次 · ' + esc(g.currency) + '</span>'
+                + '</div>';
+        });
+    }
+
+    /* ---------------- 战绩卡 ---------------- */
+
+    function maskUid(uid) {
+        var text = String(uid || '').trim();
+        if (!text) {
+            return 'UID 未标注';
+        }
+        if (text.length <= 5) {
+            return 'UID ' + text;
+        }
+        return 'UID ' + text.slice(0, 3) + '***' + text.slice(-3);
+    }
+
+    function firstUid(data) {
+        var list = data.recentWishes || [];
+        for (var i = 0; i < list.length; i++) {
+            if (list[i].uid) {
+                return list[i].uid;
+            }
+        }
+        var fives = data.fiveStarRecords || [];
+        for (var j = 0; j < fives.length; j++) {
+            if (fives[j].uid) {
+                return fives[j].uid;
+            }
+        }
+        return '';
+    }
+
+    function drawBattleCard(data) {
+        var g = gameConfig();
+        var canvas = document.createElement('canvas');
+        canvas.width = 720;
+        canvas.height = 1000;
+        var ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#0b0d16';
+        ctx.fillRect(0, 0, 720, 1000);
+        var glow = ctx.createLinearGradient(0, 0, 720, 1000);
+        glow.addColorStop(0, 'rgba(231, 197, 128, 0.16)');
+        glow.addColorStop(0.6, 'rgba(120, 90, 220, 0.10)');
+        glow.addColorStop(1, 'rgba(11, 13, 22, 0)');
+        ctx.fillStyle = glow;
+        ctx.fillRect(0, 0, 720, 1000);
+        ctx.strokeStyle = 'rgba(231, 197, 128, 0.55)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(26, 26, 668, 948);
+
+        function text(value, x, y, size, color, weight, align) {
+            ctx.fillStyle = color || '#e8ebf2';
+            ctx.font = (weight || 'normal') + ' ' + size + 'px "Microsoft YaHei", "PingFang SC", sans-serif';
+            ctx.textAlign = align || 'left';
+            ctx.fillText(String(value), x, y);
+        }
+
+        text('SouthAir Genshin', 60, 96, 26, '#e7c580', 'bold');
+        text(g.fullName + ' · 战绩卡', 60, 132, 18, '#9aa1b5');
+        text(maskUid(firstUid(data)), 660, 96, 20, '#9aa1b5', 'normal', 'right');
+        text(nowLocal().slice(0, 10), 660, 128, 16, '#71778e', 'normal', 'right');
+
+        text('合计可抽', 60, 196, 18, '#9aa1b5');
+        text(fmt(data.resource.totalPulls), 60, 280, 64, '#ffffff', 'bold');
+        text('抽', 60 + 8 + 40 * String(fmt(data.resource.totalPulls)).length, 280, 22, '#9aa1b5');
+
+        var cards = [
+            ['抽卡记录', fmt(data.wishCount)],
+            ['五星出货', fmt(data.fiveStarWishes)],
+            ['五星出货率', data.fiveStarRate + '%'],
+            ['四星出货', fmt(data.fourStarWishes)]
+        ];
+        cards.forEach(function (item, index) {
+            var col = index % 2;
+            var row = Math.floor(index / 2);
+            var x = 60 + col * 310;
+            var y = 350 + row * 118;
+            ctx.fillStyle = 'rgba(255,255,255,0.035)';
+            ctx.fillRect(x, y, 280, 96);
+            text(item[0], x + 20, y + 30, 16, '#9aa1b5');
+            text(item[1], x + 20, y + 70, 30, '#e8ebf2', 'bold');
+        });
+
+        text('五星平均抽数', 60, 636, 17, '#9aa1b5');
+        text(data.avgFiveStarPity, 300, 636, 17, '#e8ebf2', 'bold');
+        text('小保底不歪率', 400, 636, 17, '#9aa1b5');
+        text(data.softPityUpRate + '%', 660, 636, 17, '#e8ebf2', 'bold', 'right');
+        text('连歪纪录', 60, 682, 17, '#9aa1b5');
+        text(data.maxLossStreak + ' 次', 300, 682, 17, '#e8ebf2', 'bold');
+        text('连不歪纪录', 400, 682, 17, '#9aa1b5');
+        text(data.maxUpStreak + ' 次', 660, 682, 17, '#e8ebf2', 'bold', 'right');
+
+        text('最近五星', 60, 744, 18, '#e7c580', 'bold');
+        var recent = (data.fiveStarRecords || []).slice(-6).reverse();
+        if (!recent.length) {
+            text('还没有五星记录', 60, 786, 17, '#71778e');
+        }
+        recent.forEach(function (item, index) {
+            var y = 786 + index * 38;
+            text(item.itemName || '未命名', 60, y, 18, '#e8ebf2');
+            text((item.pityCount || 1) + ' 抽', 460, y, 16, '#9aa1b5');
+            text(item.pool || '', 660, y, 16, '#71778e', 'normal', 'right');
+        });
+        text('数据来自本地记录 · 个人统计，仅供参考', 60, 944, 14, '#5d6479');
+        return canvas;
+    }
+
+    function bindStatsDelegates() {
+        var host = $('#view-stats');
+        if (!host || host.getAttribute('data-fate-bound') === '1') {
+            return;
+        }
+        host.setAttribute('data-fate-bound', '1');
+        host.addEventListener('change', function (event) {
+            var target = event.target;
+            if (!target || target.id !== 'fate-target') {
+                return;
+            }
+            try {
+                localStorage.setItem(WEAPON_TARGET_KEY + state.game, target.value);
+            } catch (e) {
+                /* 忽略隐私模式下的写入失败 */
+            }
+            toast(target.value ? '定轨目标已设为 ' + target.value : '已清除定轨目标');
+        });
+    }
+
+    function bindBattleCard(data) {
+        var btn = $('#battle-card');
+        if (!btn) {
+            return;
+        }
+        btn.addEventListener('click', function () {
+            var canvas = drawBattleCard(data);
+            canvas.toBlob(function (blob) {
+                if (!blob) {
+                    toast('战绩卡生成失败', 'error');
+                    return;
+                }
+                var url = URL.createObjectURL(blob);
+                var link = document.createElement('a');
+                link.href = url;
+                link.download = 'southair-' + state.game + '-card-'
+                    + nowLocal().slice(0, 10).replace(/-/g, '') + '.png';
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                setTimeout(function () {
+                    URL.revokeObjectURL(url);
+                }, 1500);
+                toast('战绩卡已导出为 PNG');
+            }, 'image/png');
+        });
     }
 
     /* ---------------- 抽卡期望 ---------------- */
@@ -676,13 +990,11 @@
 
     function expectPrefs() {
         var raw = safeParse(localStorage.getItem(EXPECT_KEY + state.game)) || {};
-        var daily = raw.daily === undefined ? 2 : Number(raw.daily);
         var days = raw.days === undefined ? 21 : Number(raw.days);
         return {
             c: Math.max(0, Math.min(6, Number(raw.c) || 0)),
             r: Math.max(0, Math.min(5, Number(raw.r) || 0)),
             mode: raw.mode === 'theory' ? 'theory' : 'history',
-            daily: isFinite(daily) ? Math.max(0, Math.min(99, daily)) : 2,
             days: isFinite(days) ? Math.max(0, Math.min(365, Math.round(days))) : 21
         };
     }
@@ -832,6 +1144,7 @@
             charSamples: charSamples,
             weaponSamples: weaponSamples,
             available: data.resource.totalPulls || 0,
+            dailyPrimogems: data.resource.dailyPrimogems || 0,
             currencyPerPull: data.resource.primogemsPerPull || 160
         };
     }
@@ -853,10 +1166,13 @@
         return hi > lo ? fmt(lo) + '–' + fmt(hi) : fmt(lo);
     }
 
-    /** 攒抽规划：按「每天可攒抽数 + 卡池剩余天数」估算到期时能否攒够目标。 */
+    /** 攒抽规划：按「每天可攒原石 + 卡池剩余天数」估算到期时能否攒够目标。 */
     function plannerHtml(plan, prefs) {
         var g = gameConfig();
-        var income = Math.round(prefs.daily * prefs.days * 10) / 10;
+        var unit = plan.currencyPerPull || 160;
+        var dailyPrimogems = Math.max(0, Math.round(Number(plan.dailyPrimogems) || 0));
+        var dailyPulls = dailyPrimogems / unit;
+        var income = Math.round(dailyPulls * prefs.days * 10) / 10;
         var projected = Math.round((plan.available + income) * 10) / 10;
         var gapHigh = Math.max(0, plan.totalHigh - projected);
         var gapLow = Math.max(0, plan.totalLow - projected);
@@ -881,10 +1197,10 @@
         if (gapHigh > 0) {
             var parts = [];
             if (prefs.days > 0) {
-                parts.push('每天需攒 ' + num(gapHigh / prefs.days) + ' 抽');
+                parts.push('每天需攒 ' + fmt(Math.ceil(gapHigh * unit / prefs.days)) + ' ' + g.currency);
             }
-            if (prefs.daily > 0) {
-                var needDays = Math.ceil(gapHigh / prefs.daily);
+            if (dailyPrimogems > 0) {
+                var needDays = Math.ceil(gapHigh * unit / dailyPrimogems);
                 var eta = new Date(Date.now() + needDays * 86400000);
                 parts.push('还需 ' + needDays + ' 天（约 ' + eta.getFullYear() + '-'
                     + ('0' + (eta.getMonth() + 1)).slice(-2) + '-' + ('0' + eta.getDate()).slice(-2) + '）');
@@ -899,12 +1215,15 @@
             + '<span>按卡池剩余天数估算到期可抽</span></div>'
             + '<div class="planner-fields">'
             + '<label class="planner-field"><span>每天可攒</span>'
-            + '<input id="plan-daily" type="number" min="0" max="99" step="0.1" value="'
-            + num(prefs.daily) + '"/><em>抽</em></label>'
+            + '<input id="plan-daily" type="number" min="0" max="999999" step="10" value="'
+            + dailyPrimogems + '"/><em>' + esc(g.currency) + '</em></label>'
             + '<label class="planner-field"><span>卡池还剩</span>'
             + '<input id="plan-days" type="number" min="0" max="365" step="1" value="'
             + prefs.days + '"/><em>天</em></label>'
             + '</div>'
+            + '<p class="planner-rate">≈ <strong>' + num(dailyPulls) + '</strong> 抽/天 · '
+            + prefs.days + ' 天共 +<strong>' + fmt(dailyPrimogems * prefs.days) + '</strong> '
+            + esc(g.currency) + '（每天自动计入资源）</p>'
             + '<div class="planner-numbers">'
             + '<div><span>当前可抽</span><strong>' + fmt(plan.available) + '</strong></div>'
             + '<div><span>期间可得</span><strong>+' + num(income) + '</strong></div>'
@@ -916,6 +1235,122 @@
             + '<p class="expect-note">' + esc(advice)
             + '（目标按当前' + esc(g.currency) + '储备折算，不含版本活动等临时收入。）</p>'
             + '</div>';
+    }
+
+    /* ---------------- 版本 / 卡池日历（内置数据） ---------------- */
+
+    function dateOnly(value) {
+        return String(value || '').slice(0, 10);
+    }
+
+    function parseDateOnly(text) {
+        var parts = dateOnly(text).split('-');
+        if (parts.length !== 3) {
+            return null;
+        }
+        var d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+        return isNaN(d.getTime()) ? null : d;
+    }
+
+    function daysUntil(text) {
+        var end = parseDateOnly(text);
+        if (!end) {
+            return 0;
+        }
+        var now = new Date();
+        var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        return Math.round((end.getTime() - today.getTime()) / 86400000);
+    }
+
+    function flatCalendarPhases(calendar) {
+        var list = [];
+        ((calendar && calendar.versions) || []).forEach(function (version) {
+            (version.phases || []).forEach(function (phase) {
+                list.push({ version: version.version, phase: phase });
+            });
+        });
+        return list;
+    }
+
+    function calendarInfo(calendar) {
+        var today = dateOnly(nowLocal());
+        var list = flatCalendarPhases(calendar);
+        for (var i = 0; i < list.length; i++) {
+            if (list[i].phase.start <= today && today <= list[i].phase.end) {
+                return { current: list[i], next: list[i + 1] || null };
+            }
+        }
+        for (var j = 0; j < list.length; j++) {
+            if (list[j].phase.start > today) {
+                return { current: null, next: list[j] };
+            }
+        }
+        return { current: null, next: null };
+    }
+
+    function calendarRowHtml(item, current, unit) {
+        var g = gameConfig();
+        var phase = item.phase;
+        var left = Math.max(0, daysUntil(phase.end));
+        var income = Number(phase.incomePrimogems) || 0;
+        return '<div class="calendar-row' + (current ? ' is-current' : '') + '">'
+            + '<span class="calendar-badge">' + (current ? '进行中' : '下一期') + '</span>'
+            + '<div class="calendar-body">'
+            + '<strong>' + esc(item.version) + ' · ' + esc(phase.name || '') + '</strong>'
+            + '<span>' + esc(dateOnly(phase.start)) + ' ~ ' + esc(dateOnly(phase.end))
+            + ' · ' + (current ? '剩余 ' : '还有 ') + left + ' 天</span>'
+            + (income > 0
+                ? '<span>本期预估 +' + fmt(income) + ' ' + esc(g.currency)
+                    + ' ≈ ' + num(income / unit) + ' 抽</span>'
+                : '')
+            + '</div>'
+            + (current
+                ? '<button class="btn btn-outline btn-sm" type="button" id="calendar-use-days"'
+                    + ' data-days="' + left + '">用剩余 ' + left + ' 天</button>'
+                : '')
+            + '</div>';
+    }
+
+    function calendarPanelHtml(calendar, unit) {
+        if (!calendar || !(calendar.versions || []).length) {
+            return '';
+        }
+        var info = calendarInfo(calendar);
+        var rows = '';
+        if (info.current) {
+            rows += calendarRowHtml(info.current, true, unit);
+        }
+        if (info.next) {
+            rows += calendarRowHtml(info.next, false, unit);
+        }
+        if (!rows) {
+            rows = '<p class="panel-desc">当前没有进行中或即将开始的卡池。</p>';
+        }
+        return '<section class="panel calendar-panel">'
+            + '<h3>卡池日历<span class="pool-tag">内置 · '
+            + esc(dateOnly(calendar.updatedAt) || '未标注') + '</span></h3>'
+            + '<div class="calendar-list">' + rows + '</div>'
+            + '<p class="panel-desc">' + esc(calendar.note || '按官方公告维护版本与卡池时间。') + '</p>'
+            + '</section>';
+    }
+
+    function bindCalendar(data) {
+        var btn = $('#calendar-use-days');
+        if (!btn) {
+            return;
+        }
+        btn.addEventListener('click', function () {
+            var days = Math.max(0, Math.min(365, Math.round(Number(btn.getAttribute('data-days')) || 0)));
+            var prefs = expectPrefs();
+            prefs.days = days;
+            saveExpectPrefs(prefs);
+            var host = $('.expect-panel');
+            if (host) {
+                host.outerHTML = expectationPanelHtml(data);
+                bindExpectation(data);
+            }
+            toast('已填入卡池剩余 ' + days + ' 天');
+        });
     }
 
     function expectationPanelHtml(data) {
@@ -1074,13 +1509,36 @@
             if (id !== 'plan-daily' && id !== 'plan-days') {
                 return;
             }
-            var prefs = expectPrefs();
             var value = Number(event.target.value);
             if (id === 'plan-daily') {
-                prefs.daily = isFinite(value) ? Math.max(0, Math.min(99, value)) : prefs.daily;
-            } else {
-                prefs.days = isFinite(value) ? Math.max(0, Math.min(365, Math.round(value))) : prefs.days;
+                var current = Number(data.resource.dailyPrimogems) || 0;
+                var daily = isFinite(value)
+                    ? Math.max(0, Math.min(999999, Math.round(value))) : current;
+                var rerender = function () {
+                    var host = $('.expect-panel');
+                    if (host) {
+                        host.outerHTML = expectationPanelHtml(data);
+                        bindExpectation(data);
+                    }
+                };
+                if (daily === current) {
+                    rerender();
+                    return;
+                }
+                api('/api/resources', { method: 'PUT', body: { dailyPrimogems: daily } })
+                    .then(function (updated) {
+                        data.resource = updated;
+                        rerender();
+                        toast('每天 ' + fmt(daily) + ' ' + gameConfig().currency + ' 已保存');
+                    })
+                    .catch(function (err) {
+                        rerender();
+                        toast(err.message || '保存每日' + gameConfig().currency + '失败', 'error');
+                    });
+                return;
             }
+            var prefs = expectPrefs();
+            prefs.days = isFinite(value) ? Math.max(0, Math.min(365, Math.round(value))) : prefs.days;
             saveExpectPrefs(prefs);
             var host = $('.expect-panel');
             if (host) {
@@ -1120,6 +1578,8 @@
             var standard = resource.acquaintedFates || 0;
             var currencyPct = total > 0 ? Math.round(currencyPulls * 100 / total) : 0;
             var fatePct = total > 0 ? 100 - currencyPct : 0;
+            var daily = resource.dailyPrimogems || 0;
+            var dailyPulls = Math.round(daily / (resource.primogemsPerPull || 160) * 10) / 10;
 
             el.innerHTML =
                 '<div class="page-head dash-head">'
@@ -1149,6 +1609,12 @@
                 + '<strong class="asset-value">' + esc(fmt(resource.totalPrimogems))
                 + '<span class="asset-unit">' + esc(g.currency) + '</span></strong>'
                 + '</div>'
+                + '<div class="asset asset-daily">'
+                + '<span class="asset-label">每日积累</span>'
+                + '<strong class="asset-value">+' + esc(fmt(daily))
+                + '<span class="asset-unit">' + esc(g.currency) + '/天</span></strong>'
+                + '<span class="asset-note">≈ ' + num(dailyPulls) + ' 抽/天 · 每天自动计入资源</span>'
+                + '</div>'
                 + '<div class="fortune-actions">'
                 + '<button class="btn btn-outline" id="resource-edit" type="button">编辑资源</button>'
                 + '</div>'
@@ -1174,7 +1640,8 @@
                     '折合总资产 ' + fmt(resource.totalPrimogems) + ' ' + g.currency, true)
                 + '</div>'
                 + '<p class="ledger-foot">换算基准：1 抽 = ' + resource.primogemsPerPull
-                + ' ' + esc(g.currency) + '</p>'
+                + ' ' + esc(g.currency) + '；每日 ' + esc(fmt(daily)) + ' ' + esc(g.currency)
+                + ' 按自然日自动累加</p>'
                 + '</section>';
 
             var editBtn = $('#resource-edit');
@@ -1434,7 +1901,14 @@
         var g = gameConfig();
         el.innerHTML = '<div class="loading">加载中…</div>';
 
-        return api('/api/stats/overview').then(function (data) {
+        return Promise.all([
+            api('/api/stats/overview'),
+            api('/api/calendar').catch(function () {
+                return null;
+            })
+        ]).then(function (responses) {
+            var data = responses[0];
+            var calendar = responses[1];
             var resource = data.resource;
             var name = (state.user && (state.user.nickname || state.user.username)) || '旅行者';
             cache.stats = data;
@@ -1476,11 +1950,14 @@
                     + (data.wishCount ? Math.round(data.fourStarWishes * 100 / data.wishCount) : 0) + '%', 'purple')
                 + statCard('五星平均抽数', data.avgFiveStarPity, '按记录中的保底进度')
                 + '</div>'
-                + '<section class="panel"><h3>统计摘要<span class="pool-tag">文本导出</span></h3>'
-                + '<p class="panel-desc">把当前游戏的关键指标导出为 txt，方便保存或分享。</p>'
+                + fourStarPanelHtml(data)
+                + '<section class="panel"><h3>统计摘要<span class="pool-tag">文本 / 图片</span></h3>'
+                + '<p class="panel-desc">把当前游戏的关键指标导出为 txt，或生成一张 PNG 战绩卡（UID 自动打码）。</p>'
                 + '<div class="panel-actions">'
                 + '<button class="btn btn-outline btn-sm" id="stats-summary-export" type="button">'
-                + '导出统计摘要</button></div></section>'
+                + '导出统计摘要</button>'
+                + '<button class="btn btn-primary btn-sm" id="battle-card" type="button">'
+                + '生成战绩卡</button></div></section>'
                 + '<section class="panel"><h3>最近出货<span class="pool-tag">最近 '
                 + (data.recentWishes || []).length + ' 条</span></h3>'
                 + miniWishes(data.recentWishes) + '</section>'
@@ -1497,7 +1974,9 @@
                 + '</div>'
 
                 + statsSection('expect', tab)
+                + calendarPanelHtml(calendar, resource.primogemsPerPull || 160)
                 + expectationPanelHtml(data)
+                + simulatorPanelHtml()
                 + '</div>'
 
                 + statsSection('resource', tab)
@@ -1509,7 +1988,11 @@
             bindStatsPoolFilter(data);
             bindPullChart();
             bindExpectation(data);
+            bindCalendar(data);
             bindStatsSummary(data);
+            bindBattleCard(data);
+            bindSimulator();
+            bindStatsDelegates();
         }).catch(function (err) {
             if (state.token) {
                 el.innerHTML = errorHtml(err);
@@ -1711,15 +2194,18 @@
         bindWishTools();
 
         guard(function () {
-            return api('/api/wishes/uids').then(function (uids) {
+            return api('/api/wishes/accounts').then(function (accounts) {
                 var select = $('#wish-uid');
                 if (!select) {
                     return;
                 }
-                select.innerHTML = '<option value="">全部 UID</option>' + (uids || []).map(function (uid) {
-                    return '<option value="' + esc(uid) + '"'
-                        + (state.wishUid === uid ? ' selected' : '') + '>' + esc(uid) + '</option>';
-                }).join('');
+                select.innerHTML = '<option value="">全部 UID</option>'
+                    + (accounts || []).map(function (account) {
+                        var label = account.uid + (account.region ? ' · ' + account.region : '');
+                        return '<option value="' + esc(account.uid) + '"'
+                            + (state.wishUid === account.uid ? ' selected' : '') + '>'
+                            + esc(label) + '</option>';
+                    }).join('');
             });
         });
 
@@ -2560,7 +3046,9 @@
             ], null, {
                 hint: '文件：' + fileName + '。共 ' + preview.total + ' 条，将新增 '
                     + preview.imported + ' 条，跳过重复 ' + preview.skipped + ' 条，按规则忽略 '
-                    + preview.filtered + ' 条。多 UID 文件会按 UID 分别保留。',
+                    + preview.filtered + ' 条'
+                    + (preview.invalid ? '，格式无效 ' + preview.invalid + ' 条' : '')
+                    + '。多 UID 文件会按 UID 分别保留。',
                 submitText: '确认导入'
             }).then(function (values) {
                 if (!values) {
@@ -2595,9 +3083,11 @@
             { key: 'primogems', label: g.currency, type: 'number', min: 0, max: 999999999, step: '1', default: resource.primogems },
             { key: 'mora', label: g.credit, type: 'number', min: 0, max: 999999999, step: '1', default: resource.mora },
             { key: 'intertwinedFates', label: g.fateLimited + '（抽）', type: 'number', min: 0, max: 99999, step: '1', default: resource.intertwinedFates },
-            { key: 'acquaintedFates', label: g.fateStandard + '（抽）', type: 'number', min: 0, max: 99999, step: '1', default: resource.acquaintedFates }
+            { key: 'acquaintedFates', label: g.fateStandard + '（抽）', type: 'number', min: 0, max: 99999, step: '1', default: resource.acquaintedFates },
+            { key: 'dailyPrimogems', label: '每天自动增加 ' + g.currency, type: 'number', min: 0, max: 999999, step: '10', default: resource.dailyPrimogems || 0 }
         ], null, {
-            hint: '1 抽 = ' + resource.primogemsPerPull + ' ' + g.currency + '，保存后自动刷新可抽数与折算结果',
+            hint: '1 抽 = ' + resource.primogemsPerPull + ' ' + g.currency
+                + '；每日额度按自然日自动累加到资源，手动修改资产或额度后从当天重新计',
             submitText: '保存资源'
         }).then(function (values) {
             if (!values) {
@@ -2917,6 +3407,47 @@
             toast('读取文件失败', 'error');
         };
         reader.readAsText(file, 'utf-8');
+    }
+
+    /* ---------------- 图鉴数据源 ---------------- */
+
+    var CATALOG_KEY = 'sg_catalog_';
+
+    function loadCatalogCache() {
+        ['genshin', 'starrail'].forEach(function (game) {
+            var cached = safeParse(localStorage.getItem(CATALOG_KEY + game));
+            if (!cached || typeof cached !== 'object') {
+                return;
+            }
+            window.SG_AVATARS = window.SG_AVATARS || {};
+            window.SG_AVATARS[game] = Object.assign({}, window.SG_AVATARS[game] || {}, cached);
+        });
+    }
+
+    function refreshCatalog(game) {
+        return api('/api/catalog', null, game).then(function (map) {
+            if (!map) {
+                throw new Error('图鉴数据为空');
+            }
+            window.SG_AVATARS = window.SG_AVATARS || {};
+            window.SG_AVATARS[game] = Object.assign({}, window.SG_AVATARS[game] || {}, map);
+            try {
+                localStorage.setItem(CATALOG_KEY + game, JSON.stringify(map));
+            } catch (e) {
+                /* 忽略隐私模式下的写入失败 */
+            }
+            toast('图鉴已更新：' + Object.keys(map).length + ' 个角色');
+            var view = state.view;
+            if (view === 'stats') {
+                loadStats();
+            } else if (view === 'wishes') {
+                loadWishes();
+            } else if (view === 'collection') {
+                loadCollection();
+            } else if (view === 'dashboard') {
+                loadDashboard();
+            }
+        });
     }
 
     /* ---------------- 设置 ---------------- */
@@ -3249,6 +3780,16 @@
             + '</div>'
 
             + '<section class="panel">'
+            + '<h3>图鉴数据源<span class="pool-tag">在线刷新 · 本机缓存</span></h3>'
+            + '<p class="panel-desc">头像默认使用内置静态数据；联网时可从 Project Amber / Yatta（原神）与 '
+            + 'StarRailRes（星穹铁道）刷新，结果缓存在本机，离线时继续使用内置或上次缓存。'
+            + '数据仅用于非商业个人记录。</p>'
+            + '<div class="panel-actions">'
+            + '<button class="btn btn-outline" id="catalog-refresh-genshin" type="button">刷新原神图鉴</button>'
+            + '<button class="btn btn-outline" id="catalog-refresh-starrail" type="button">刷新星铁图鉴</button>'
+            + '</div></section>'
+
+            + '<section class="panel">'
             + '<h3>用户名</h3>'
             + '<p class="panel-desc">用户名只用于页面顶部显示，与登录账号、密码分开管理，修改后不影响登录。</p>'
             + '<div class="profile-fields">'
@@ -3284,6 +3825,17 @@
             allFile.click();
         });
         allFile.addEventListener('change', onAllBackupFileSelected);
+
+        ['genshin', 'starrail'].forEach(function (game) {
+            var btn = $('#catalog-refresh-' + game);
+            if (btn) {
+                btn.addEventListener('click', function () {
+                    guard(function () {
+                        return refreshCatalog(game);
+                    });
+                });
+            }
+        });
 
         var profileSave = $('#profile-save');
         if (profileSave) {
@@ -4625,6 +5177,7 @@
     }
 
     function init() {
+        loadCatalogCache();
         applyGameUI();
         bindAuth();
         bindShell();

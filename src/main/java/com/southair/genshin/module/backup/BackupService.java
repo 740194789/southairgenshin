@@ -10,6 +10,7 @@ import com.southair.genshin.module.wish.WishService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.HashMap;
@@ -185,6 +186,8 @@ public class BackupService {
         target.setMora(clampLong(source.getMora(), 0L, MAX_PRIMOGEMS, 0L));
         target.setIntertwinedFates(clampLong(source.getIntertwinedFates(), 0L, MAX_FATES, 0L));
         target.setAcquaintedFates(clampLong(source.getAcquaintedFates(), 0L, MAX_FATES, 0L));
+        target.setDailyPrimogems(clampLong(source.getDailyPrimogems(), 0L, 999999L, 0L));
+        target.setLastAccrualDate(LocalDate.now().toString());
         resourceRepository.save(target);
     }
 

@@ -20,6 +20,12 @@ public class ResourceVO implements Serializable {
     private long intertwinedFates;
     private long acquaintedFates;
 
+    /** 每天自动累积的原石 / 星琼 */
+    private long dailyPrimogems;
+
+    /** 每日收入折算的抽数（向下取整） */
+    private long dailyPulls;
+
     /** 每抽消耗原石 / 星琼 */
     private int primogemsPerPull;
 
@@ -46,12 +52,14 @@ public class ResourceVO implements Serializable {
         vo.mora = nvl(entity.getMora());
         vo.intertwinedFates = nvl(entity.getIntertwinedFates());
         vo.acquaintedFates = nvl(entity.getAcquaintedFates());
+        vo.dailyPrimogems = nvl(entity.getDailyPrimogems());
         vo.primogemsPerPull = unit;
         vo.pullsFromPrimogems = vo.primogems / unit;
         vo.primogemsRemainder = vo.primogems % unit;
         vo.primogemsFromFates = vo.intertwinedFates * unit;
         vo.totalPulls = vo.pullsFromPrimogems + vo.intertwinedFates;
         vo.totalPrimogems = vo.primogems + vo.primogemsFromFates;
+        vo.dailyPulls = vo.dailyPrimogems / unit;
         return vo;
     }
 
@@ -145,5 +153,21 @@ public class ResourceVO implements Serializable {
 
     public void setTotalPrimogems(long totalPrimogems) {
         this.totalPrimogems = totalPrimogems;
+    }
+
+    public long getDailyPrimogems() {
+        return dailyPrimogems;
+    }
+
+    public void setDailyPrimogems(long dailyPrimogems) {
+        this.dailyPrimogems = dailyPrimogems;
+    }
+
+    public long getDailyPulls() {
+        return dailyPulls;
+    }
+
+    public void setDailyPulls(long dailyPulls) {
+        this.dailyPulls = dailyPulls;
     }
 }

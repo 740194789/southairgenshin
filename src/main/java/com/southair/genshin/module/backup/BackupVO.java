@@ -42,6 +42,28 @@ public class BackupVO implements Serializable {
 
     private List<WishRecord> wishes = new ArrayList<>();
 
+    /** SHA-256 校验值（对除 checksum 外的内容做规范化 JSON 后计算）；旧备份为空 */
+    private String checksum;
+
+    /** 校验值生成端：southair-web / southair-mini；为空视为旧备份 */
+    private String checksumApp;
+
+    public String getChecksum() {
+        return checksum;
+    }
+
+    public void setChecksum(String checksum) {
+        this.checksum = checksum;
+    }
+
+    public String getChecksumApp() {
+        return checksumApp;
+    }
+
+    public void setChecksumApp(String checksumApp) {
+        this.checksumApp = checksumApp;
+    }
+
     public String getApp() {
         return app;
     }

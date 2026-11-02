@@ -388,3 +388,26 @@
   line-height: 1.4;
 }
 
+
+/* 批量编辑本页 */
+.batch-edit-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 14rpx;
+}
+
+.batch-edit-index {
+  flex: 0 0 44rpx;
+  font-size: 22rpx;
+  color: #71778e;
+}
+
+.batch-edit-name {
+  flex: 1;
+  margin-right: 12rpx;
+}
+
+.batch-edit-pity {
+  flex: 0 0 120rpx;
+  margin-right: 12rpx;
+}

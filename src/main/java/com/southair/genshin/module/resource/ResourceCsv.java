@@ -9,12 +9,14 @@ import java.util.List;
 /**
  * 账号资源的 CSV 读写（带 BOM，便于 Excel 直接打开）。
  *
- * <p>列：原石/星琼, 摩拉/信用点, 纠缠之缘/星轨专票, 相遇之缘/星轨通票。空值表示保持原值。</p>
+ * <p>列：原石/星琼, 摩拉/信用点, 纠缠之缘/星轨专票, 相遇之缘/星轨通票, 每日原石/星琼。空值表示保持原值。</p>
  */
 public final class ResourceCsv {
 
     private static final String BOM = "\uFEFF";
-    private static final String[] HEADERS = {"原石/星琼", "摩拉/信用点", "纠缠之缘/星轨专票", "相遇之缘/星轨通票"};
+    private static final String[] HEADERS = {
+            "原石/星琼", "摩拉/信用点", "纠缠之缘/星轨专票", "相遇之缘/星轨通票", "每日原石/星琼"
+    };
 
     private ResourceCsv() {
     }
@@ -32,7 +34,8 @@ public final class ResourceCsv {
                 value(resource == null ? null : resource.getPrimogems()),
                 value(resource == null ? null : resource.getMora()),
                 value(resource == null ? null : resource.getIntertwinedFates()),
-                value(resource == null ? null : resource.getAcquaintedFates())
+                value(resource == null ? null : resource.getAcquaintedFates()),
+                value(resource == null ? null : resource.getDailyPrimogems())
         })).append("\r\n");
         return sb.toString();
     }
@@ -62,9 +65,12 @@ public final class ResourceCsv {
         int mora = -1;
         int intertwined = -1;
         int acquainted = -1;
+        int daily = -1;
         for (int i = 0; i < header.size(); i++) {
             String name = normalize(header.get(i));
-            if (primogems < 0 && matches(name, "原石", "星琼", "primogems")) {
+            if (daily < 0 && matches(name, "每日", "daily")) {
+                daily = i;
+            } else if (primogems < 0 && matches(name, "原石", "星琼", "primogems")) {
                 primogems = i;
             } else if (mora < 0 && matches(name, "摩拉", "信用点", "mora")) {
                 mora = i;
@@ -83,6 +89,7 @@ public final class ResourceCsv {
         request.setMora(number(row, mora));
         request.setIntertwinedFates(number(row, intertwined));
         request.setAcquaintedFates(number(row, acquainted));
+        request.setDailyPrimogems(number(row, daily));
         return request;
     }
 
@@ -92,7 +99,8 @@ public final class ResourceCsv {
                 + "  \"primogems\": null,\n"
                 + "  \"mora\": null,\n"
                 + "  \"intertwinedFates\": null,\n"
-                + "  \"acquaintedFates\": null\n"
+                + "  \"acquaintedFates\": null,\n"
+                + "  \"dailyPrimogems\": null\n"
                 + "}\n";
     }
 
