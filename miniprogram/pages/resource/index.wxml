@@ -13,7 +13,6 @@
       <view class="section-sub">{{g.fullName}} · 资源与抽数换算</view>
     </view>
     <view class="head-actions">
-      <view class="btn btn-outline btn-sm" bindtap="toggleConvert">{{showConvert ? '收起换算' : '抽数换算'}}</view>
       <view class="btn btn-outline btn-sm" bindtap="openEdit">编辑资源</view>
     </view>
   </view>
@@ -41,19 +40,37 @@
     </view>
   </view>
 
-  <view class="panel" wx:if="{{game === 'genshin'}}">
+  <view class="resource-tools">
+    <view wx:if="{{game === 'genshin'}}" class="tool-btn {{showStock ? 'active' : ''}}" bindtap="toggleStock">经验素材</view>
+    <view wx:if="{{game === 'genshin'}}" class="tool-btn {{showExp ? 'active' : ''}}" bindtap="toggleExp">养成经验</view>
+    <view class="tool-btn {{showConvert ? 'active' : ''}}" bindtap="toggleConvert">抽数换算</view>
+  </view>
+
+  <view class="panel" wx:if="{{game === 'genshin' && showStock}}">
+    <view class="panel-title">经验素材</view>
+    <view class="panel-desc">当前持有数量，在「编辑资源」里修改。</view>
+    <view class="stock-grid">
+      <view class="stock-item" wx:for="{{stockItems}}" wx:key="label">
+        <view class="stock-label">{{item.label}}</view>
+        <view class="stock-value">{{item.valueText}}</view>
+        <view class="stock-note">{{item.note}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="panel" wx:if="{{game === 'genshin' && showExp}}">
     <view class="panel-title">养成经验</view>
-    <view class="panel-desc">按持有经验素材推算可练到的等级，数量在「编辑资源」里修改。</view>
+    <view class="panel-desc">按持有经验素材推算可练到的等级，数量在「经验素材」里查看。</view>
 
     <view class="exp-card">
       <view class="exp-card-title">角色经验书</view>
-      <view class="exp-count">大英雄的经验 {{exp.heroWitText}} 本 · 冒险家的经验 {{exp.adventurerExpText}} 本 · 流浪者的经验 {{exp.wandererAdviceText}} 本</view>
       <view class="exp-total">合计经验 {{exp.charTotalText}}</view>
       <view class="form-row">
         <text class="form-label">角色</text>
-        <picker class="form-control" range="{{charOptions}}" value="{{charIndex}}" bindchange="onCharName">
-          <view class="picker-box">{{charOptions[charIndex]}}</view>
-        </picker>
+        <view class="exp-char-pick" bindtap="onOpenPicker">
+          <text>{{selectedChar || '选择角色'}}</text>
+          <text class="exp-char-arrow">›</text>
+        </view>
       </view>
       <view class="form-row">
         <text class="form-label">角色当前等级</text>
@@ -75,19 +92,8 @@
 
     <view class="exp-card">
       <view class="exp-card-title">圣遗物经验</view>
-      <view class="exp-count">祝圣油膏 {{exp.unctionText}} 个 · 祝圣精华 {{exp.essenceText}} 个</view>
       <view class="exp-total">合计经验 {{exp.artTotalText}}</view>
-      <view class="form-row">
-        <text class="form-label">星级</text>
-        <picker class="form-control" range="{{artRarityOptions}}" value="{{artRarityIndex}}" bindchange="onArtRarity">
-          <view class="picker-box">{{artRarityOptions[artRarityIndex]}}</view>
-        </picker>
-      </view>
-      <view class="form-row">
-        <text class="form-label">圣遗物当前等级</text>
-        <input class="form-input" type="number" value="{{artLevel}}" bindinput="onArtLevel" placeholder="0"/>
-      </view>
-      <view class="exp-result">可升到 <text class="exp-strong">+{{exp.artLevel}}</text> · 消耗 {{exp.artSpentText}} · 剩余 {{exp.artRestText}}</view>
+      <view class="exp-result">可升满 <text class="exp-strong">{{exp.artCount}}</text> 个五星圣遗物（+0 → +20） · 剩余 {{exp.artRestText}} 经验</view>
       <view class="exp-note">{{exp.artNote}}</view>
     </view>
 
@@ -139,6 +145,9 @@
     <view class="foot-tip">3. 离线版暂不支持截图识别，可直接手动录入，或在「抽卡」页用「链接导入」读取米游社抽卡记录。</view>
   </view>
 </view>
+
+<name-picker visible="{{pickerVisible}}" game="{{game}}" current="{{selectedChar}}" names="{{charNames}}"
+  showTabs="{{false}}" excludeProtagonist="{{true}}" bind:select="onPickChar" bind:close="onClosePicker"/>
 
 <view wx:if="{{editing}}" class="mask" bindtap="closeEdit">
   <view class="modal" catchtap="noop">

@@ -3,7 +3,9 @@ var store = require('../../utils/store');
 var gameLib = require('../../utils/game');
 var avatars = require('../../utils/avatars');
 
-var CHAR_NAMES = Object.keys(avatars.genshin || {}).sort(function (a, b) {
+var CHAR_NAMES = Object.keys(avatars.genshin || {}).filter(function (name) {
+  return name !== '旅行者';
+}).sort(function (a, b) {
   return a.localeCompare(b, 'zh-Hans-CN');
 });
 
@@ -20,18 +22,8 @@ var CHARACTER_EXP = [
   216225, 243025, 273100, 306800, 344600, 386950, 434425, 487625, 547200
 ];
 
-/* 圣遗物各星级每级所需经验（下标 = 当前等级） */
-var ARTIFACT_EXP = {
-  '5': [3000, 3725, 4425, 5150, 5900, 6675, 7500, 8350, 9225, 10125,
-    11050, 12025, 13025, 15150, 17600, 20375, 23500, 27050, 31050, 35575],
-  '4': [2400, 2975, 3550, 4125, 4725, 5350, 6000, 6675, 7375, 8100,
-    8850, 9625, 10425, 12125, 14075, 16300],
-  '3': [1800, 2225, 2650, 3100, 3550, 4000, 4500, 5000, 5525, 6075, 6625, 7225]
-};
-
-var ARTIFACT_RARITY = ['5', '4', '3'];
-var ARTIFACT_LABEL = ['五星（上限 +20）', '四星（上限 +16）', '三星（上限 +12）'];
-var ARTIFACT_MAX = { '5': 20, '4': 16, '3': 12 };
+/* 五星圣遗物 +0 强化到 +20 所需经验 */
+var FIVE_STAR_ARTIFACT_EXP = 270475;
 var CHAR_ITEM_EXP = { heroWit: 20000, adventurerExp: 5000, wandererAdvice: 1000 };
 var ART_ITEM_EXP = { sanctifyingUnction: 2500, sanctifyingEssence: 10000 };
 
@@ -66,13 +58,14 @@ Page({
     editing: false,
     showConvert: false,
     exp: {},
-    charOptions: ['未选择（按序号）'].concat(CHAR_NAMES),
-    charIndex: 0,
+    charNames: CHAR_NAMES,
+    selectedChar: '',
+    pickerVisible: false,
     charPlanView: [],
+    showStock: false,
+    showExp: false,
+    stockItems: [],
     expCharLevel: 1,
-    artRarityIndex: 0,
-    artRarityOptions: ARTIFACT_LABEL,
-    artLevel: 0,
     form: {
       primogems: '',
       mora: '',
@@ -113,7 +106,14 @@ Page({
     this.setData({
       game: game,
       g: gameLib.config(game),
-      res: res
+      res: res,
+      stockItems: [
+        { label: '大英雄的经验', valueText: store.fmt(res.heroWit), note: '20,000 经验 / 本' },
+        { label: '冒险家的经验', valueText: store.fmt(res.adventurerExp), note: '5,000 经验 / 本' },
+        { label: '流浪者的经验', valueText: store.fmt(res.wandererAdvice), note: '1,000 经验 / 本' },
+        { label: '祝圣油膏', valueText: store.fmt(res.sanctifyingUnction), note: '2,500 经验 / 个' },
+        { label: '祝圣精华', valueText: store.fmt(res.sanctifyingEssence), note: '10,000 经验 / 个' }
+      ]
     });
     this.applyExp();
   },
@@ -148,20 +148,12 @@ Page({
 
     var charResult = climbExp(remaining, CHARACTER_EXP, 90,
       Math.max(1, toInt(this.data.expCharLevel)));
-    var rarity = ARTIFACT_RARITY[this.data.artRarityIndex];
-    var maxLevel = ARTIFACT_MAX[rarity];
-    var level = Math.max(0, Math.min(maxLevel, toInt(this.data.artLevel)));
-    var artResult = climbExp(artTotal, ARTIFACT_EXP[rarity], maxLevel, level);
+    var artCount = Math.floor(artTotal / FIVE_STAR_ARTIFACT_EXP);
+    var artRest = artTotal % FIVE_STAR_ARTIFACT_EXP;
 
     this.setData({
-      artLevel: level,
       charPlanView: planView,
       exp: {
-        heroWitText: store.fmt(res.heroWit),
-        adventurerExpText: store.fmt(res.adventurerExp),
-        wandererAdviceText: store.fmt(res.wandererAdvice),
-        unctionText: store.fmt(res.sanctifyingUnction),
-        essenceText: store.fmt(res.sanctifyingEssence),
         charTotalText: store.fmt(charTotal),
         artTotalText: store.fmt(artTotal),
         charLevel: charResult.level,
@@ -171,11 +163,11 @@ Page({
           ? '已满级' : '距 90 级还差 ' + store.fmt(charResult.gap),
         planSpentText: store.fmt(planSpent),
         planRestText: store.fmt(remaining),
-        artLevel: artResult.level,
-        artSpentText: store.fmt(artResult.spent),
-        artRestText: store.fmt(artResult.rest),
-        artNote: artResult.level >= maxLevel
-          ? '已满级' : '距 +' + maxLevel + ' 还差 ' + store.fmt(artResult.gap)
+        artCount: store.fmt(artCount),
+        artRestText: store.fmt(artRest),
+        artNote: artRest > 0
+          ? '距下一个还差 ' + store.fmt(FIVE_STAR_ARTIFACT_EXP - artRest) + ' 经验'
+          : '刚好凑整'
       }
     });
   },
@@ -184,23 +176,41 @@ Page({
     this.setData({ showConvert: !this.data.showConvert });
   },
 
+  toggleStock: function () {
+    this.setData({ showStock: !this.data.showStock });
+  },
+
+  toggleExp: function () {
+    this.setData({ showExp: !this.data.showExp });
+  },
+
+  onOpenPicker: function () {
+    this.setData({ pickerVisible: true });
+  },
+
+  onClosePicker: function () {
+    this.setData({ pickerVisible: false });
+  },
+
+  onPickChar: function (event) {
+    this.setData({
+      selectedChar: event.detail.name || '',
+      pickerVisible: false
+    });
+  },
+
   onCharLevel: function (event) {
     this.setData({ expCharLevel: event.detail.value });
     this.applyExp();
   },
 
-  onCharName: function (event) {
-    this.setData({ charIndex: Number(event.detail.value) || 0 });
-  },
-
   onAddChar: function () {
     this._charPlan = this._charPlan || [];
-    var index = this.data.charIndex;
     this._charPlan.push({
-      name: index > 0 ? this.data.charOptions[index] : '',
+      name: this.data.selectedChar,
       fromLevel: Math.max(1, toInt(this.data.expCharLevel))
     });
-    this.setData({ charIndex: 0, expCharLevel: 1 });
+    this.setData({ selectedChar: '', expCharLevel: 1 });
     this.applyExp();
   },
 
@@ -209,16 +219,6 @@ Page({
     if (this._charPlan && index >= 0) {
       this._charPlan.splice(index, 1);
     }
-    this.applyExp();
-  },
-
-  onArtLevel: function (event) {
-    this.setData({ artLevel: event.detail.value });
-    this.applyExp();
-  },
-
-  onArtRarity: function (event) {
-    this.setData({ artRarityIndex: Number(event.detail.value) || 0 });
     this.applyExp();
   },
 

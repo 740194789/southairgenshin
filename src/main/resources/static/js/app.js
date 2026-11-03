@@ -219,16 +219,8 @@
         216225, 243025, 273100, 306800, 344600, 386950, 434425, 487625, 547200
     ];
 
-    /* 圣遗物各星级每级所需经验（下标 = 当前等级） */
-    var ARTIFACT_EXP = {
-        5: [3000, 3725, 4425, 5150, 5900, 6675, 7500, 8350, 9225, 10125,
-            11050, 12025, 13025, 15150, 17600, 20375, 23500, 27050, 31050, 35575],
-        4: [2400, 2975, 3550, 4125, 4725, 5350, 6000, 6675, 7375, 8100,
-            8850, 9625, 10425, 12125, 14075, 16300],
-        3: [1800, 2225, 2650, 3100, 3550, 4000, 4500, 5000, 5525, 6075, 6625, 7225]
-    };
-
-    var ARTIFACT_MAX_LEVEL = { 5: 20, 4: 16, 3: 12 };
+    /* 五星圣遗物 +0 强化到 +20 所需经验 */
+    var FIVE_STAR_ARTIFACT_EXP = 270475;
     var CHAR_ITEM_EXP = { heroWit: 20000, adventurerExp: 5000, wandererAdvice: 1000 };
     var ART_ITEM_EXP = { sanctifyingUnction: 2500, sanctifyingEssence: 10000 };
 
@@ -1454,23 +1446,17 @@
         }
         var charTotal = expBookTotal(resource);
         var artTotal = artifactItemTotal(resource);
-        var charNames = nameLists('genshin').characters;
-        var charOptions = '<option value="">未选择（按序号）</option>'
-            + charNames.map(function (name) {
-                return '<option value="' + esc(name) + '">' + esc(name) + '</option>';
-            }).join('');
-        return '<section class="panel exp-panel">'
+        return '<section class="panel exp-panel hidden" id="exp-panel">'
             + '<div class="ledger-head"><h3>养成经验</h3>'
             + '<span>经验书 / 圣遗物经验可练到多少级</span></div>'
             + '<div class="exp-grid">'
             + '<div class="exp-card">'
             + '<h4>角色经验书</h4>'
-            + '<p class="exp-counts">大英雄的经验 <strong>' + fmt(resource.heroWit || 0) + '</strong> 本 · 冒险家的经验 <strong>'
-            + fmt(resource.adventurerExp || 0) + '</strong> 本 · 流浪者的经验 <strong>'
-            + fmt(resource.wandererAdvice || 0) + '</strong> 本</p>'
-            + '<p class="exp-total">合计经验 <strong>' + fmt(charTotal) + '</strong></p>'
+            + '<p class="exp-total">合计经验 <strong>' + fmt(charTotal) + '</strong>'
+            + '<span class="exp-hint">（持有数量在「经验素材」里查看）</span></p>'
             + '<div class="exp-controls exp-add">'
-            + '<label>角色 <select id="exp-char-name">' + charOptions + '</select></label>'
+            + '<label>角色 <button class="btn btn-outline btn-sm exp-pick" id="exp-char-pick" type="button">'
+            + '<span id="exp-char-name-label">选择角色</span></button></label>'
             + '<label>当前等级 '
             + '<input id="exp-char-level" type="number" min="1" max="90" step="1" value="1"></label>'
             + '<button class="btn btn-outline btn-sm" id="exp-char-add" type="button">保留结果</button>'
@@ -1481,23 +1467,35 @@
             + '</div>'
             + '<div class="exp-card">'
             + '<h4>圣遗物经验</h4>'
-            + '<p class="exp-counts">祝圣油膏 <strong>' + fmt(resource.sanctifyingUnction || 0) + '</strong> 个 · 祝圣精华 <strong>'
-            + fmt(resource.sanctifyingEssence || 0) + '</strong> 个</p>'
-            + '<p class="exp-total">合计经验 <strong>' + fmt(artTotal) + '</strong></p>'
-            + '<div class="exp-controls">'
-            + '<label>星级 <select id="exp-art-rarity">'
-            + '<option value="5">五星（+20）</option>'
-            + '<option value="4">四星（+16）</option>'
-            + '<option value="3">三星（+12）</option>'
-            + '</select></label>'
-            + '<label>当前等级 '
-            + '<input id="exp-art-level" type="number" min="0" max="20" step="1" value="0"></label>'
-            + '</div>'
+            + '<p class="exp-total">合计经验 <strong>' + fmt(artTotal) + '</strong>'
+            + '<span class="exp-hint">（每个五星圣遗物 +0 → +20 需 270,475）</span></p>'
             + '<div class="exp-result" id="exp-art-result"></div>'
             + '</div>'
             + '</div>'
-            + '<p class="ledger-foot">经验书 20,000 / 5,000 / 1,000；祝圣油膏 2,500、祝圣精华 10,000。持有数量在「编辑资源」里修改。</p>'
+            + '<p class="ledger-foot">经验书 20,000 / 5,000 / 1,000；祝圣油膏 2,500、祝圣精华 10,000。</p>'
             + '</section>';
+    }
+
+    function resourceStockHtml(resource) {
+        if (state.game !== 'genshin') {
+            return '';
+        }
+        var items = [
+            { label: '大英雄的经验', value: resource.heroWit || 0, note: '20,000 经验 / 本' },
+            { label: '冒险家的经验', value: resource.adventurerExp || 0, note: '5,000 经验 / 本' },
+            { label: '流浪者的经验', value: resource.wandererAdvice || 0, note: '1,000 经验 / 本' },
+            { label: '祝圣油膏', value: resource.sanctifyingUnction || 0, note: '2,500 经验 / 个' },
+            { label: '祝圣精华', value: resource.sanctifyingEssence || 0, note: '10,000 经验 / 个' }
+        ];
+        return '<section class="panel exp-stock hidden" id="exp-stock">'
+            + '<div class="ledger-head"><h3>经验素材</h3><span>当前持有数量 · 在「编辑资源」里修改</span></div>'
+            + '<div class="exp-stock-grid">'
+            + items.map(function (item) {
+                return '<div class="exp-stock-item"><span class="exp-stock-label">' + item.label + '</span>'
+                    + '<strong>' + fmt(item.value) + '</strong>'
+                    + '<span class="exp-stock-note">' + item.note + '</span></div>';
+            }).join('')
+            + '</div></section>';
     }
 
     function bindResourceExp(resource) {
@@ -1507,18 +1505,18 @@
         var charTotal = expBookTotal(resource);
         var artTotal = artifactItemTotal(resource);
         var charInput = $('#exp-char-level');
-        var charName = $('#exp-char-name');
+        var charPick = $('#exp-char-pick');
+        var charLabel = $('#exp-char-name-label');
         var charAdd = $('#exp-char-add');
         var charRowsEl = $('#exp-char-rows');
         var charSum = $('#exp-char-sum');
-        var artLevel = $('#exp-art-level');
-        var artRarity = $('#exp-art-rarity');
         var charOut = $('#exp-char-result');
         var artOut = $('#exp-art-result');
-        if (!charInput || !charRowsEl || !artLevel || !artRarity || !charOut || !artOut) {
+        if (!charInput || !charRowsEl || !charOut || !artOut) {
             return;
         }
         var charRows = [];
+        var selectedChar = '';
 
         function renderChar() {
             var remaining = charTotal;
@@ -1551,16 +1549,29 @@
         }
 
         function addChar() {
-            var name = charName ? charName.value : '';
             charRows.push({
-                name: name,
+                name: selectedChar,
                 level: Math.max(1, Math.min(90, toInt(charInput.value)))
             });
-            if (charName) {
-                charName.value = '';
+            selectedChar = '';
+            if (charLabel) {
+                charLabel.textContent = '选择角色';
             }
             charInput.value = '1';
             renderChar();
+        }
+
+        if (charPick && charLabel) {
+            charPick.addEventListener('click', function () {
+                openNamePicker(selectedChar, function (name) {
+                    selectedChar = name;
+                    charLabel.textContent = name;
+                }, {
+                    names: nameLists('genshin').characters,
+                    label: '角色',
+                    title: '选择角色'
+                });
+            });
         }
 
         if (charAdd && charRowsEl) {
@@ -1576,20 +1587,14 @@
         }
 
         function renderArt() {
-            var rarity = artRarity.value;
-            var max = ARTIFACT_MAX_LEVEL[rarity];
-            artLevel.max = String(max);
-            var level = Math.max(0, Math.min(max, toInt(artLevel.value)));
-            artLevel.value = String(level);
-            var result = climbExp(artTotal, ARTIFACT_EXP[rarity], max, level);
-            artOut.innerHTML = '可升到 <strong>+' + result.level + '</strong>'
-                + ' · 消耗 ' + fmt(result.spent) + ' · 剩余 ' + fmt(result.rest)
-                + (result.level >= max ? ' · 已满级' : ' · 距 +' + max + ' 还差 ' + fmt(result.gap));
+            var count = Math.floor(artTotal / FIVE_STAR_ARTIFACT_EXP);
+            var rest = artTotal % FIVE_STAR_ARTIFACT_EXP;
+            artOut.innerHTML = '可升满 <strong>' + fmt(count) + '</strong> 个五星圣遗物（+0 → +20）'
+                + ' · 剩余 ' + fmt(rest) + ' 经验'
+                + (rest > 0 ? '（距下一个还差 ' + fmt(FIVE_STAR_ARTIFACT_EXP - rest) + '）' : '');
         }
 
         charInput.addEventListener('input', renderChar);
-        artLevel.addEventListener('input', renderArt);
-        artRarity.addEventListener('change', renderArt);
         renderChar();
         renderArt();
     }
@@ -1646,7 +1651,6 @@
                 + '</div>'
                 + '<div class="fortune-actions">'
                 + '<button class="btn btn-outline" id="resource-edit" type="button">编辑资源</button>'
-                + '<button class="btn btn-text" id="resource-convert" type="button">抽数换算</button>'
                 + '</div>'
                 + '</aside>'
                 + '</section>'
@@ -1658,6 +1662,13 @@
                 + resourceTile('◇', g.fateStandard, standard, '常驻池 · 不计入合计')
                 + '</div>'
 
+                + '<div class="resource-tools">'
+                + '<button class="btn btn-text" id="resource-stock" type="button" aria-expanded="false">经验素材</button>'
+                + '<button class="btn btn-text" id="resource-exp" type="button" aria-expanded="false">养成经验</button>'
+                + '<button class="btn btn-text" id="resource-convert" type="button" aria-expanded="false">抽数换算</button>'
+                + '</div>'
+
+                + resourceStockHtml(resource)
                 + resourceExpHtml(resource)
 
                 + '<section class="ledger hidden" id="resource-ledger">'
@@ -1685,15 +1696,23 @@
                 });
             }
 
-            var convertBtn = $('#resource-convert');
-            var ledger = $('#resource-ledger');
-            if (convertBtn && ledger) {
-                convertBtn.addEventListener('click', function () {
-                    var show = ledger.classList.contains('hidden');
-                    ledger.classList.toggle('hidden', !show);
-                    convertBtn.textContent = show ? '收起换算' : '抽数换算';
+            function bindToggle(buttonId, panelId) {
+                var button = $(buttonId);
+                var panel = $(panelId);
+                if (!button || !panel) {
+                    return;
+                }
+                button.addEventListener('click', function () {
+                    var show = panel.classList.contains('hidden');
+                    panel.classList.toggle('hidden', !show);
+                    button.classList.toggle('active', show);
+                    button.setAttribute('aria-expanded', show ? 'true' : 'false');
                 });
             }
+
+            bindToggle('#resource-stock', '#exp-stock');
+            bindToggle('#resource-exp', '#exp-panel');
+            bindToggle('#resource-convert', '#resource-ledger');
 
             bindResourceExp(resource);
         }).catch(function (err) {
