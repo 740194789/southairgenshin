@@ -339,59 +339,6 @@ public class WishService {
     }
 
     /**
-     * 数据体检：统计重复记录（UID + 名称 + 卡池 + 时间相同），并可按组只保留一条。
-     */
-    @Transactional(readOnly = true)
-    public Map<String, Object> health(Long userId, String game) {
-        String gameKey = GameType.normalize(game);
-        List<WishRecord> records = repository.findByUserIdAndGameOrderByWishTimeAsc(userId, gameKey);
-        Map<String, List<WishRecord>> grouped = new LinkedHashMap<>();
-        for (WishRecord record : records) {
-            grouped.computeIfAbsent(recordKey(record.getUid(), record.getItemName(), record.getPool(),
-                    record.getWishTime()), key -> new ArrayList<>()).add(record);
-        }
-        int duplicateGroups = 0;
-        int duplicateExtra = 0;
-        for (List<WishRecord> group : grouped.values()) {
-            if (group.size() > 1) {
-                duplicateGroups++;
-                duplicateExtra += group.size() - 1;
-            }
-        }
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("total", records.size());
-        result.put("duplicateGroups", duplicateGroups);
-        result.put("duplicateExtra", duplicateExtra);
-        result.put("uids", uids(userId, gameKey));
-        return result;
-    }
-
-    /** 一键去重：每组重复记录保留 id 最小的一条。 */
-    @Transactional
-    public int dedupe(Long userId, String game) {
-        String gameKey = GameType.normalize(game);
-        List<WishRecord> records = repository.findByUserIdAndGameOrderByWishTimeAsc(userId, gameKey);
-        Map<String, List<WishRecord>> grouped = new LinkedHashMap<>();
-        for (WishRecord record : records) {
-            grouped.computeIfAbsent(recordKey(record.getUid(), record.getItemName(), record.getPool(),
-                    record.getWishTime()), key -> new ArrayList<>()).add(record);
-        }
-        int removed = 0;
-        for (List<WishRecord> group : grouped.values()) {
-            if (group.size() <= 1) {
-                continue;
-            }
-            group.sort(Comparator.comparing(WishRecord::getId));
-            for (int i = 1; i < group.size(); i++) {
-                writeTombstone(userId, group.get(i));
-                repository.delete(group.get(i));
-                removed++;
-            }
-        }
-        return removed;
-    }
-
-    /**
      * 记录规则：三星物品不再记录；四星只记录角色；五星记录角色与武器 / 光锥。
      */
     public static boolean isRecordable(Integer rarity, String itemType) {

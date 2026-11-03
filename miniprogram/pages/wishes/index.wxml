@@ -32,7 +32,6 @@
       <view class="pool-picker-box">{{endDate || '结束日期'}} ▾</view>
     </picker>
     <view class="filter-toggle" bindtap="resetFilters">重置筛选</view>
-    <view class="filter-toggle" bindtap="runHealth">数据体检</view>
   </view>
 
   <view class="btn-row">
@@ -191,5 +190,6 @@
 </view>
 
 <name-picker visible="{{pickerVisible}}" game="{{game}}" current="{{editor.itemName}}"
+             names="{{editorId ? [] : fiveStarNames}}" showTabs="{{editorId ? true : false}}"
              exclude-protagonist="{{true}}"
              bind:select="onEditorName" bind:close="closeNamePicker" />

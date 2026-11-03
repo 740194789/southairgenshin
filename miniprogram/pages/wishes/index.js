@@ -37,6 +37,17 @@ function allNames(game) {
   return { characters: characters, weapons: weapons };
 }
 
+/** 录入五星时的候选：五星角色 + 五星武器 / 光锥（排除四星角色与主角） */
+function fiveStarNames(game) {
+  var four = gameLib.FOUR_STAR_CHARACTERS[game] || [];
+  var protagonist = gameLib.config(game).itemTypes[0] === '角色' ? '旅行者' : '开拓者';
+  var characters = sortNames(Object.keys(avatars[game] || {})).filter(function (name) {
+    return name !== protagonist && four.indexOf(name) < 0;
+  });
+  var weapons = sortNames(Object.keys(weaponIcons[game] || {}));
+  return characters.concat(weapons);
+}
+
 function inferItemType(game, name) {
   var lists = allNames(game);
   if (lists.characters.indexOf(name) >= 0) {
@@ -151,6 +162,7 @@ Page({
     allChecked: false,
     onlyFive: false,
     pickerVisible: false,
+    fiveStarNames: [],
     batchVisible: false,
     batchRows: [],
     editorVisible: false,
@@ -304,35 +316,6 @@ Page({
     this.load();
   },
 
-  /** 数据体检：检查重复，确认后保留每组最早一条。 */
-  runHealth: function () {
-    var that = this;
-    var health = store.health(this.data.game);
-    if (!health.duplicateExtra) {
-      wx.showModal({
-        title: '数据体检',
-        content: '共 ' + health.total + ' 条记录，没有发现重复。',
-        showCancel: false
-      });
-      return;
-    }
-    wx.showModal({
-      title: '发现重复记录',
-      content: '共 ' + health.total + ' 条，发现 ' + health.duplicateGroups + ' 组重复（多出 '
-        + health.duplicateExtra + ' 条）。保留每组最早录入的一条并删除其余记录？',
-      confirmColor: '#ff6b6b',
-      success: function (res) {
-        if (!res.confirm) {
-          return;
-        }
-        var result = store.dedupe(that.data.game);
-        that.setData({ page: 1, selected: [], selectedCount: 0, allChecked: false });
-        that.load();
-        wx.showToast({ title: '已去除 ' + result.removed + ' 条', icon: 'none' });
-      }
-    });
-  },
-
   prevPage: function () {
     if (this.data.page <= 1) {
       return;
@@ -469,6 +452,7 @@ Page({
     this.setData({
       editorVisible: true,
       editorId: null,
+      fiveStarNames: fiveStarNames(this.data.game),
       editor: editorDefaults(poolIndex)
     });
   },

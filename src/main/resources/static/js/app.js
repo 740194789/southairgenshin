@@ -221,29 +221,50 @@
 
     /* 五星圣遗物 +0 强化到 +20 所需经验 */
     var FIVE_STAR_ARTIFACT_EXP = 270475;
+
+    /* 角色可选等级：90 级后为 95 / 100（需无主的命星，不再消耗经验） */
+    var CHAR_LEVELS = (function () {
+        var list = [];
+        for (var lv = 1; lv <= 90; lv += 1) {
+            list.push(lv);
+        }
+        list.push(95, 100);
+        return list;
+    })();
+
+    function charLevelOptionsHtml(fromLevel, selected) {
+        return CHAR_LEVELS.filter(function (lv) {
+            return fromLevel === null || lv > fromLevel;
+        }).map(function (lv) {
+            return '<option value="' + lv + '"' + (lv === selected ? ' selected' : '') + '>'
+                + lv + '</option>';
+        }).join('');
+    }
+
+    /** 当前等级 → 目标等级：经验书经验 + 无主的命星数量 */
+    function levelPlan(fromLevel, toLevel) {
+        var start = Math.max(1, Math.min(100, toInt(fromLevel)));
+        var end = Math.max(start, Math.min(100, toInt(toLevel)));
+        var exp = 0;
+        for (var lv = start; lv < Math.min(end, 90); lv += 1) {
+            exp += CHARACTER_EXP[lv - 1];
+        }
+        var stars = 0;
+        if (end > 90) {
+            if (start >= 95) {
+                stars = end >= 100 ? 2 : 0;
+            } else {
+                stars = end >= 100 ? 3 : 1;
+            }
+        }
+        return { from: start, to: end, exp: exp, stars: stars };
+    }
     var CHAR_ITEM_EXP = { heroWit: 20000, adventurerExp: 5000, wandererAdvice: 1000 };
     var ART_ITEM_EXP = { sanctifyingUnction: 2500, sanctifyingEssence: 10000 };
 
     function toInt(value) {
         var number = parseInt(value, 10);
         return isNaN(number) ? 0 : number;
-    }
-
-    /** 从当前等级逐级扣减经验，返回可达等级 / 消耗 / 剩余 / 距满级还差 */
-    function climbExp(total, table, maxLevel, startLevel) {
-        var level = Math.max(0, Math.min(maxLevel, toInt(startLevel)));
-        var rest = Math.max(0, toInt(total));
-        var spent = 0;
-        while (level < maxLevel && rest >= table[level]) {
-            rest -= table[level];
-            spent += table[level];
-            level += 1;
-        }
-        var gap = 0;
-        for (var i = level; i < maxLevel; i += 1) {
-            gap += table[i];
-        }
-        return { level: level, spent: spent, rest: rest, gap: gap };
     }
 
     function expBookTotal(resource) {
@@ -582,10 +603,13 @@
     }
 
     function avatarHtml(item) {
-        if (!item || item.itemType !== '角色') {
+        if (!item) {
             return '';
         }
-        var map = (window.SG_AVATARS || {})[state.game];
+        var isCharacter = item.itemType === '角色';
+        var map = isCharacter
+            ? (window.SG_AVATARS || {})[state.game]
+            : (window.SG_WEAPON_ICONS || {})[state.game];
         var url = map ? map[item.itemName] : '';
         if (!url) {
             return '';
@@ -1457,10 +1481,11 @@
             + '<div class="exp-controls exp-add">'
             + '<label>角色 <button class="btn btn-outline btn-sm exp-pick" id="exp-char-pick" type="button">'
             + '<span id="exp-char-name-label">选择角色</span></button></label>'
-            + '<label>当前等级 '
-            + '<input id="exp-char-level" type="number" min="1" max="90" step="1" value="1"></label>'
+            + '<label>当前等级 <select id="exp-char-from">' + charLevelOptionsHtml(null, 1) + '</select></label>'
+            + '<label>目标等级 <select id="exp-char-to">' + charLevelOptionsHtml(1, 2) + '</select></label>'
             + '<button class="btn btn-outline btn-sm" id="exp-char-add" type="button">保留结果</button>'
             + '</div>'
+            + '<p class="exp-hint-line">90 级后需「无主的命星」：90 → 95 用 1 枚，90 → 100 共 3 枚；95 → 100 用 2 枚，不再消耗经验书。</p>'
             + '<div class="exp-result" id="exp-char-result"></div>'
             + '<div class="exp-rows" id="exp-char-rows"></div>'
             + '<div class="exp-result exp-sum" id="exp-char-sum"></div>'
@@ -1504,7 +1529,8 @@
         }
         var charTotal = expBookTotal(resource);
         var artTotal = artifactItemTotal(resource);
-        var charInput = $('#exp-char-level');
+        var charFrom = $('#exp-char-from');
+        var charTo = $('#exp-char-to');
         var charPick = $('#exp-char-pick');
         var charLabel = $('#exp-char-name-label');
         var charAdd = $('#exp-char-add');
@@ -1512,52 +1538,76 @@
         var charSum = $('#exp-char-sum');
         var charOut = $('#exp-char-result');
         var artOut = $('#exp-art-result');
-        if (!charInput || !charRowsEl || !charOut || !artOut) {
+        if (!charFrom || !charTo || !charRowsEl || !charOut || !artOut) {
             return;
         }
         var charRows = [];
         var selectedChar = '';
 
+        function syncToOptions() {
+            var from = toInt(charFrom.value);
+            var previous = toInt(charTo.value);
+            var levels = CHAR_LEVELS.filter(function (lv) {
+                return lv > from;
+            });
+            var keep = levels.indexOf(previous) >= 0 ? previous : (levels[0] || '');
+            charTo.innerHTML = levels.map(function (lv) {
+                return '<option value="' + lv + '"' + (lv === keep ? ' selected' : '') + '>'
+                    + lv + '</option>';
+            }).join('');
+        }
+
         function renderChar() {
-            var remaining = charTotal;
-            var spent = 0;
+            var needed = 0;
             charRows.forEach(function (row) {
-                var result = climbExp(remaining, CHARACTER_EXP, 90, Math.max(1, row.level));
-                row.levelTo = result.level;
-                row.spent = result.spent;
-                remaining = result.rest;
-                spent += result.spent;
+                var plan = levelPlan(row.from, row.to);
+                row.exp = plan.exp;
+                row.stars = plan.stars;
+                needed += plan.exp;
             });
 
-            var html = charRows.map(function (row, index) {
+            charRowsEl.innerHTML = charRows.map(function (row, index) {
                 return '<div class="exp-row"><span>' + esc(row.name || ('角色 ' + (index + 1)))
-                    + ' · Lv ' + Math.max(1, row.level) + ' → <strong>Lv ' + row.levelTo + '</strong>'
-                    + ' · 消耗 ' + fmt(row.spent) + '</span>'
+                    + ' · Lv ' + row.from + ' → <strong>Lv ' + row.to + '</strong>'
+                    + ' · 需 ' + fmt(row.exp) + ' 经验'
+                    + (row.stars ? ' · 无主的命星 ' + row.stars + ' 枚' : '') + '</span>'
                     + '<button class="exp-row-del" type="button" data-index="' + index + '" aria-label="删除">×</button></div>';
             }).join('');
-            charRowsEl.innerHTML = html;
-            charSum.innerHTML = charRows.length
-                ? '已保留 ' + charRows.length + ' 个角色 · 合计消耗 <strong>' + fmt(spent) + '</strong>'
-                    + ' · 剩余 ' + fmt(remaining)
-                : '';
-            charSum.hidden = !charRows.length;
 
-            var next = climbExp(remaining, CHARACTER_EXP, 90, Math.max(1, toInt(charInput.value)));
-            charOut.innerHTML = '可升到 <strong>Lv ' + next.level + '</strong>'
-                + ' · 消耗 ' + fmt(next.spent) + ' · 剩余 ' + fmt(next.rest)
-                + (next.level >= 90 ? ' · 已满级' : ' · 距 90 级还差 ' + fmt(next.gap));
+            if (charRows.length) {
+                charSum.hidden = false;
+                charSum.innerHTML = '已保留 ' + charRows.length + ' 个角色 · 合计需要 <strong>'
+                    + fmt(needed) + '</strong> 经验 · 可用 ' + fmt(charTotal)
+                    + (needed > charTotal
+                        ? ' · 还差 <strong>' + fmt(needed - charTotal) + '</strong>'
+                        : ' · 剩余 ' + fmt(charTotal - needed));
+            } else {
+                charSum.hidden = true;
+                charSum.innerHTML = '';
+            }
+
+            var available = Math.max(0, charTotal - needed);
+            var plan = levelPlan(toInt(charFrom.value), toInt(charTo.value));
+            charOut.innerHTML = 'Lv ' + plan.from + ' → <strong>Lv ' + plan.to + '</strong>'
+                + ' · 需 ' + fmt(plan.exp) + ' 经验'
+                + (plan.stars ? ' · 无主的命星 ' + plan.stars + ' 枚' : '')
+                + (plan.exp > available
+                    ? ' · 还差 ' + fmt(plan.exp - available)
+                    : ' · 可用 ' + fmt(available) + '，足够');
         }
 
         function addChar() {
             charRows.push({
                 name: selectedChar,
-                level: Math.max(1, Math.min(90, toInt(charInput.value)))
+                from: toInt(charFrom.value),
+                to: toInt(charTo.value)
             });
             selectedChar = '';
             if (charLabel) {
                 charLabel.textContent = '选择角色';
             }
-            charInput.value = '1';
+            charFrom.value = '1';
+            syncToOptions();
             renderChar();
         }
 
@@ -1594,7 +1644,12 @@
                 + (rest > 0 ? '（距下一个还差 ' + fmt(FIVE_STAR_ARTIFACT_EXP - rest) + '）' : '');
         }
 
-        charInput.addEventListener('input', renderChar);
+        charFrom.addEventListener('change', function () {
+            syncToOptions();
+            renderChar();
+        });
+        charTo.addEventListener('change', renderChar);
+        syncToOptions();
         renderChar();
         renderArt();
     }
@@ -1662,16 +1717,17 @@
                 + resourceTile('◇', g.fateStandard, standard, '常驻池 · 不计入合计')
                 + '</div>'
 
-                + '<div class="resource-tools">'
-                + '<button class="btn btn-text" id="resource-stock" type="button" aria-expanded="false">经验素材</button>'
-                + '<button class="btn btn-text" id="resource-exp" type="button" aria-expanded="false">养成经验</button>'
-                + '<button class="btn btn-text" id="resource-convert" type="button" aria-expanded="false">抽数换算</button>'
-                + '</div>'
+                + (state.game === 'genshin'
+                    ? '<div class="resource-tools">'
+                        + '<button class="btn btn-text" id="resource-stock" type="button" aria-expanded="false">经验素材</button>'
+                        + '<button class="btn btn-text" id="resource-exp" type="button" aria-expanded="false">养成经验</button>'
+                        + '</div>'
+                    : '')
 
                 + resourceStockHtml(resource)
                 + resourceExpHtml(resource)
 
-                + '<section class="ledger hidden" id="resource-ledger">'
+                + '<section class="ledger" id="resource-ledger">'
                 + '<div class="ledger-head"><h3>抽数换算</h3>'
                 + '<span>常驻抽数不计入折算与合计</span></div>'
                 + '<div class="ledger-grid">'
@@ -1712,7 +1768,6 @@
 
             bindToggle('#resource-stock', '#exp-stock');
             bindToggle('#resource-exp', '#exp-panel');
-            bindToggle('#resource-convert', '#resource-ledger');
 
             bindResourceExp(resource);
         }).catch(function (err) {
@@ -1898,67 +1953,6 @@
         });
     }
 
-    /** 统计摘要：导出为纯文本，字段口径与页面一致。 */
-    function statsSummaryText(data) {
-        var g = gameConfig();
-        var name = (state.user && (state.user.nickname || state.user.username)) || '旅行者';
-        var lines = [];
-        lines.push('SouthAir Genshin · ' + g.fullName + ' 统计摘要');
-        lines.push('账号：' + name);
-        lines.push('生成时间：' + nowLocal().replace('T', ' '));
-        lines.push('');
-        lines.push('【概览】');
-        lines.push('抽卡记录：' + data.wishCount + ' 条（五星 ' + data.fiveStarWishes
-            + ' / 四星 ' + data.fourStarWishes + '）');
-        lines.push('五星出货率：' + data.fiveStarRate + '%');
-        lines.push('五星平均抽数：' + data.avgFiveStarPity);
-        lines.push('当前可抽：' + fmt(data.resource.totalPulls) + ' 抽 · 总资产 '
-            + fmt(data.resource.totalPrimogems) + ' ' + g.currency);
-        lines.push('');
-        lines.push('【抽卡统计】');
-        lines.push('小保底：' + (data.softPityCount || 0) + ' 次，不歪 '
-            + (data.softPityUpCount || 0) + ' 次（' + (data.softPityUpRate || 0) + '%）');
-        lines.push('歪：' + (data.lostCount || 0) + ' 次 · 最多连歪 ' + (data.maxLossStreak || 0)
-            + ' · 最多连不歪 ' + (data.maxUpStreak || 0));
-        if (state.game === 'genshin') {
-            lines.push('捕获明光：' + (data.captureTriggeredCount || 0) + ' 次');
-        }
-        lines.push('');
-        lines.push('【卡池保底】');
-        (data.poolStats || []).forEach(function (item) {
-            lines.push('- ' + poolLabel(item.pool) + '：已垫 ' + item.currentPity + ' / ' + item.cap
-                + '，五星 ' + item.fiveStarCount + ' 次，平均 ' + item.avgFiveStarPity + ' 抽'
-                + (item.upGuaranteed ? '，大保底 / 命定已满' : ''));
-        });
-        return '\ufeff' + lines.join('\r\n') + '\r\n';
-    }
-
-    function downloadTextFile(filename, text) {
-        var blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-        var url = URL.createObjectURL(blob);
-        var link = document.createElement('a');
-        link.href = url;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        setTimeout(function () {
-            URL.revokeObjectURL(url);
-        }, 1500);
-    }
-
-    function bindStatsSummary(data) {
-        var btn = $('#stats-summary-export');
-        if (!btn) {
-            return;
-        }
-        btn.addEventListener('click', function () {
-            var stamp = nowLocal().slice(0, 10).replace(/-/g, '');
-            downloadTextFile('southair-' + state.game + '-summary-' + stamp + '.txt', statsSummaryText(data));
-            toast('统计摘要已导出');
-        });
-    }
-
     function loadStats() {
         var el = $('#view-stats');
         var g = gameConfig();
@@ -2016,11 +2010,6 @@
                     + (data.wishCount ? Math.round(data.fourStarWishes * 100 / data.wishCount) : 0) + '%', 'purple')
                 + statCard('五星平均抽数', data.avgFiveStarPity, '按记录中的保底进度')
                 + '</div>'
-                + '<section class="panel"><h3>统计摘要<span class="pool-tag">文本</span></h3>'
-                + '<p class="panel-desc">把当前游戏的关键指标导出为 txt。</p>'
-                + '<div class="panel-actions">'
-                + '<button class="btn btn-outline btn-sm" id="stats-summary-export" type="button">'
-                + '导出统计摘要</button></div></section>'
                 + '<section class="panel"><h3>最近出货<span class="pool-tag">最近 '
                 + (data.recentWishes || []).length + ' 条</span></h3>'
                 + miniWishes(data.recentWishes) + '</section>'
@@ -2051,7 +2040,6 @@
             bindPullChart();
             bindExpectation(data);
             bindCalendar(data);
-            bindStatsSummary(data);
             bindStatsDelegates();
         }).catch(function (err) {
             if (state.token) {
@@ -2134,7 +2122,6 @@
             + '<div class="toolbar-tools">'
             + '<button class="btn btn-outline btn-sm" id="wish-ocr" type="button">截图识别</button>'
             + '<button class="btn btn-outline btn-sm" id="wish-link-import" type="button">链接导入</button>'
-            + '<button class="btn btn-text btn-sm" id="wish-health" type="button">数据体检</button>'
             + '</div>'
             + '</div>'
             + '<div id="wish-list"><div class="loading">加载中…</div></div>'
@@ -2354,10 +2341,22 @@
 
     /* ---------------- 表单配置 ---------------- */
 
-    function formConfig(type) {
+    /* 录入五星时只提供五星角色与五星武器 / 光锥 */
+    function fiveStarNameOptions() {
+        var lists = nameLists(state.game);
+        var four = FOUR_STAR_CHARACTERS[state.game] || [];
+        var protagonist = PROTAGONISTS[state.game];
+        var characters = lists.characters.filter(function (name) {
+            return name !== protagonist && four.indexOf(name) < 0;
+        });
+        return characters.concat(lists.weapons);
+    }
+
+    function formConfig(type, isEdit) {
         var g = gameConfig();
         var fields = [
-            { key: 'itemName', label: '选择角色 / 物品', type: 'name-picker', full: true },
+            { key: 'itemName', label: '选择角色 / 物品', type: 'name-picker', full: true,
+                options: isEdit ? null : fiveStarNameOptions() },
             { key: 'rarity', type: 'hidden', default: 5 },
             {
                 key: 'pool', label: '卡池', type: 'select',
@@ -2561,9 +2560,13 @@
                 + esc(current) + '</textarea></label>';
         }
 
-        var attrs = ' name="' + field.key + '" value="' + esc(current) + '"';
+        var valueText = current === null || current === undefined ? '' : String(current);
         if (field.type === 'datetime') {
-            attrs += ' type="datetime-local"';
+            valueText = valueText.replace('T', ' ');
+        }
+        var attrs = ' name="' + field.key + '" value="' + esc(valueText) + '"';
+        if (field.type === 'datetime') {
+            attrs += ' type="text" placeholder="YYYY-MM-DD HH:mm" autocomplete="off"';
         } else {
             attrs += ' type="' + (field.type || 'text') + '"';
         }
@@ -2644,6 +2647,9 @@
                 close(null);
             });
             mask.addEventListener('click', function (event) {
+                if (opts.maskClosable === false) {
+                    return;
+                }
                 if (event.target === mask) {
                     close(null);
                 }
@@ -2704,8 +2710,8 @@
     }
 
     function openEditor(type, item) {
-        var config = formConfig(type);
         var isEdit = !!item;
+        var config = formConfig(type, isEdit);
         var values = isEdit ? toFormValues(type, item) : null;
 
         return openForm((isEdit ? '编辑' : '新增') + config.title, config.fields, values, {
@@ -2755,7 +2761,7 @@
         var name = item && item.itemName ? item.itemName : '';
         var up = item ? !!item.isUp : false;
         var pity = item && item.pityCount ? item.pityCount : 1;
-        var time = item && item.wishTime ? String(item.wishTime).replace(' ', 'T').slice(0, 16) : '';
+        var time = item && item.wishTime ? String(item.wishTime).slice(0, 16) : '';
 
         return '<div class="batch-row has-time" data-index="' + index + '">'
             + '<span class="batch-no">' + (index + 1) + '</span>'
@@ -2764,7 +2770,7 @@
             + ' placeholder="角色 / 武器名称"/>'
             + '<label class="batch-up"><input class="batch-isup" type="checkbox"' + (up ? ' checked' : '') + '/>UP</label>'
             + '<input class="batch-pity" type="number" min="1" max="90" value="' + esc(pity) + '" title="用了多少抽"/>'
-            + '<input class="batch-time" type="datetime-local" value="' + esc(time) + '"/>'
+            + '<input class="batch-time" type="text" placeholder="YYYY-MM-DD HH:mm" value="' + esc(time) + '"/>'
             + '</div>';
     }
 
@@ -2886,29 +2892,6 @@
         $('#wish-link-import').addEventListener('click', function () {
             guard(importFromLink);
         });
-
-        var healthBtn = $('#wish-health');
-        if (healthBtn) {
-            healthBtn.addEventListener('click', function () {
-                guard(function () {
-                    return api('/api/wishes/health').then(function (health) {
-                        if (!health.duplicateExtra) {
-                            toast('数据体检：' + health.total + ' 条记录，没有发现重复');
-                            return null;
-                        }
-                        if (!window.confirm('发现 ' + health.duplicateGroups + ' 组重复（多出 '
-                                + health.duplicateExtra + ' 条）。保留每组最早一条并删除其余记录？')) {
-                            return null;
-                        }
-                        return api('/api/wishes/dedupe', { method: 'POST' }).then(function (result) {
-                            toast('已去除 ' + result.removed + ' 条重复记录');
-                            refreshWishList();
-                            return result;
-                        });
-                    });
-                });
-            });
-        }
     }
 
     /* 抽卡链接导入：后端代理读取米游社接口，避开浏览器跨域限制 */
@@ -2948,74 +2931,6 @@
                     + (result.skipped ? '，跳过重复 ' + result.skipped + ' 条' : '')
                     + (result.filtered ? '，忽略 ' + result.filtered + ' 条' : ''));
                 refreshWishList();
-                return result;
-            });
-        });
-    }
-
-    function onWishFileSelected(event, game) {
-        var file = event.target.files && event.target.files[0];
-        event.target.value = '';
-        if (!file) {
-            return;
-        }
-        if (!/\.(csv|json)$/i.test(file.name)) {
-            toast('仅支持 .csv 或 .json 文件', 'error');
-            return;
-        }
-        if (file.size > 5 * 1024 * 1024) {
-            toast('文件不能超过 5MB', 'error');
-            return;
-        }
-        var format = /\.json$/i.test(file.name) ? 'json' : 'csv';
-        var reader = new FileReader();
-        reader.onload = function () {
-            guard(function () {
-                return importWishes(file.name, format, String(reader.result || ''), game);
-            });
-        };
-        reader.onerror = function () {
-            toast('读取文件失败', 'error');
-        };
-        reader.readAsText(file, 'utf-8');
-    }
-
-    function importWishes(fileName, format, text, game) {
-        var g = GAMES[game || state.game] || gameConfig();
-        return openForm('导入抽卡记录 · ' + g.fullName, [
-            {
-                key: 'mode',
-                label: '导入方式',
-                type: 'select',
-                full: true,
-                options: [
-                    { value: 'merge', label: '合并：保留现有记录，自动跳过重复' },
-                    { value: 'replace', label: '覆盖：先清空当前账号的抽卡记录' }
-                ],
-                default: 'merge'
-            }
-        ], null, {
-            hint: '文件：' + fileName + ' · ' + format.toUpperCase() + ' 格式',
-            submitText: '开始导入'
-        }).then(function (values) {
-            if (!values) {
-                return null;
-            }
-            if (values.mode === 'replace'
-                && !window.confirm('覆盖导入会清空「' + g.fullName + '」的全部抽卡记录，确定继续吗？')) {
-                return null;
-            }
-            return api('/api/wishes/import?format=' + format + '&mode=' + encodeURIComponent(values.mode), {
-                method: 'POST',
-                headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
-                body: text
-            }, game).then(function (result) {
-                toast('导入完成：新增 ' + result.imported + ' 条'
-                    + (result.skipped ? '，跳过 ' + result.skipped + ' 条' : '')
-                    + (result.filtered ? '，忽略 ' + result.filtered + ' 条' : ''));
-                if ((game || state.game) === state.game) {
-                    refreshWishList();
-                }
                 return result;
             });
         });
@@ -3125,7 +3040,8 @@
         return openForm('编辑账号资源 · ' + g.fullName, fields, null, {
             hint: '1 抽 = ' + resource.primogemsPerPull + ' ' + g.currency
                 + '；每日额度按自然日自动累加到资源，手动修改资产或额度后从当天重新计',
-            submitText: '保存资源'
+            submitText: '保存资源',
+            maskClosable: false
         }).then(function (values) {
             if (!values) {
                 return null;
@@ -3367,6 +3283,22 @@
         });
     }
 
+    /** 前端生成 JSON 并下载（全量备份需要追加手动补充数据） */
+    function downloadJsonObject(data, filename) {
+        var text = JSON.stringify(data, null, 2);
+        var blob = new Blob([text], { type: 'application/json;charset=utf-8' });
+        var url = URL.createObjectURL(blob);
+        var link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(function () {
+            URL.revokeObjectURL(url);
+        }, 1500);
+    }
+
     function importAllBackup(data) {
         var games = data.games || {};
         var counts = [];
@@ -3406,8 +3338,10 @@
                 method: 'POST',
                 body: data
             }).then(function (result) {
+                restoreOwnedSnapshot(data.owned, values.mode);
                 toast('全部数据导入完成：抽卡 ' + result.wishes + ' 条'
                     + (result.resourceUpdated ? '，资源已更新' : '')
+                    + (data.owned ? '，手动补充已恢复' : '')
                     + (result.skipped ? '，跳过 ' + result.skipped + ' 条' : ''));
                 switchView('settings');
                 return result;
@@ -3555,35 +3489,7 @@
         var g = GAMES[game];
         return '<section class="panel">'
             + '<h3>' + esc(g.fullName) + '</h3>'
-            + '<p class="panel-desc">抽卡记录与账号资源分开导入导出。</p>'
-            + '<div class="settings-group">'
-            + '<span class="settings-label">抽卡记录</span>'
-            + '<div class="panel-actions">'
-            + '<button class="btn btn-outline btn-sm" type="button" data-sg="wish-export" data-game="'
-            + game + '" data-format="csv">导出 CSV</button>'
-            + '<button class="btn btn-outline btn-sm" type="button" data-sg="wish-export" data-game="'
-            + game + '" data-format="json">导出 JSON</button>'
-            + '<button class="btn btn-text btn-sm" type="button" data-sg="template" data-kind="wishes" data-game="'
-            + game + '">下载模板</button>'
-            + '<button class="btn btn-outline btn-sm" type="button" data-sg="wish-import" data-game="'
-            + game + '">导入记录</button>'
-            + '<input id="sg-wish-file-' + game + '" class="sg-file" type="file" '
-            + 'accept=".csv,.json,text/csv,application/json" data-sg-file="wish" data-game="' + game + '" hidden/>'
-            + '</div></div>'
-            + '<div class="settings-group">'
-            + '<span class="settings-label">账号资源</span>'
-            + '<div class="panel-actions">'
-            + '<button class="btn btn-outline btn-sm" type="button" data-sg="resource-export" data-game="'
-            + game + '" data-format="csv">导出 CSV</button>'
-            + '<button class="btn btn-outline btn-sm" type="button" data-sg="resource-export" data-game="'
-            + game + '" data-format="json">导出 JSON</button>'
-            + '<button class="btn btn-text btn-sm" type="button" data-sg="template" data-kind="resources" data-game="'
-            + game + '">下载模板</button>'
-            + '<button class="btn btn-outline btn-sm" type="button" data-sg="resource-import" data-game="'
-            + game + '">导入资源</button>'
-            + '<input id="sg-resource-file-' + game + '" class="sg-file" type="file" '
-            + 'accept=".csv,.json,text/csv,application/json" data-sg-file="resource" data-game="' + game + '" hidden/>'
-            + '</div></div>'
+            + '<p class="panel-desc">使用 UIGF / SRGF 标准格式导入导出抽卡记录。</p>'
             + '<div class="settings-group">'
             + '<span class="settings-label">' + (game === 'starrail' ? 'SRGF v1.0' : 'UIGF v4.2') + '</span>'
             + '<div class="panel-actions">'
@@ -3599,13 +3505,17 @@
 
     /* ---------------- 收藏图鉴 ---------------- */
 
-    function ownedStorageKey() {
+    function ownedStorageKeyFor(game) {
         var uid = (state.user && (state.user.id || state.user.username)) || 'guest';
-        return 'sg_owned_' + uid + '_' + state.game;
+        return 'sg_owned_' + uid + '_' + game;
     }
 
-    function loadOwnedData() {
-        var raw = safeParse(localStorage.getItem(ownedStorageKey())) || {};
+    function ownedStorageKey() {
+        return ownedStorageKeyFor(state.game);
+    }
+
+    function loadOwnedDataFor(game) {
+        var raw = safeParse(localStorage.getItem(ownedStorageKeyFor(game))) || {};
         return {
             characters4: raw.characters4 || {},
             characters5: raw.characters5 || {},
@@ -3613,8 +3523,58 @@
         };
     }
 
+    function loadOwnedData() {
+        return loadOwnedDataFor(state.game);
+    }
+
     function saveOwnedData(data) {
         localStorage.setItem(ownedStorageKey(), JSON.stringify(data));
+    }
+
+    /** 全量备份用：两个游戏的手动补充一起打包 */
+    function ownedSnapshot() {
+        return {
+            genshin: loadOwnedDataFor('genshin'),
+            starrail: loadOwnedDataFor('starrail')
+        };
+    }
+
+    /** 恢复手动补充：合并取较大值，覆盖直接用备份值 */
+    function restoreOwnedSnapshot(owned, mode) {
+        if (!owned || typeof owned !== 'object') {
+            return;
+        }
+        ['genshin', 'starrail'].forEach(function (game) {
+            var incoming = owned[game];
+            if (!incoming || typeof incoming !== 'object') {
+                return;
+            }
+            var data = {
+                characters4: {},
+                characters5: {},
+                weapons5: {}
+            };
+            var exists = mode !== 'replace' ? loadOwnedDataFor(game) : null;
+            ['characters4', 'characters5', 'weapons5'].forEach(function (key) {
+                var source = incoming[key] || {};
+                var base = exists ? (exists[key] || {}) : {};
+                Object.keys(source).forEach(function (name) {
+                    var value = Math.max(0, Math.floor(Number(source[name]) || 0));
+                    if (!value) {
+                        return;
+                    }
+                    data[key][name] = exists ? Math.max(base[name] || 0, value) : value;
+                });
+                if (exists) {
+                    Object.keys(base).forEach(function (name) {
+                        if (!data[key][name]) {
+                            data[key][name] = base[name];
+                        }
+                    });
+                }
+            });
+            localStorage.setItem(ownedStorageKeyFor(game), JSON.stringify(data));
+        });
     }
 
     function collectionDefs(g) {
@@ -3658,8 +3618,8 @@
             + '<div class="collection-meta"><span class="collection-rank">' + badge + '</span>'
             + '<span>' + sub + '</span></div>'
             + (manual > 0
-                ? '<button class="collection-remove" type="button" data-section="' + esc(sectionKey)
-                    + '" data-name="' + esc(name) + '">手动 +' + manual + ' · 清除</button>'
+                ? '<button class="collection-manual-chip" type="button" title="长按清除手动补充" data-section="'
+                    + esc(sectionKey) + '" data-name="' + esc(name) + '">手动 +' + manual + '</button>'
                 : '')
             + '</div>';
     }
@@ -3822,26 +3782,42 @@
                 + '<button class="btn btn-primary" id="collection-add" type="button">+ 补充已有</button>'
                 + '</div></div>'
                 + collectionSectionsHtml(game, items || [], owned, g)
-                + '<p class="foot-tip">手动补充保存在本机浏览器，不写入账号备份；抽卡记录会随导入自动更新。</p>';
+                + '<p class="foot-tip">手动补充保存在本机浏览器，已随全量备份一起导出 / 导入；长按「手动 +N」标签才会清除，抽卡记录会随导入自动更新。</p>';
 
             $('#collection-add').addEventListener('click', function () {
                 guard(openOwnedForm);
             });
 
-            $$('.collection-remove', el).forEach(function (btn) {
-                btn.addEventListener('click', function () {
-                    var section = btn.dataset.section;
-                    var name = btn.dataset.name;
-                    if (!window.confirm('清除「' + name + '」的手动补充？')) {
-                        return;
+            function removeOwned(section, name) {
+                if (!window.confirm('清除「' + name + '」的手动补充？')) {
+                    return;
+                }
+                var data = loadOwnedData();
+                if (data[section]) {
+                    delete data[section][name];
+                }
+                saveOwnedData(data);
+                toast('已清除 ' + name + ' 的手动补充');
+                loadCollection();
+            }
+
+            $$('.collection-manual-chip', el).forEach(function (btn) {
+                var timer = null;
+                function cancel() {
+                    if (timer) {
+                        clearTimeout(timer);
+                        timer = null;
                     }
-                    var data = loadOwnedData();
-                    if (data[section]) {
-                        delete data[section][name];
-                    }
-                    saveOwnedData(data);
-                    toast('已清除 ' + name + ' 的手动补充');
-                    loadCollection();
+                }
+                btn.addEventListener('pointerdown', function () {
+                    cancel();
+                    timer = setTimeout(function () {
+                        timer = null;
+                        removeOwned(btn.dataset.section, btn.dataset.name);
+                    }, 650);
+                });
+                ['pointerup', 'pointerleave', 'pointercancel'].forEach(function (name) {
+                    btn.addEventListener(name, cancel);
                 });
             });
         }).catch(function (err) {
@@ -3913,8 +3889,23 @@
 
         exportAllBtn.addEventListener('click', function () {
             guard(function () {
-                return downloadFile('/api/backup/export-all',
-                    'southair-all-backup.json', '全部数据已导出');
+                return fetch(withGame('/api/backup/export-all'), {
+                    headers: state.token ? { Authorization: 'Bearer ' + state.token } : {}
+                }).then(function (res) {
+                    if (res.status === 401) {
+                        logout(true);
+                        throw new Error('登录已失效，请重新登录');
+                    }
+                    if (!res.ok) {
+                        throw new Error('导出失败（' + res.status + '）');
+                    }
+                    return res.json();
+                }).then(function (data) {
+                    data.owned = ownedSnapshot();
+                    downloadJsonObject(data, 'southair-all-backup.json');
+                    toast('全部数据已导出（含收藏手动补充）');
+                    return data;
+                });
             });
         });
         importAllBtn.addEventListener('click', function () {
@@ -3956,30 +3947,7 @@
             }
             var game = btn.dataset.game;
             var action = btn.dataset.sg;
-            var format = btn.dataset.format || 'csv';
-            if (action === 'wish-export') {
-                guard(function () {
-                    return downloadFile('/api/wishes/export?format=' + format,
-                        'southair-wishes.' + format, '抽卡记录已导出（' + format.toUpperCase() + '）', game);
-                });
-            } else if (action === 'wish-import') {
-                guard(function () {
-                    return chooseImport('wishes', 'sg-wish-file-' + game, game);
-                });
-            } else if (action === 'resource-export') {
-                guard(function () {
-                    return downloadFile('/api/resources/export?format=' + format,
-                        'southair-resources.' + format, '资源已导出（' + format.toUpperCase() + '）', game);
-                });
-            } else if (action === 'resource-import') {
-                guard(function () {
-                    return chooseImport('resources', 'sg-resource-file-' + game, game);
-                });
-            } else if (action === 'template') {
-                guard(function () {
-                    return chooseTemplate(btn.dataset.kind, game);
-                });
-            } else if (action === 'uigf-export') {
+            if (action === 'uigf-export') {
                 guard(function () {
                     return downloadFile('/api/wishes/export-uigf',
                         'southair-' + game + (game === 'starrail' ? '-srgf.json' : '-uigf.json'),
@@ -3998,12 +3966,8 @@
             if (!input.classList || !input.classList.contains('sg-file')) {
                 return;
             }
-            if (input.dataset.sgFile === 'wish') {
-                onWishFileSelected(event, input.dataset.game);
-            } else if (input.dataset.sgFile === 'uigf') {
+            if (input.dataset.sgFile === 'uigf') {
                 onUigfFileSelected(event, input.dataset.game);
-            } else {
-                onResourceFileSelected(event, input.dataset.game);
             }
         });
     }
@@ -4165,7 +4129,7 @@
         if (!text) {
             return '';
         }
-        return String(text).replace(' ', 'T').slice(0, 16);
+        return String(text).replace('T', ' ').slice(0, 16);
     }
 
     /** 大图先在本地缩放/压缩，避免超过 8MB 上限或上传过慢 */
@@ -4775,11 +4739,14 @@
         return lines;
     }
 
+    /* 出金历史：数字后缀可能被 OCR 认成近形字，统一按「N抽」处理 */
+    var HISTORY_COUNT_RE = /(\d{1,3})\s*[抽拙柚捕探押折东拍拓拒拖抱%]/;
+
     function detectHistoryPool(lines, game) {
         var tabs = HISTORY_POOL_TABS[game] || [];
         var found = [];
         lines.filter(function (line) {
-            return !/(\d{1,3})\s*抽/.test(line.text);
+            return !HISTORY_COUNT_RE.test(line.text);
         }).slice(0, 4).forEach(function (line) {
             tabs.forEach(function (tab) {
                 if (found.indexOf(tab.pool) >= 0) {
@@ -4825,7 +4792,7 @@
         var seen = {};
         lines.forEach(function (line) {
             var compact = line.text.replace(/\s+/g, '');
-            var match = compact.match(/(\d{1,3})\s*抽/);
+            var match = compact.match(HISTORY_COUNT_RE);
             if (!match) {
                 return;
             }
@@ -5074,8 +5041,8 @@
                     + '<input class="input" type="number" min="1" max="90" data-w="pityCount" value="'
                     + (item.pityCount === null || item.pityCount === undefined ? '' : item.pityCount)
                     + '" placeholder="第几抽"/>'
-                    + '<input class="input" type="datetime-local" data-w="wishTime" value="'
-                    + localTimeValue(item.wishTime) + '"/>'
+                    + '<input class="input" type="text" placeholder="YYYY-MM-DD HH:mm" data-w="wishTime" value="'
+                    + esc(localTimeValue(item.wishTime)) + '"/>'
                     + '</div>'
                     + ocrMatchHtml(item)
                     + '</div>'
@@ -5162,8 +5129,8 @@
                     + '<input class="input" type="number" min="1" max="200" data-w="pityCount" value="'
                     + (item.pityCount === null || item.pityCount === undefined ? '' : item.pityCount)
                     + '" placeholder="第几抽"/>'
-                    + '<input class="input" type="datetime-local" data-w="wishTime" value="'
-                    + localTimeValue(item.wishTime) + '"/>'
+                    + '<input class="input" type="text" placeholder="YYYY-MM-DD HH:mm" data-w="wishTime" value="'
+                    + esc(localTimeValue(item.wishTime)) + '"/>'
                     + '</div>'
                     + ocrMatchHtml(item)
                     + '</div>'

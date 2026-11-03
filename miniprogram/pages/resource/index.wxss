@@ -154,21 +154,10 @@
   margin-top: 4rpx;
 }
 
-.exp-level-box {
+.exp-actions {
   display: flex;
-  flex: 1;
-  align-items: center;
   justify-content: flex-end;
-  gap: 16rpx;
-  min-width: 0;
-}
-
-.exp-level-box .form-input {
-  flex: 1;
-}
-
-.exp-level-box .btn {
-  flex-shrink: 0;
+  margin: 8rpx 0 6rpx;
 }
 
 .exp-plan {

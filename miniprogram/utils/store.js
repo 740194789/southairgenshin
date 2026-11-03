@@ -741,6 +741,44 @@ function importBackup(game, payload, mode) {
   return importRecords(game, wishes, mode || 'merge');
 }
 
+function ownedForBackup(game) {
+  var raw = wx.getStorageSync('sg_owned_' + game);
+  return {
+    characters4: (raw && raw.characters4) || {},
+    characters5: (raw && raw.characters5) || {},
+    weapons5: (raw && raw.weapons5) || {}
+  };
+}
+
+/** 恢复手动补充：合并取较大值，覆盖直接用备份值 */
+function applyOwnedBackup(game, incoming, mode) {
+  if (!incoming || typeof incoming !== 'object') {
+    return;
+  }
+  var replace = mode === 'replace';
+  var base = replace
+    ? { characters4: {}, characters5: {}, weapons5: {} }
+    : ownedForBackup(game);
+  var data = { characters4: {}, characters5: {}, weapons5: {} };
+  ['characters4', 'characters5', 'weapons5'].forEach(function (key) {
+    var source = incoming[key] || {};
+    Object.keys(source).forEach(function (name) {
+      var value = Math.max(0, toInt(source[name]));
+      if (value > 0) {
+        data[key][name] = replace ? value : Math.max(toInt(base[key][name]), value);
+      }
+    });
+    if (!replace) {
+      Object.keys(base[key] || {}).forEach(function (name) {
+        if (!data[key][name]) {
+          data[key][name] = toInt(base[key][name]);
+        }
+      });
+    }
+  });
+  wx.setStorageSync('sg_owned_' + game, data);
+}
+
 function exportAllBackup() {
   // 与网页端 /api/backup/export-all 的结构一致：两个游戏一次打包
   var games = {};
@@ -750,11 +788,16 @@ function exportAllBackup() {
       wishes: exportRecords(game)
     };
   });
+  var owned = {};
+  ['genshin', 'starrail'].forEach(function (game) {
+    owned[game] = ownedForBackup(game);
+  });
   var payload = {
     app: 'SouthAir Genshin',
     version: 5,
     exportedAt: nowStr(),
-    games: games
+    games: games,
+    owned: owned
   };
   // 小程序自带 SHA-256 实现；网页端校验时会跳过非网页端生成的校验值
   payload.checksumApp = 'southair-mini';
@@ -793,6 +836,11 @@ function importAllBackup(payload, mode) {
       result.filtered += one.filtered;
     }
   });
+  if (payload.owned && typeof payload.owned === 'object') {
+    ['genshin', 'starrail'].forEach(function (game) {
+      applyOwnedBackup(game, payload.owned[game], result.mode);
+    });
+  }
   return result;
 }
 
@@ -805,51 +853,6 @@ function uids(game) {
     }
   });
   return Object.keys(seen).sort();
-}
-
-/** 数据体检：按 UID + 名称 + 卡池 + 时间检查重复。 */
-function health(game) {
-  var groups = {};
-  var list = getWishes(game);
-  list.forEach(function (record) {
-    var key = (record.uid || '') + '\u0001' + record.itemName + '\u0001'
-      + (record.pool || '') + '\u0001' + record.wishTime;
-    groups[key] = (groups[key] || 0) + 1;
-  });
-  var duplicateGroups = 0;
-  var duplicateExtra = 0;
-  Object.keys(groups).forEach(function (key) {
-    if (groups[key] > 1) {
-      duplicateGroups++;
-      duplicateExtra += groups[key] - 1;
-    }
-  });
-  return {
-    total: list.length,
-    duplicateGroups: duplicateGroups,
-    duplicateExtra: duplicateExtra,
-    uids: uids(game)
-  };
-}
-
-/** 一键去重：每组保留 id 最小（最早录入）的一条。 */
-function dedupe(game) {
-  var keep = {};
-  var list = getWishes(game).slice().sort(function (a, b) {
-    return a.id - b.id;
-  });
-  var kept = [];
-  list.forEach(function (record) {
-    var key = (record.uid || '') + '\u0001' + record.itemName + '\u0001'
-      + (record.pool || '') + '\u0001' + record.wishTime;
-    if (keep[key]) {
-      return;
-    }
-    keep[key] = true;
-    kept.push(record);
-  });
-  saveWishes(game, kept);
-  return { removed: list.length - kept.length, total: kept.length };
 }
 
 function importResource(game, resource) {
@@ -878,8 +881,6 @@ module.exports = {
   resourceVO: resourceVO,
   overview: overview,
   uids: uids,
-  health: health,
-  dedupe: dedupe,
   importRecords: importRecords,
   exportBackup: exportBackup,
   importBackup: importBackup,

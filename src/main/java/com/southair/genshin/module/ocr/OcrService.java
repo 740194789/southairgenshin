@@ -64,12 +64,20 @@ public class OcrService {
     public OcrRawResult recognizeRaw(MultipartFile file, String engine) {
         validate(file);
         requireTesseract(engine);
-        TesseractEngine.OcrOutput output = recognize(file);
+        TesseractEngine.OcrOutput output = recognizeHistory(file);
         OcrRawResult result = new OcrRawResult();
         result.setEngine(ENGINE_TESSERACT);
         result.setText(output.getText());
         result.setTsv(output.getTsv());
         return result;
+    }
+
+    private TesseractEngine.OcrOutput recognizeHistory(MultipartFile file) {
+        try {
+            return tesseractEngine.recognizeHistory(file.getBytes(), resolveExtension(file));
+        } catch (IOException e) {
+            throw new BusinessException("读取图片失败：" + e.getMessage());
+        }
     }
 
     private void requireTesseract(String engine) {

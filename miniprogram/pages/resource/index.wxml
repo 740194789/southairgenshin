@@ -40,10 +40,9 @@
     </view>
   </view>
 
-  <view class="resource-tools">
-    <view wx:if="{{game === 'genshin'}}" class="tool-btn {{showStock ? 'active' : ''}}" bindtap="toggleStock">经验素材</view>
-    <view wx:if="{{game === 'genshin'}}" class="tool-btn {{showExp ? 'active' : ''}}" bindtap="toggleExp">养成经验</view>
-    <view class="tool-btn {{showConvert ? 'active' : ''}}" bindtap="toggleConvert">抽数换算</view>
+  <view class="resource-tools" wx:if="{{game === 'genshin'}}">
+    <view class="tool-btn {{showStock ? 'active' : ''}}" bindtap="toggleStock">经验素材</view>
+    <view class="tool-btn {{showExp ? 'active' : ''}}" bindtap="toggleExp">养成经验</view>
   </view>
 
   <view class="panel" wx:if="{{game === 'genshin' && showStock}}">
@@ -73,20 +72,28 @@
         </view>
       </view>
       <view class="form-row">
-        <text class="form-label">角色当前等级</text>
-        <view class="exp-level-box">
-          <input class="form-input" type="number" value="{{expCharLevel}}" bindinput="onCharLevel" placeholder="1"/>
-          <view class="btn btn-outline btn-sm" bindtap="onAddChar">保留结果</view>
-        </view>
+        <text class="form-label">当前等级</text>
+        <picker class="form-control" range="{{fromLevels}}" value="{{fromIndex}}" bindchange="onCharFrom">
+          <view class="picker-box">{{fromLevels[fromIndex]}}</view>
+        </picker>
       </view>
-      <view class="exp-result">可升到 <text class="exp-strong">Lv {{exp.charLevel}}</text> · 消耗 {{exp.charSpentText}} · 剩余 {{exp.charRestText}}</view>
-      <view class="exp-note">{{exp.charNote}}</view>
+      <view class="form-row">
+        <text class="form-label">目标等级</text>
+        <picker class="form-control" range="{{toLevels}}" value="{{toIndex}}" bindchange="onCharTo">
+          <view class="picker-box">{{toLevels[toIndex]}}</view>
+        </picker>
+      </view>
+      <view class="exp-actions">
+        <view class="btn btn-outline btn-sm" bindtap="onAddChar">保留结果</view>
+      </view>
+      <view class="exp-result">{{exp.charPreviewText}}</view>
+      <view class="exp-note">90 级后需「无主的命星」：90 → 95 用 1 枚，90 → 100 共 3 枚；95 → 100 用 2 枚，不再消耗经验书。</view>
       <view class="exp-plan" wx:if="{{charPlanView.length}}">
         <view class="exp-plan-row" wx:for="{{charPlanView}}" wx:key="index">
-          <text>{{item.name}} · Lv {{item.fromLevel}} → Lv {{item.toLevel}} · 消耗 {{item.spentText}}</text>
+          <text>{{item.name}} · Lv {{item.fromLevel}} → Lv {{item.toLevel}} · 需 {{item.expText}}{{item.starText}}</text>
           <view class="exp-row-del" data-index="{{index}}" bindtap="onRemoveChar">×</view>
         </view>
-        <view class="exp-sum">已保留 {{charPlanView.length}} 个角色 · 合计消耗 {{exp.planSpentText}} · 剩余 {{exp.planRestText}}</view>
+        <view class="exp-sum">已保留 {{charPlanView.length}} 个角色 · 合计需要 {{exp.planNeedText}} · {{exp.planDiffText}}</view>
       </view>
     </view>
 
@@ -100,7 +107,7 @@
     <view class="foot-tip">经验书 20,000 / 5,000 / 1,000；祝圣油膏 2,500、祝圣精华 10,000。</view>
   </view>
 
-  <view class="panel" wx:if="{{showConvert}}">
+  <view class="panel">
     <view class="panel-title">抽数换算</view>
     <view class="panel-desc">常驻池抽数（{{g.fateStandard}}）不计入货币折算与合计可抽。</view>
 

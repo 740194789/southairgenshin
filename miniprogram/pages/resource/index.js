@@ -24,29 +24,48 @@ var CHARACTER_EXP = [
 
 /* 五星圣遗物 +0 强化到 +20 所需经验 */
 var FIVE_STAR_ARTIFACT_EXP = 270475;
+
+/* 角色可选等级：90 级后为 95 / 100（需无主的命星，不再消耗经验） */
+var CHAR_LEVELS = (function () {
+  var list = [];
+  for (var lv = 1; lv <= 90; lv += 1) {
+    list.push(lv);
+  }
+  list.push(95, 100);
+  return list;
+})();
+
+function toLevelsFor(from) {
+  return CHAR_LEVELS.filter(function (lv) {
+    return lv > from;
+  });
+}
+
+/** 当前等级 → 目标等级：经验书经验 + 无主的命星数量 */
+function levelPlan(fromLevel, toLevel) {
+  var start = Math.max(1, Math.min(100, toInt(fromLevel)));
+  var end = Math.max(start, Math.min(100, toInt(toLevel)));
+  var exp = 0;
+  for (var lv = start; lv < Math.min(end, 90); lv += 1) {
+    exp += CHARACTER_EXP[lv - 1];
+  }
+  var stars = 0;
+  if (end > 90) {
+    if (start >= 95) {
+      stars = end >= 100 ? 2 : 0;
+    } else {
+      stars = end >= 100 ? 3 : 1;
+    }
+  }
+  return { from: start, to: end, exp: exp, stars: stars };
+}
+
 var CHAR_ITEM_EXP = { heroWit: 20000, adventurerExp: 5000, wandererAdvice: 1000 };
 var ART_ITEM_EXP = { sanctifyingUnction: 2500, sanctifyingEssence: 10000 };
 
 function toInt(value) {
   var number = parseInt(value, 10);
   return isNaN(number) ? 0 : number;
-}
-
-/** 从当前等级逐级扣减经验，返回可达等级 / 消耗 / 剩余 / 距满级还差 */
-function climbExp(total, table, maxLevel, startLevel) {
-  var level = Math.max(0, Math.min(maxLevel, toInt(startLevel)));
-  var rest = Math.max(0, toInt(total));
-  var spent = 0;
-  while (level < maxLevel && rest >= table[level]) {
-    rest -= table[level];
-    spent += table[level];
-    level += 1;
-  }
-  var gap = 0;
-  for (var i = level; i < maxLevel; i += 1) {
-    gap += table[i];
-  }
-  return { level: level, spent: spent, rest: rest, gap: gap };
 }
 
 Page({
@@ -56,7 +75,6 @@ Page({
     g: gameLib.config('genshin'),
     res: {},
     editing: false,
-    showConvert: false,
     exp: {},
     charNames: CHAR_NAMES,
     selectedChar: '',
@@ -65,7 +83,10 @@ Page({
     showStock: false,
     showExp: false,
     stockItems: [],
-    expCharLevel: 1,
+    fromLevels: CHAR_LEVELS,
+    fromIndex: 0,
+    toLevels: toLevelsFor(1),
+    toIndex: 0,
     form: {
       primogems: '',
       mora: '',
@@ -132,22 +153,23 @@ Page({
       + res.sanctifyingEssence * ART_ITEM_EXP.sanctifyingEssence;
 
     var plan = this._charPlan || [];
-    var remaining = charTotal;
-    var planSpent = 0;
+    var needed = 0;
     var planView = plan.map(function (row, index) {
-      var step = climbExp(remaining, CHARACTER_EXP, 90, Math.max(1, row.fromLevel));
-      remaining = step.rest;
-      planSpent += step.spent;
+      var step = levelPlan(row.from, row.to);
+      needed += step.exp;
       return {
         name: row.name || ('角色 ' + (index + 1)),
-        fromLevel: Math.max(1, row.fromLevel),
-        toLevel: step.level,
-        spentText: store.fmt(step.spent)
+        fromLevel: step.from,
+        toLevel: step.to,
+        expText: store.fmt(step.exp) + ' 经验',
+        starText: step.stars ? ' · 命星 ' + step.stars + ' 枚' : ''
       };
     });
 
-    var charResult = climbExp(remaining, CHARACTER_EXP, 90,
-      Math.max(1, toInt(this.data.expCharLevel)));
+    var fromLevel = this.data.fromLevels[this.data.fromIndex];
+    var toLevel = this.data.toLevels[this.data.toIndex];
+    var preview = levelPlan(fromLevel, toLevel);
+    var available = Math.max(0, charTotal - needed);
     var artCount = Math.floor(artTotal / FIVE_STAR_ARTIFACT_EXP);
     var artRest = artTotal % FIVE_STAR_ARTIFACT_EXP;
 
@@ -156,13 +178,18 @@ Page({
       exp: {
         charTotalText: store.fmt(charTotal),
         artTotalText: store.fmt(artTotal),
-        charLevel: charResult.level,
-        charSpentText: store.fmt(charResult.spent),
-        charRestText: store.fmt(charResult.rest),
-        charNote: charResult.level >= 90
-          ? '已满级' : '距 90 级还差 ' + store.fmt(charResult.gap),
-        planSpentText: store.fmt(planSpent),
-        planRestText: store.fmt(remaining),
+        charPreviewText: 'Lv ' + preview.from + ' → Lv ' + preview.to
+          + ' · 需 ' + store.fmt(preview.exp) + ' 经验'
+          + (preview.stars ? ' · 无主的命星 ' + preview.stars + ' 枚' : '')
+          + (preview.exp > available
+            ? ' · 还差 ' + store.fmt(preview.exp - available)
+            : ' · 可用 ' + store.fmt(available) + '，足够'),
+        planNeedText: planView.length
+          ? store.fmt(needed) + ' 经验 · 可用 ' + store.fmt(charTotal)
+          : '',
+        planDiffText: needed > charTotal
+          ? '还差 ' + store.fmt(needed - charTotal)
+          : '剩余 ' + store.fmt(charTotal - needed),
         artCount: store.fmt(artCount),
         artRestText: store.fmt(artRest),
         artNote: artRest > 0
@@ -170,10 +197,6 @@ Page({
           : '刚好凑整'
       }
     });
-  },
-
-  toggleConvert: function () {
-    this.setData({ showConvert: !this.data.showConvert });
   },
 
   toggleStock: function () {
@@ -199,8 +222,22 @@ Page({
     });
   },
 
-  onCharLevel: function (event) {
-    this.setData({ expCharLevel: event.detail.value });
+  onCharFrom: function (event) {
+    var index = Number(event.detail.value) || 0;
+    var from = this.data.fromLevels[index];
+    var levels = toLevelsFor(from);
+    var previous = this.data.toLevels[this.data.toIndex];
+    var toIndex = levels.indexOf(previous);
+    this.setData({
+      fromIndex: index,
+      toLevels: levels,
+      toIndex: toIndex >= 0 ? toIndex : 0
+    });
+    this.applyExp();
+  },
+
+  onCharTo: function (event) {
+    this.setData({ toIndex: Number(event.detail.value) || 0 });
     this.applyExp();
   },
 
@@ -208,9 +245,15 @@ Page({
     this._charPlan = this._charPlan || [];
     this._charPlan.push({
       name: this.data.selectedChar,
-      fromLevel: Math.max(1, toInt(this.data.expCharLevel))
+      from: this.data.fromLevels[this.data.fromIndex],
+      to: this.data.toLevels[this.data.toIndex]
     });
-    this.setData({ selectedChar: '', expCharLevel: 1 });
+    this.setData({
+      selectedChar: '',
+      fromIndex: 0,
+      toLevels: toLevelsFor(this.data.fromLevels[0]),
+      toIndex: 0
+    });
     this.applyExp();
   },
 

@@ -30,6 +30,10 @@ public class TesseractEngine {
     private static final long CHECK_TTL = 60_000L;
     /** 截图宽度低于该值时先放大，明显提升小字号中文的识别率 */
     private static final int MIN_WIDTH = 1000;
+    /** 出金历史截图：白字阈值（按亮度），高于该值保留为白字，其余转黑 */
+    private static final int HISTORY_WHITE_THRESHOLD = 210;
+    /** 出金历史截图预处理后的目标最小宽度，条状背景上的小字需要更大字号 */
+    private static final int HISTORY_MIN_WIDTH = 1380;
 
     private final OcrProperties properties;
 
@@ -90,7 +94,17 @@ public class TesseractEngine {
      * @param ext   扩展名（含点），如 .png
      */
     public OcrOutput recognizeWithTsv(byte[] image, String ext) {
-        return run(image, ext);
+        return run(image, ext, false);
+    }
+
+    /**
+     * 识别第三方助手「出金历史」截图：先把白字阈值化成黑白，再放大并以稀疏文本模式识别。
+     *
+     * @param image 图片字节
+     * @param ext   扩展名（含点），如 .png
+     */
+    public OcrOutput recognizeHistory(byte[] image, String ext) {
+        return run(image, ext, true);
     }
 
     /** 识别结果：文本 + 已换算回原图坐标的 TSV */
@@ -112,7 +126,7 @@ public class TesseractEngine {
         }
     }
 
-    private OcrOutput run(byte[] image, String ext) {
+    private OcrOutput run(byte[] image, String ext, boolean history) {
         if (!isAvailable()) {
             throw new IllegalStateException(hint.isEmpty() ? "本机未安装 tesseract" : hint);
         }
@@ -122,7 +136,7 @@ public class TesseractEngine {
         try {
             byte[] data = image;
             String writeExt = ext == null || ext.isEmpty() ? ".png" : ext;
-            ScaledImage scaled = scaleUp(image);
+            ScaledImage scaled = history ? preprocessHistory(image) : scaleUp(image);
             if (scaled != null) {
                 data = scaled.data;
                 scale = scaled.scale;
@@ -136,7 +150,8 @@ public class TesseractEngine {
 
             List<String> args = new ArrayList<>(Arrays.asList(
                     command(), input.toString(), outputBase.toString(),
-                    "-l", properties.getTesseract().getLang(), "--psm", "6",
+                    "-l", history ? "chi_sim" : properties.getTesseract().getLang(),
+                    "--psm", history ? "11" : "6",
                     "-c", "tessedit_create_tsv=1"));
 
             Process process = new ProcessBuilder(args).redirectErrorStream(true).start();
@@ -200,6 +215,46 @@ public class TesseractEngine {
         ScaledImage(byte[] data, double scale) {
             this.data = data;
             this.scale = scale;
+        }
+    }
+
+    /**
+     * 出金历史截图预处理：按亮度把白字保留、其余涂黑，再放大 3 倍左右。
+     *
+     * <p>第三方助手的进度条有斜纹背景，直接识别会把「N 抽」认成字母或其它汉字；
+     * 阈值化后只剩白色文字，配合稀疏文本模式（psm 11）可以稳定读出数字。</p>
+     */
+    private ScaledImage preprocessHistory(byte[] image) {
+        try {
+            BufferedImage src = ImageIO.read(new ByteArrayInputStream(image));
+            if (src == null) {
+                return null;
+            }
+            int width = src.getWidth();
+            int height = src.getHeight();
+            for (int y = 0; y < height; y++) {
+                for (int x = 0; x < width; x++) {
+                    int rgb = src.getRGB(x, y);
+                    int r = (rgb >> 16) & 0xFF;
+                    int g = (rgb >> 8) & 0xFF;
+                    int b = rgb & 0xFF;
+                    int lum = (r + g + b) / 3;
+                    src.setRGB(x, y, lum >= HISTORY_WHITE_THRESHOLD ? 0xFFFFFF : 0x000000);
+                }
+            }
+            double scale = Math.max(3.0, (double) HISTORY_MIN_WIDTH / Math.max(1, width));
+            int targetW = (int) Math.round(width * scale);
+            int targetH = (int) Math.round(height * scale);
+            BufferedImage dst = new BufferedImage(targetW, targetH, BufferedImage.TYPE_INT_RGB);
+            Graphics2D g = dst.createGraphics();
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+            g.drawImage(src, 0, 0, targetW, targetH, null);
+            g.dispose();
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            ImageIO.write(dst, "png", out);
+            return new ScaledImage(out.toByteArray(), scale);
+        } catch (Exception e) {
+            return null;
         }
     }
 

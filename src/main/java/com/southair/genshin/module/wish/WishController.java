@@ -80,21 +80,6 @@ public class WishController {
         return R.ok(wishService.accounts(UserContext.require(), game));
     }
 
-    /** 数据体检：重复记录数量与 UID 列表。 */
-    @GetMapping("/health")
-    public R<java.util.Map<String, Object>> health(@RequestParam(defaultValue = "genshin") String game) {
-        return R.ok(wishService.health(UserContext.require(), game));
-    }
-
-    /** 一键去重：每组重复记录保留最早的一条。 */
-    @PostMapping("/dedupe")
-    public R<java.util.Map<String, Object>> dedupe(@RequestParam(defaultValue = "genshin") String game) {
-        int removed = wishService.dedupe(UserContext.require(), game);
-        java.util.Map<String, Object> result = new java.util.LinkedHashMap<>();
-        result.put("removed", removed);
-        return R.ok(result);
-    }
-
     /** 收藏图鉴：全部记录按名称 / 类型 / 星级聚合。 */
     @GetMapping("/collection")
     public R<List<CollectionItemVO>> collection(

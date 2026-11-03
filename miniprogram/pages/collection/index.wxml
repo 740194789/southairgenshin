@@ -55,14 +55,14 @@
             <text class="coll-rank">{{item.badge}}</text>
             <text>{{item.sub}}</text>
           </view>
-          <view class="coll-remove" wx:if="{{item.manual}}" data-section="{{section.key}}" data-name="{{item.name}}" bindtap="removeManual">手动 +{{item.manual}} · 清除</view>
+          <view class="coll-remove" wx:if="{{item.manual}}" data-section="{{section.key}}" data-name="{{item.name}}" bindlongpress="removeManual">手动 +{{item.manual}}</view>
         </view>
       </view>
       <view class="empty" wx:else>还没有{{section.title}}</view>
     </view>
   </block>
 
-  <view class="foot-tip">手动补充保存在本机缓存；导入新的抽卡记录后会自动更新命座与精炼。</view>
+  <view class="foot-tip">手动补充保存在本机缓存，已随全量备份一起导出 / 导入；长按「手动 +N」才会清除，导入新的抽卡记录后会自动更新命座与精炼。</view>
   <view class="foot-tip">图鉴数据：{{catalogUpdatedAt || '内置'}} · 打开收藏页时超过 24 小时自动联网更新角色与五星武器 / 光锥图标，离线时使用内置与上次缓存。</view>
 </view>
 
