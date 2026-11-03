@@ -427,72 +427,6 @@ function buildExpectation(data, game, prefs) {
   };
 }
 
-/** 四星角色分布：按次数排序并换算进度条宽度 */
-function buildFourStars(data) {
-  var list = data.fourStarCharacters || [];
-  var max = 1;
-  list.forEach(function (item) {
-    max = Math.max(max, item.count);
-  });
-  return list.map(function (item) {
-    return {
-      name: item.name,
-      count: item.count,
-      upCount: item.upCount || 0,
-      percent: Math.max(8, Math.round(item.count / max * 100))
-    };
-  });
-}
-
-/** 抽卡模拟器：与网页端同一套理论概率 */
-function simulatePulls(weapon, copies, runs, game) {
-  var cap = weapon ? 80 : 90;
-  var winRate = weapon ? 0.75 : (game === 'genshin' ? 0.55 : 0.5);
-  var results = [];
-  for (var i = 0; i < runs; i++) {
-    var pulls = 0;
-    var got = 0;
-    var pity = 0;
-    var guaranteed = false;
-    while (got < copies && pulls < 3000) {
-      pulls++;
-      pity++;
-      var rate = weapon
-        ? (pity >= 63 ? Math.min(1, 0.007 + (pity - 62) * 0.07) : 0.007)
-        : (pity >= 74 ? Math.min(1, 0.006 + (pity - 73) * 0.06) : 0.006);
-      if (pity >= cap || Math.random() < rate) {
-        pity = 0;
-        if (guaranteed || Math.random() < winRate) {
-          got++;
-          guaranteed = false;
-        } else {
-          guaranteed = true;
-        }
-      }
-    }
-    results.push(pulls);
-  }
-  results.sort(function (a, b) {
-    return a - b;
-  });
-  var sum = 0;
-  results.forEach(function (value) {
-    sum += value;
-  });
-  function at(percent) {
-    var index = Math.round((results.length - 1) * percent);
-    return results[Math.max(0, Math.min(results.length - 1, index))];
-  }
-  return {
-    avg: Math.round(sum / results.length * 10) / 10,
-    low: at(0.25),
-    high: at(0.75),
-    min: results[0],
-    max: results[results.length - 1],
-    runs: runs
-  };
-}
-
 /** 卡池名称：实时日历来自官方公告，内置日历只有卡池类型 */
 function bannerNames(banners) {
   var names = [];
@@ -505,8 +439,11 @@ function bannerNames(banners) {
   return names.join(' · ');
 }
 
-/** 卡池日历：优先使用联网缓存的实时数据，当前与下一期附带剩余天数与预估收入换算 */
+/** 卡池日历：仅原神有官方公告实时数据，星铁不显示日历 */
 function buildCalendar(game, unit) {
+  if (game !== 'genshin') {
+    return null;
+  }
   var live = calendarLib.loadLive(game);
   var info = live ? calendarLib.infoOf(live) : calendarLib.info(game);
   function row(item) {
@@ -556,17 +493,7 @@ Page({
     capture: null,
     expect: null,
     calendar: null,
-    fourStars: [],
-    fourStarUp: 0,
     weaponOptions: [],
-    simPool: 0,
-    simCopies: 0,
-    simRuns: 1,
-    simWeapon: false,
-    simPools: ['角色活动', '武器活动'],
-    simCopiesOptions: ['1 个', '2 个', '3 个', '4 个', '5 个', '6 个'],
-    simRunsOptions: ['200 次', '500 次', '1000 次'],
-    simResult: null,
     chartReal: false,
     chartPool: 'all',
     chartPools: [{ key: 'all', label: '全部' }],
@@ -704,10 +631,7 @@ Page({
       capture: capture,
       expect: buildExpectation(data, game, expectPrefs(game)),
       calendar: buildCalendar(game, data.resource.primogemsPerPull || 160),
-      fourStars: buildFourStars(data),
-      fourStarUp: data.fourStarUpWishes || 0,
       weaponOptions: weaponOptions,
-      simPools: [g.charPool, g.weaponPool],
       chartPool: chartPool,
       chartPools: chartPools,
       chart: chart
@@ -807,28 +731,6 @@ Page({
     }
     wx.showToast({ title: name ? '定轨目标：' + name : '已清除定轨目标', icon: 'none' });
     this.load(this.data.game);
-  },
-
-  /* ---------------- 抽卡模拟器 ---------------- */
-
-  onSimPool: function (event) {
-    this.setData({ simWeapon: Number(event.detail.value) === 1 });
-  },
-
-  onSimCopies: function (event) {
-    this.setData({ simCopies: Number(event.detail.value) });
-  },
-
-  onSimRuns: function (event) {
-    var values = [200, 500, 1000];
-    this.setData({ simRuns: Math.min(values.length - 1, Number(event.detail.value)) });
-  },
-
-  onSimRun: function () {
-    var runs = [200, 500, 1000][this.data.simRuns] || 500;
-    var copies = Math.max(1, (this.data.simCopies || 0) + 1);
-    var result = simulatePulls(this.data.simWeapon, copies, runs, this.data.game);
-    this.setData({ simResult: result });
   },
 
   /* ---------------- 战绩卡（Canvas） ---------------- */

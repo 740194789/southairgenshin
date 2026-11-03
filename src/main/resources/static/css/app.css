@@ -1723,49 +1723,6 @@ body.game-starrail {
     }
 }
 
-/* 四星角色分布 */
-.four-list {
-    display: grid;
-    gap: 8px;
-    margin-top: 12px;
-}
-
-.four-stat {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: 12px;
-    color: var(--muted);
-}
-
-.four-name {
-    flex: 0 0 96px;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    color: var(--text);
-}
-
-.four-bar {
-    flex: 1 1 auto;
-    height: 6px;
-    border-radius: 3px;
-    background: rgba(255, 255, 255, 0.06);
-    overflow: hidden;
-}
-
-.four-bar span {
-    display: block;
-    height: 100%;
-    background: linear-gradient(90deg, #a78bfa, #7c5cff);
-}
-
-.four-count {
-    flex: 0 0 auto;
-    min-width: 44px;
-    text-align: right;
-}
-
 /* 定轨目标 / 命定值 */
 .fate-row {
     display: flex;
@@ -1784,59 +1741,6 @@ body.game-starrail {
 .fate-note {
     font-size: 11.5px;
     color: #71778e;
-}
-
-/* 抽卡模拟器 */
-.sim-fields {
-    display: flex;
-    align-items: flex-end;
-    gap: 10px;
-    flex-wrap: wrap;
-    margin: 12px 0;
-}
-
-.sim-field {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    font-size: 12px;
-    color: var(--muted);
-}
-
-.sim-field .input {
-    min-width: 110px;
-    padding: 7px 10px;
-    font-size: 12px;
-}
-
-.sim-result:empty {
-    display: none;
-}
-
-.sim-number {
-    font-size: 28px;
-    font-weight: 700;
-    color: var(--gold-2);
-}
-
-.sim-number span {
-    margin-left: 6px;
-    font-size: 12px;
-    font-weight: 400;
-    color: var(--muted);
-}
-
-.sim-meta {
-    display: flex;
-    gap: 14px;
-    flex-wrap: wrap;
-    margin-top: 6px;
-    font-size: 12px;
-    color: var(--muted);
-}
-
-.sim-meta strong {
-    color: var(--text);
 }
 
 .planner-numbers {

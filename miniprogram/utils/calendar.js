@@ -50,55 +50,6 @@ var DATA = {
         ]
       }
     ]
-  },
-  starrail: {
-    currency: '星琼',
-    updatedAt: '2026-11-01',
-    note: '内置示例日历：版本与卡池起止时间按官方公告维护（小程序改 utils/calendar.js）。',
-    versions: [
-      {
-        version: '4.7',
-        start: '2026-10-14',
-        end: '2026-11-25',
-        phases: [
-          {
-            name: '上半',
-            start: '2026-10-14',
-            end: '2026-11-04',
-            incomePrimogems: 3600,
-            banners: ['角色活动', '光锥活动']
-          },
-          {
-            name: '下半',
-            start: '2026-11-04',
-            end: '2026-11-25',
-            incomePrimogems: 3600,
-            banners: ['角色活动', '光锥活动']
-          }
-        ]
-      },
-      {
-        version: '4.8',
-        start: '2026-11-25',
-        end: '2027-01-06',
-        phases: [
-          {
-            name: '上半',
-            start: '2026-11-25',
-            end: '2026-12-16',
-            incomePrimogems: 3600,
-            banners: ['角色活动', '光锥活动']
-          },
-          {
-            name: '下半',
-            start: '2026-12-16',
-            end: '2027-01-06',
-            incomePrimogems: 3600,
-            banners: ['角色活动', '光锥活动']
-          }
-        ]
-      }
-    ]
   }
 };
 
@@ -131,8 +82,8 @@ function daysUntil(text) {
   return Math.round((end.getTime() - today.getTime()) / 86400000);
 }
 
-function gameData(game) {
-  return DATA[game] || DATA.genshin;
+function gameData() {
+  return DATA.genshin;
 }
 
 /** 当前与下一期卡池：{ calendar, current, next } */

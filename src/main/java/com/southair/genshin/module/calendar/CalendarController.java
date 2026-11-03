@@ -69,7 +69,7 @@ public class CalendarController {
     @GetMapping("/live")
     public R<JsonNode> live(@RequestParam(defaultValue = "genshin") String game) {
         if (GameType.isStarRail(GameType.normalize(game))) {
-            throw new BusinessException(400, "星穹铁道暂未提供公开卡池接口，继续使用内置日历");
+            throw new BusinessException(400, "星穹铁道暂未提供公开卡池接口，卡池日历仅支持原神");
         }
         JsonNode root = getJson(GENSHIN_ANN_URL);
         ObjectNode result = buildLive(root);

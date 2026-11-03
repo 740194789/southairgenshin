@@ -669,137 +669,6 @@
             + '</span></div>';
     }
 
-    function fourStarPanelHtml(data) {
-        var list = data.fourStarCharacters || [];
-        if (!list.length) {
-            return '';
-        }
-        var max = 1;
-        list.forEach(function (item) {
-            max = Math.max(max, item.count);
-        });
-        var rows = list.map(function (item) {
-            var percent = Math.max(8, Math.round(item.count / max * 100));
-            return '<div class="four-stat">'
-                + '<span class="four-name">' + esc(item.name) + '</span>'
-                + '<div class="four-bar"><span style="width:' + percent + '%"></span></div>'
-                + '<span class="four-count">' + item.count + ' 次</span>'
-                + (item.upCount
-                    ? '<span class="pool-tag up">UP ' + item.upCount + '</span>'
-                    : '')
-                + '</div>';
-        }).join('');
-        return '<section class="panel four-panel">'
-            + '<h3>四星角色<span class="pool-tag">共 ' + data.fourStarWishes + ' 次'
-            + (data.fourStarUpWishes ? ' · UP ' + data.fourStarUpWishes + ' 次' : '')
-            + '</span></h3>'
-            + '<div class="four-list">' + rows + '</div>'
-            + '<p class="panel-desc">四星只记录角色；UP 次数按记录中手动标记的 UP 统计。</p>'
-            + '</section>';
-    }
-
-    /* ---------------- 抽卡模拟器（本地蒙特卡洛） ---------------- */
-
-    function simulatePulls(weapon, copies, runs) {
-        var cap = weapon ? 80 : 90;
-        var winRate = weapon ? 0.75 : (state.game === 'genshin' ? 0.55 : 0.5);
-        var results = [];
-        for (var i = 0; i < runs; i++) {
-            var pulls = 0;
-            var got = 0;
-            var pity = 0;
-            var guaranteed = false;
-            while (got < copies && pulls < 3000) {
-                pulls++;
-                pity++;
-                var rate;
-                if (weapon) {
-                    rate = pity >= 63 ? Math.min(1, 0.007 + (pity - 62) * 0.07) : 0.007;
-                } else {
-                    rate = pity >= 74 ? Math.min(1, 0.006 + (pity - 73) * 0.06) : 0.006;
-                }
-                if (pity >= cap || Math.random() < rate) {
-                    pity = 0;
-                    if (guaranteed || Math.random() < winRate) {
-                        got++;
-                        guaranteed = false;
-                    } else {
-                        guaranteed = true;
-                    }
-                }
-            }
-            results.push(pulls);
-        }
-        results.sort(function (a, b) {
-            return a - b;
-        });
-        var sum = 0;
-        results.forEach(function (value) {
-            sum += value;
-        });
-        function at(percent) {
-            var index = Math.round((results.length - 1) * percent);
-            return results[Math.max(0, Math.min(results.length - 1, index))];
-        }
-        return {
-            avg: Math.round(sum / results.length * 10) / 10,
-            low: at(0.25),
-            high: at(0.75),
-            min: results[0],
-            max: results[results.length - 1],
-            runs: runs
-        };
-    }
-
-    function simulatorPanelHtml() {
-        var g = gameConfig();
-        var copyOptions = '';
-        for (var i = 1; i <= 6; i++) {
-            copyOptions += '<option value="' + i + '">' + i + ' 个</option>';
-        }
-        return '<section class="panel simulator-panel">'
-            + '<h3>抽卡模拟器<span class="pool-tag">本地蒙特卡洛</span></h3>'
-            + '<p class="panel-desc">按理论概率模拟抽数分布（含歪 / 大保底），只在本机运行，不请求服务器。</p>'
-            + '<div class="sim-fields">'
-            + '<label class="sim-field"><span>卡池</span>'
-            + '<select class="input" id="sim-pool">'
-            + '<option value="char">' + esc(g.charPool) + '</option>'
-            + '<option value="weapon">' + esc(g.weaponPool) + '</option>'
-            + '</select></label>'
-            + '<label class="sim-field"><span>目标</span>'
-            + '<select class="input" id="sim-copies">' + copyOptions + '</select></label>'
-            + '<label class="sim-field"><span>次数</span>'
-            + '<select class="input" id="sim-runs">'
-            + '<option value="200">200</option><option value="500" selected>500</option>'
-            + '<option value="1000">1000</option></select></label>'
-            + '<button class="btn btn-primary btn-sm" type="button" id="sim-run">开始模拟</button>'
-            + '</div>'
-            + '<div id="sim-result" class="sim-result"></div>'
-            + '</section>';
-    }
-
-    function bindSimulator() {
-        var btn = $('#sim-run');
-        if (!btn) {
-            return;
-        }
-        btn.addEventListener('click', function () {
-            var weapon = $('#sim-pool').value === 'weapon';
-            var copies = Math.max(1, Math.min(6, Number($('#sim-copies').value) || 1));
-            var runs = Math.max(50, Math.min(2000, Number($('#sim-runs').value) || 500));
-            var result = simulatePulls(weapon, copies, runs);
-            var g = gameConfig();
-            $('#sim-result').innerHTML =
-                '<div class="sim-number">' + fmt(result.avg) + '<span>抽 / 平均</span></div>'
-                + '<div class="sim-meta">'
-                + '<span>25% 分位 <strong>' + fmt(result.low) + '</strong> 抽</span>'
-                + '<span>75% 分位 <strong>' + fmt(result.high) + '</strong> 抽</span>'
-                + '<span>最少 <strong>' + result.min + '</strong> · 最多 <strong>' + result.max + '</strong></span>'
-                + '<span>模拟 ' + result.runs + ' 次 · ' + esc(g.currency) + '</span>'
-                + '</div>';
-        });
-    }
-
     /* ---------------- 战绩卡 ---------------- */
 
     function maskUid(uid) {
@@ -1343,10 +1212,8 @@
             + esc(dateOnly(calendar.updatedAt) || '未标注') + '</span></h3>'
             + '<div class="calendar-list">' + rows + '</div>'
             + '<p class="panel-desc">' + esc(calendar.note || '按官方公告维护版本与卡池时间。') + '</p>'
-            + (state.game === 'genshin'
-                ? '<div class="panel-actions"><button class="btn btn-outline btn-sm"'
-                    + ' id="calendar-live" type="button">联网更新卡池</button></div>'
-                : '<p class="panel-desc">星穹铁道暂未提供公开卡池接口，使用内置日历。</p>')
+            + '<div class="panel-actions"><button class="btn btn-outline btn-sm"'
+            + ' id="calendar-live" type="button">联网更新卡池</button></div>'
             + '</section>';
     }
 
@@ -1963,7 +1830,9 @@
             })
         ]).then(function (responses) {
             var data = responses[0];
-            var calendar = loadLiveCalendar(state.game) || responses[1];
+            var calendar = state.game === 'genshin'
+                ? (loadLiveCalendar('genshin') || responses[1])
+                : null;
             var resource = data.resource;
             var name = (state.user && (state.user.nickname || state.user.username)) || '旅行者';
             cache.stats = data;
@@ -2005,7 +1874,6 @@
                     + (data.wishCount ? Math.round(data.fourStarWishes * 100 / data.wishCount) : 0) + '%', 'purple')
                 + statCard('五星平均抽数', data.avgFiveStarPity, '按记录中的保底进度')
                 + '</div>'
-                + fourStarPanelHtml(data)
                 + '<section class="panel"><h3>统计摘要<span class="pool-tag">文本 / 图片</span></h3>'
                 + '<p class="panel-desc">把当前游戏的关键指标导出为 txt，或生成一张 PNG 战绩卡（UID 自动打码）。</p>'
                 + '<div class="panel-actions">'
@@ -2031,7 +1899,6 @@
                 + statsSection('expect', tab)
                 + calendarPanelHtml(calendar, resource.primogemsPerPull || 160)
                 + expectationPanelHtml(data)
-                + simulatorPanelHtml()
                 + '</div>'
 
                 + statsSection('resource', tab)
@@ -2046,7 +1913,6 @@
             bindCalendar(data);
             bindStatsSummary(data);
             bindBattleCard(data);
-            bindSimulator();
             bindStatsDelegates();
         }).catch(function (err) {
             if (state.token) {

@@ -10,10 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 @Service
 public class StatsService {
@@ -64,7 +61,6 @@ public class StatsService {
         List<WishRecord> all = wishRepository.findByUserIdAndGameOrderByWishTimeAsc(userId, gameKey);
         applyPoolStats(vo, all, gameKey);
         applyLuckStats(vo, all);
-        applyFourStarStats(vo, all);
         if (!GameType.isStarRail(gameKey)) {
             applyCapturingRadiance(vo, userId, gameKey);
         }
@@ -141,38 +137,6 @@ public class StatsService {
             points = Boolean.TRUE.equals(record.getIsUp()) ? 0 : Math.min(1, points + 1);
         }
         return points;
-    }
-
-    /** 四星角色出货分布：按名称聚合次数与手动标记的 UP 次数。 */
-    private void applyFourStarStats(OverviewVO vo, List<WishRecord> all) {
-        Map<String, OverviewVO.FourStarStat> grouped = new LinkedHashMap<>();
-        long upCount = 0;
-        for (WishRecord record : all) {
-            if (!Integer.valueOf(4).equals(record.getRarity())
-                    || !"角色".equals(record.getItemType())) {
-                continue;
-            }
-            String name = record.getItemName() == null ? "" : record.getItemName().trim();
-            if (name.isEmpty()) {
-                continue;
-            }
-            OverviewVO.FourStarStat stat = grouped.get(name);
-            if (stat == null) {
-                stat = new OverviewVO.FourStarStat();
-                stat.setName(name);
-                grouped.put(name, stat);
-            }
-            stat.setCount(stat.getCount() + 1);
-            if (Boolean.TRUE.equals(record.getIsUp())) {
-                stat.setUpCount(stat.getUpCount() + 1);
-                upCount++;
-            }
-        }
-        List<OverviewVO.FourStarStat> list = new ArrayList<>(grouped.values());
-        list.sort(Comparator.comparingLong(OverviewVO.FourStarStat::getCount).reversed()
-                .thenComparing(OverviewVO.FourStarStat::getName));
-        vo.setFourStarCharacters(list);
-        vo.setFourStarUpWishes(upCount);
     }
 
     /**

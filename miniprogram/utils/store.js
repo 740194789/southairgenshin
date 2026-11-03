@@ -461,31 +461,6 @@ function overview(game) {
     }
   });
 
-  var fourMap = {};
-  var fourUp = 0;
-  asc.forEach(function (record) {
-    if (record.rarity !== 4 || (record.itemType || '') !== '角色') {
-      return;
-    }
-    var name = String(record.itemName || '').trim();
-    if (!name) {
-      return;
-    }
-    var item = fourMap[name] || (fourMap[name] = { name: name, count: 0, upCount: 0 });
-    item.count++;
-    if (record.isUp === true) {
-      item.upCount++;
-      fourUp++;
-    }
-  });
-  var fourStarCharacters = Object.keys(fourMap).map(function (key) {
-    return fourMap[key];
-  }).sort(function (a, b) {
-    if (a.count !== b.count) {
-      return b.count - a.count;
-    }
-    return a.name.localeCompare(b.name, 'zh-Hans-CN');
-  });
 
   var poolStats = defs.map(function (def) {
     var pool = def[0];
@@ -577,8 +552,6 @@ function overview(game) {
     avgPrimogemsPerUpCharacter: luck.charAvg > 0 ? Math.round(luck.charAvg * PER_PULL) : 0,
     avgPrimogemsPerUpWeapon: luck.weaponAvg > 0 ? Math.round(luck.weaponAvg * PER_PULL) : 0,
     poolDistribution: distribution,
-    fourStarCharacters: fourStarCharacters,
-    fourStarUpWishes: fourUp,
     recentWishes: recent,
     fiveStarHistory: asc.filter(function (record) {
       return record.rarity === 5;
