@@ -226,13 +226,14 @@
   <!-- 期望 -->
   <view hidden="{{statsTab !== 'expect'}}">
     <view wx:if="{{calendar && (calendar.current || calendar.next)}}" class="panel calendar-panel">
-      <view class="panel-title">卡池日历<text class="pool-tag inline">内置 · {{calendar.updatedAt}}</text></view>
+      <view class="panel-title">卡池日历<text class="pool-tag inline">{{calendar.live ? '实时' : '内置'}} · {{calendar.updatedAt}}</text></view>
       <view wx:if="{{calendar.current}}" class="calendar-row is-current">
         <text class="calendar-badge">进行中</text>
         <view class="calendar-body">
           <text class="calendar-title">{{calendar.current.version}} · {{calendar.current.name}}</text>
+          <text wx:if="{{calendar.current.bannersText}}" class="calendar-line">{{calendar.current.bannersText}}</text>
           <text class="calendar-line">{{calendar.current.start}} ~ {{calendar.current.end}} · 剩余 {{calendar.current.left}} 天</text>
-          <text class="calendar-line">本期预估 +{{calendar.current.incomeText}} {{g.currency}} ≈ {{calendar.current.pullsText}} 抽</text>
+          <text wx:if="{{calendar.current.hasIncome}}" class="calendar-line">本期预估 +{{calendar.current.incomeText}} {{g.currency}} ≈ {{calendar.current.pullsText}} 抽</text>
         </view>
         <view class="btn btn-outline btn-sm" bindtap="onCalendarUseDays"
               data-days="{{calendar.current.left}}">用剩余 {{calendar.current.left}} 天</view>
@@ -241,10 +242,15 @@
         <text class="calendar-badge">下一期</text>
         <view class="calendar-body">
           <text class="calendar-title">{{calendar.next.version}} · {{calendar.next.name}}</text>
+          <text wx:if="{{calendar.next.bannersText}}" class="calendar-line">{{calendar.next.bannersText}}</text>
           <text class="calendar-line">{{calendar.next.start}} ~ {{calendar.next.end}} · 还有 {{calendar.next.left}} 天</text>
         </view>
       </view>
       <view class="foot-tip">{{calendar.note}}</view>
+      <view wx:if="{{game === 'genshin'}}" class="toolbar">
+        <view class="btn btn-outline btn-sm" bindtap="onLiveCalendar">联网更新卡池</view>
+      </view>
+      <view wx:else class="foot-tip">星穹铁道暂未提供公开卡池接口，继续使用内置日历。</view>
     </view>
 
     <view wx:if="{{expect}}" class="panel expect-panel">

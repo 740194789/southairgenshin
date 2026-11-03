@@ -493,9 +493,22 @@ function simulatePulls(weapon, copies, runs, game) {
   };
 }
 
-/** 卡池日历：当前与下一期，附带剩余天数与预估收入换算 */
+/** 卡池名称：实时日历来自官方公告，内置日历只有卡池类型 */
+function bannerNames(banners) {
+  var names = [];
+  (banners || []).forEach(function (banner) {
+    var name = typeof banner === 'string' ? '' : (banner && banner.name);
+    if (name && names.indexOf(name) < 0) {
+      names.push(name);
+    }
+  });
+  return names.join(' · ');
+}
+
+/** 卡池日历：优先使用联网缓存的实时数据，当前与下一期附带剩余天数与预估收入换算 */
 function buildCalendar(game, unit) {
-  var info = calendarLib.info(game);
+  var live = calendarLib.loadLive(game);
+  var info = live ? calendarLib.infoOf(live) : calendarLib.info(game);
   function row(item) {
     if (!item) {
       return null;
@@ -507,11 +520,14 @@ function buildCalendar(game, unit) {
       start: item.phase.start,
       end: item.phase.end,
       left: Math.max(0, calendarLib.daysUntil(item.phase.end)),
+      hasIncome: income > 0,
       incomeText: store.fmt(income),
-      pullsText: String(Math.round(income / unit * 10) / 10)
+      pullsText: String(Math.round(income / unit * 10) / 10),
+      bannersText: bannerNames(item.phase.banners)
     };
   }
   return {
+    live: !!live,
     updatedAt: info.calendar.updatedAt || '',
     note: info.calendar.note || '',
     current: row(info.current),
@@ -931,6 +947,22 @@ Page({
     saveExpectPrefs(this.data.game, prefs);
     this.refreshExpectation();
     wx.showToast({ title: '已填入卡池剩余 ' + days + ' 天', icon: 'none' });
+  },
+
+  /** 联网获取官方公告里的实时卡池，成功写入 24 小时缓存并刷新页面。 */
+  onLiveCalendar: function () {
+    var that = this;
+    var game = this.data.game;
+    wx.showLoading({ title: '获取卡池中', mask: true });
+    calendarLib.fetchLive(game).then(function (calendar) {
+      calendarLib.saveLive(game, calendar);
+      wx.hideLoading();
+      that.load(game);
+      wx.showToast({ title: '卡池已更新', icon: 'none' });
+    }).catch(function (err) {
+      wx.hideLoading();
+      wx.showToast({ title: (err && err.message) || '联网获取失败', icon: 'none' });
+    });
   },
 
   /** 攒抽规划输入：失焦 / 确认时保存并重算。 */

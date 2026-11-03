@@ -30,6 +30,17 @@
   margin-right: 16rpx;
 }
 
+.hero-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+
+.hero-actions .btn + .btn {
+  margin-top: 12rpx;
+}
+
 .hero-sub {
   font-size: 22rpx;
   letter-spacing: 2rpx;

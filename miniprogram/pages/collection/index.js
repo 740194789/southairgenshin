@@ -1,6 +1,26 @@
 var app = getApp();
 var gameLib = require('../../utils/game');
 var collection = require('../../utils/collection');
+var catalog = require('../../utils/catalog');
+
+/** 收藏分组与角色 / 武器数量，供加载和联网更新后复用 */
+function sectionsOf(game) {
+  var sections = collection.build(game);
+  var characterCount = 0;
+  var weaponCount = 0;
+  sections.forEach(function (section) {
+    if (section.kind === 'character') {
+      characterCount += section.items.length;
+    } else {
+      weaponCount += section.items.length;
+    }
+  });
+  return {
+    sections: sections,
+    characterCount: characterCount,
+    weaponCount: weaponCount
+  };
+}
 
 Page({
   data: {
@@ -10,6 +30,8 @@ Page({
     sections: [],
     characterCount: 0,
     weaponCount: 0,
+    catalogUpdatedAt: '',
+    catalogUpdating: false,
     manualOpen: false,
     manualCategory: 'characters4',
     manualCategories: [],
@@ -27,45 +49,75 @@ Page({
   },
 
   onShow: function () {
-    this.load(app.globalData.game);
+    this.syncCatalog(app.globalData.game, true);
   },
 
   onSwitchGame: function (event) {
     app.setGame(event.detail.game);
-    this.load(event.detail.game);
+    this.syncCatalog(event.detail.game, true);
   },
 
   load: function (game) {
-    var sections = collection.build(game);
-    var characterCount = 0;
-    var weaponCount = 0;
-    sections.forEach(function (section) {
-      if (section.kind === 'character') {
-        characterCount += section.items.length;
+    var g = gameLib.config(game);
+    var patch = sectionsOf(game);
+    patch.game = game;
+    patch.g = g;
+    patch.manualOpen = false;
+    patch.manualCategory = 'characters4';
+    patch.manualName = '';
+    patch.manualIcon = '';
+    patch.pickerVisible = false;
+    patch.manualCopiesIndex = 0;
+    patch.manualNames = collection.nameOptions(game, 'characters4');
+    patch.manualCategories = [
+      { key: 'characters4', label: '四星角色' },
+      { key: 'characters5', label: '五星角色' },
+      { key: 'weapons5', label: '五星' + g.itemTypes[1] }
+    ];
+    this.setData(patch);
+  },
+
+  /**
+   * 图鉴联网同步：先并入上次缓存；auto 为 true 时仅在缓存超过 24 小时才后台更新，
+   * 手动刷新（auto=false）总会请求并提示结果。
+   */
+  syncCatalog: function (game, auto) {
+    var that = this;
+    var cached = catalog.applyCached(game);
+    this.load(game);
+    this.setData({ catalogUpdatedAt: cached ? cached.updatedAt : catalog.cachedAt(game) });
+    if (auto && catalog.isFresh(game)) {
+      return;
+    }
+    this.setData({ catalogUpdating: true });
+    catalog.refresh(game).then(function (result) {
+      if (that.data.game !== game) {
+        return;
+      }
+      that.setData({ catalogUpdating: false, catalogUpdatedAt: result.updatedAt });
+      if (that.data.manualOpen) {
+        that.setData(sectionsOf(game));
       } else {
-        weaponCount += section.items.length;
+        that.load(game);
+      }
+      if (result.addedCharacters || result.addedWeapons) {
+        wx.showToast({ title: '图鉴已更新', icon: 'none' });
+      } else if (!auto) {
+        wx.showToast({ title: '图鉴已是最新', icon: 'none' });
+      }
+    }, function (err) {
+      if (that.data.game !== game) {
+        return;
+      }
+      that.setData({ catalogUpdating: false });
+      if (!auto) {
+        wx.showToast({ title: (err && err.message) || '图鉴联网失败', icon: 'none' });
       }
     });
-    var g = gameLib.config(game);
-    this.setData({
-      game: game,
-      g: g,
-      sections: sections,
-      characterCount: characterCount,
-      weaponCount: weaponCount,
-      manualOpen: false,
-      manualCategory: 'characters4',
-      manualName: '',
-      manualIcon: '',
-      pickerVisible: false,
-      manualCopiesIndex: 0,
-      manualNames: collection.nameOptions(game, 'characters4'),
-      manualCategories: [
-        { key: 'characters4', label: '四星角色' },
-        { key: 'characters5', label: '五星角色' },
-        { key: 'weapons5', label: '五星' + g.itemTypes[1] }
-      ]
-    });
+  },
+
+  onRefreshCatalog: function () {
+    this.syncCatalog(this.data.game, false);
   },
 
   onImageError: function (event) {

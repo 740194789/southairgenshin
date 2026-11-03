@@ -1,4 +1,5 @@
 var gameLib = require('./utils/game');
+var catalog = require('./utils/catalog');
 
 App({
   globalData: {
@@ -6,6 +7,9 @@ App({
   },
 
   onLaunch: function () {
+    // 先把上次联网更新的图鉴并入内置名单，保证本机离线时也能看到新角色 / 新武器
+    catalog.applyCached('genshin');
+    catalog.applyCached('starrail');
     if (wx.cloud) {
       try {
         wx.cloud.init({ env: 'qq740194789-d5ghcyv7x748499f9', traceUser: true });
@@ -16,6 +20,10 @@ App({
     var saved = wx.getStorageSync('sg_game');
     if (saved && gameLib.GAMES[saved]) {
       this.globalData.game = saved;
+    }
+    // 当前游戏图鉴超过 24 小时（或从未更新）时静默联网更新，失败不影响离线使用
+    if (!catalog.isFresh(this.globalData.game)) {
+      catalog.refresh(this.globalData.game).catch(function () {});
     }
   },
 
