@@ -114,7 +114,7 @@ public class StatsService {
             stat.setAvgFiveStarPity(fiveStarCount == 0 ? 0D : round(pitySum / fiveStarCount));
             stat.setUpGuaranteed(!"常驻".equals(pool) && latestFive != null
                     && !Boolean.TRUE.equals(latestFive.getIsUp()));
-            stat.setFatePoints(resolveFatePoints(all, pool, GameType.isStarRail(game)));
+            stat.setFatePoints(resolveFatePoints(all, pool));
             stats.add(stat);
         }
         vo.setPoolStats(stats);
@@ -125,8 +125,8 @@ public class StatsService {
      * 武器定轨命定值：按该池五星顺序，命中 UP 归零，未命中小幅累计；原神定轨满 1 后下一把必定定轨。
      * 星穹铁道光锥池没有定轨机制，恒为 0。
      */
-    private int resolveFatePoints(List<WishRecord> all, String pool, boolean starrail) {
-        if (starrail || !"武器活动".equals(pool)) {
+    private int resolveFatePoints(List<WishRecord> all, String pool) {
+        if (!"武器活动".equals(pool)) {
             return 0;
         }
         int points = 0;

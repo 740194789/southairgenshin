@@ -55,7 +55,6 @@
         pages: { wishes: 1 },
         wishPool: '',
         wishOnlyFive: false,
-        wishUid: '',
         wishKeyword: '',
         wishStart: '',
         wishEnd: '',
@@ -203,6 +202,67 @@
         }
         var n = Number(value);
         return Number.isInteger(n) ? String(n) : n.toFixed(1);
+    }
+
+    /* ---------------- 养成经验（原神） ---------------- */
+
+    /* 角色 1→90 每级所需经验（下标 = 当前等级，共 89 项） */
+    var CHARACTER_EXP = [
+        1000, 1325, 1700, 2150, 2625, 3150, 3725, 4350, 5000, 5700,
+        6450, 7225, 8050, 8925, 9825, 10750, 11725, 12725, 13775, 14875,
+        16800, 18000, 19250, 20550, 21875, 23250, 24650, 26100, 27575, 29100,
+        30650, 32250, 33875, 35550, 37250, 38975, 40750, 42575, 44425, 46300,
+        50625, 52700, 54775, 56900, 59075, 61275, 63525, 65800, 68125, 70475,
+        76500, 79050, 81650, 84275, 86950, 89650, 92400, 95175, 98000, 100875,
+        108950, 112050, 115175, 118325, 121525, 124775, 128075, 131400, 134775, 138175,
+        148700, 152375, 156075, 159825, 163600, 167425, 171300, 175225, 179175, 183175,
+        216225, 243025, 273100, 306800, 344600, 386950, 434425, 487625, 547200
+    ];
+
+    /* 圣遗物各星级每级所需经验（下标 = 当前等级） */
+    var ARTIFACT_EXP = {
+        5: [3000, 3725, 4425, 5150, 5900, 6675, 7500, 8350, 9225, 10125,
+            11050, 12025, 13025, 15150, 17600, 20375, 23500, 27050, 31050, 35575],
+        4: [2400, 2975, 3550, 4125, 4725, 5350, 6000, 6675, 7375, 8100,
+            8850, 9625, 10425, 12125, 14075, 16300],
+        3: [1800, 2225, 2650, 3100, 3550, 4000, 4500, 5000, 5525, 6075, 6625, 7225]
+    };
+
+    var ARTIFACT_MAX_LEVEL = { 5: 20, 4: 16, 3: 12 };
+    var CHAR_ITEM_EXP = { heroWit: 20000, adventurerExp: 5000, wandererAdvice: 1000 };
+    var ART_ITEM_EXP = { sanctifyingUnction: 2500, sanctifyingEssence: 10000 };
+
+    function toInt(value) {
+        var number = parseInt(value, 10);
+        return isNaN(number) ? 0 : number;
+    }
+
+    /** 从当前等级逐级扣减经验，返回可达等级 / 消耗 / 剩余 / 距满级还差 */
+    function climbExp(total, table, maxLevel, startLevel) {
+        var level = Math.max(0, Math.min(maxLevel, toInt(startLevel)));
+        var rest = Math.max(0, toInt(total));
+        var spent = 0;
+        while (level < maxLevel && rest >= table[level]) {
+            rest -= table[level];
+            spent += table[level];
+            level += 1;
+        }
+        var gap = 0;
+        for (var i = level; i < maxLevel; i += 1) {
+            gap += table[i];
+        }
+        return { level: level, spent: spent, rest: rest, gap: gap };
+    }
+
+    function expBookTotal(resource) {
+        return (toInt(resource.heroWit) * CHAR_ITEM_EXP.heroWit
+            + toInt(resource.adventurerExp) * CHAR_ITEM_EXP.adventurerExp
+            + toInt(resource.wandererAdvice) * CHAR_ITEM_EXP.wandererAdvice);
+    }
+
+    function artifactItemTotal(resource) {
+        return (toInt(resource.sanctifyingUnction) * ART_ITEM_EXP.sanctifyingUnction
+            + toInt(resource.sanctifyingEssence) * ART_ITEM_EXP.sanctifyingEssence);
     }
 
     function starText(rarity) {
@@ -606,9 +666,6 @@
             if (pool === '武器活动') {
                 return '命定值满 · 下次必定定轨武器';
             }
-            if (pool === '光锥活动') {
-                return '大保底 · 下次必定 UP';
-            }
             return '大保底 · 下次必定 UP';
         }
 
@@ -650,10 +707,40 @@
         }
     }
 
+    /** 当期武器池的 UP 五星武器：来自实时 / 内置卡池日历，无法识别时返回空 */
+    function currentWeaponNames() {
+        if (state.game !== 'genshin') {
+            return [];
+        }
+        var info = calendarInfo(cache.calendar);
+        var phase = info.current && info.current.phase;
+        if (!phase) {
+            return [];
+        }
+        var names = [];
+        (phase.banners || []).forEach(function (banner) {
+            if (typeof banner === 'string') {
+                return;
+            }
+            var pool = banner.pool;
+            var name = banner.name;
+            if (pool === '武器活动' && name && name !== '武器活动' && names.indexOf(name) < 0) {
+                names.push(name);
+            }
+        });
+        return names;
+    }
+
     /** 原神武器池的定轨目标与命定值：目标仅本地记录，用于提示 */
     function fateRowHtml(item) {
-        var weapons = nameLists(state.game).weapons;
+        var weapons = currentWeaponNames();
+        if (!weapons.length) {
+            weapons = nameLists(state.game).weapons;
+        }
         var target = weaponTargetName();
+        if (target && weapons.indexOf(target) < 0) {
+            weapons = weapons.concat(target);
+        }
         var points = Number(item.fatePoints) || 0;
         var options = '<option value="">选择定轨目标</option>' + weapons.map(function (name) {
             return '<option value="' + esc(name) + '"'
@@ -669,110 +756,7 @@
             + '</span></div>';
     }
 
-    /* ---------------- 战绩卡 ---------------- */
-
-    function maskUid(uid) {
-        var text = String(uid || '').trim();
-        if (!text) {
-            return 'UID 未标注';
-        }
-        if (text.length <= 5) {
-            return 'UID ' + text;
-        }
-        return 'UID ' + text.slice(0, 3) + '***' + text.slice(-3);
-    }
-
-    function firstUid(data) {
-        var list = data.recentWishes || [];
-        for (var i = 0; i < list.length; i++) {
-            if (list[i].uid) {
-                return list[i].uid;
-            }
-        }
-        var fives = data.fiveStarRecords || [];
-        for (var j = 0; j < fives.length; j++) {
-            if (fives[j].uid) {
-                return fives[j].uid;
-            }
-        }
-        return '';
-    }
-
-    function drawBattleCard(data) {
-        var g = gameConfig();
-        var canvas = document.createElement('canvas');
-        canvas.width = 720;
-        canvas.height = 1000;
-        var ctx = canvas.getContext('2d');
-        ctx.fillStyle = '#0b0d16';
-        ctx.fillRect(0, 0, 720, 1000);
-        var glow = ctx.createLinearGradient(0, 0, 720, 1000);
-        glow.addColorStop(0, 'rgba(231, 197, 128, 0.16)');
-        glow.addColorStop(0.6, 'rgba(120, 90, 220, 0.10)');
-        glow.addColorStop(1, 'rgba(11, 13, 22, 0)');
-        ctx.fillStyle = glow;
-        ctx.fillRect(0, 0, 720, 1000);
-        ctx.strokeStyle = 'rgba(231, 197, 128, 0.55)';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(26, 26, 668, 948);
-
-        function text(value, x, y, size, color, weight, align) {
-            ctx.fillStyle = color || '#e8ebf2';
-            ctx.font = (weight || 'normal') + ' ' + size + 'px "Microsoft YaHei", "PingFang SC", sans-serif';
-            ctx.textAlign = align || 'left';
-            ctx.fillText(String(value), x, y);
-        }
-
-        text('SouthAir Genshin', 60, 96, 26, '#e7c580', 'bold');
-        text(g.fullName + ' · 战绩卡', 60, 132, 18, '#9aa1b5');
-        text(maskUid(firstUid(data)), 660, 96, 20, '#9aa1b5', 'normal', 'right');
-        text(nowLocal().slice(0, 10), 660, 128, 16, '#71778e', 'normal', 'right');
-
-        text('合计可抽', 60, 196, 18, '#9aa1b5');
-        text(fmt(data.resource.totalPulls), 60, 280, 64, '#ffffff', 'bold');
-        text('抽', 60 + 8 + 40 * String(fmt(data.resource.totalPulls)).length, 280, 22, '#9aa1b5');
-
-        var cards = [
-            ['抽卡记录', fmt(data.wishCount)],
-            ['五星出货', fmt(data.fiveStarWishes)],
-            ['五星出货率', data.fiveStarRate + '%'],
-            ['四星出货', fmt(data.fourStarWishes)]
-        ];
-        cards.forEach(function (item, index) {
-            var col = index % 2;
-            var row = Math.floor(index / 2);
-            var x = 60 + col * 310;
-            var y = 350 + row * 118;
-            ctx.fillStyle = 'rgba(255,255,255,0.035)';
-            ctx.fillRect(x, y, 280, 96);
-            text(item[0], x + 20, y + 30, 16, '#9aa1b5');
-            text(item[1], x + 20, y + 70, 30, '#e8ebf2', 'bold');
-        });
-
-        text('五星平均抽数', 60, 636, 17, '#9aa1b5');
-        text(data.avgFiveStarPity, 300, 636, 17, '#e8ebf2', 'bold');
-        text('小保底不歪率', 400, 636, 17, '#9aa1b5');
-        text(data.softPityUpRate + '%', 660, 636, 17, '#e8ebf2', 'bold', 'right');
-        text('连歪纪录', 60, 682, 17, '#9aa1b5');
-        text(data.maxLossStreak + ' 次', 300, 682, 17, '#e8ebf2', 'bold');
-        text('连不歪纪录', 400, 682, 17, '#9aa1b5');
-        text(data.maxUpStreak + ' 次', 660, 682, 17, '#e8ebf2', 'bold', 'right');
-
-        text('最近五星', 60, 744, 18, '#e7c580', 'bold');
-        var recent = (data.fiveStarRecords || []).slice(-6).reverse();
-        if (!recent.length) {
-            text('还没有五星记录', 60, 786, 17, '#71778e');
-        }
-        recent.forEach(function (item, index) {
-            var y = 786 + index * 38;
-            text(item.itemName || '未命名', 60, y, 18, '#e8ebf2');
-            text((item.pityCount || 1) + ' 抽', 460, y, 16, '#9aa1b5');
-            text(item.pool || '', 660, y, 16, '#71778e', 'normal', 'right');
-        });
-        text('数据来自本地记录 · 个人统计，仅供参考', 60, 944, 14, '#5d6479');
-        return canvas;
-    }
-
+    /** 统计视图的委托事件：定轨目标选择后写入本机 */
     function bindStatsDelegates() {
         var host = $('#view-stats');
         if (!host || host.getAttribute('data-fate-bound') === '1') {
@@ -790,34 +774,11 @@
                 /* 忽略隐私模式下的写入失败 */
             }
             toast(target.value ? '定轨目标已设为 ' + target.value : '已清除定轨目标');
-        });
-    }
-
-    function bindBattleCard(data) {
-        var btn = $('#battle-card');
-        if (!btn) {
-            return;
-        }
-        btn.addEventListener('click', function () {
-            var canvas = drawBattleCard(data);
-            canvas.toBlob(function (blob) {
-                if (!blob) {
-                    toast('战绩卡生成失败', 'error');
-                    return;
-                }
-                var url = URL.createObjectURL(blob);
-                var link = document.createElement('a');
-                link.href = url;
-                link.download = 'southair-' + state.game + '-card-'
-                    + nowLocal().slice(0, 10).replace(/-/g, '') + '.png';
-                document.body.appendChild(link);
-                link.click();
-                link.remove();
-                setTimeout(function () {
-                    URL.revokeObjectURL(url);
-                }, 1500);
-                toast('战绩卡已导出为 PNG');
-            }, 'image/png');
+            var host = $('#stats-pity-content');
+            if (host && cache.stats) {
+                host.innerHTML = statsPityContentHtml(cache.stats,
+                    cache.statsPools[state.game] || PULL_POOL_ALL);
+            }
         });
     }
 
@@ -1487,6 +1448,152 @@
             + '</section>';
     }
 
+    function resourceExpHtml(resource) {
+        if (state.game !== 'genshin') {
+            return '';
+        }
+        var charTotal = expBookTotal(resource);
+        var artTotal = artifactItemTotal(resource);
+        var charNames = nameLists('genshin').characters;
+        var charOptions = '<option value="">未选择（按序号）</option>'
+            + charNames.map(function (name) {
+                return '<option value="' + esc(name) + '">' + esc(name) + '</option>';
+            }).join('');
+        return '<section class="panel exp-panel">'
+            + '<div class="ledger-head"><h3>养成经验</h3>'
+            + '<span>经验书 / 圣遗物经验可练到多少级</span></div>'
+            + '<div class="exp-grid">'
+            + '<div class="exp-card">'
+            + '<h4>角色经验书</h4>'
+            + '<p class="exp-counts">大英雄的经验 <strong>' + fmt(resource.heroWit || 0) + '</strong> 本 · 冒险家的经验 <strong>'
+            + fmt(resource.adventurerExp || 0) + '</strong> 本 · 流浪者的经验 <strong>'
+            + fmt(resource.wandererAdvice || 0) + '</strong> 本</p>'
+            + '<p class="exp-total">合计经验 <strong>' + fmt(charTotal) + '</strong></p>'
+            + '<div class="exp-controls exp-add">'
+            + '<label>角色 <select id="exp-char-name">' + charOptions + '</select></label>'
+            + '<label>当前等级 '
+            + '<input id="exp-char-level" type="number" min="1" max="90" step="1" value="1"></label>'
+            + '<button class="btn btn-outline btn-sm" id="exp-char-add" type="button">保留结果</button>'
+            + '</div>'
+            + '<div class="exp-result" id="exp-char-result"></div>'
+            + '<div class="exp-rows" id="exp-char-rows"></div>'
+            + '<div class="exp-result exp-sum" id="exp-char-sum"></div>'
+            + '</div>'
+            + '<div class="exp-card">'
+            + '<h4>圣遗物经验</h4>'
+            + '<p class="exp-counts">祝圣油膏 <strong>' + fmt(resource.sanctifyingUnction || 0) + '</strong> 个 · 祝圣精华 <strong>'
+            + fmt(resource.sanctifyingEssence || 0) + '</strong> 个</p>'
+            + '<p class="exp-total">合计经验 <strong>' + fmt(artTotal) + '</strong></p>'
+            + '<div class="exp-controls">'
+            + '<label>星级 <select id="exp-art-rarity">'
+            + '<option value="5">五星（+20）</option>'
+            + '<option value="4">四星（+16）</option>'
+            + '<option value="3">三星（+12）</option>'
+            + '</select></label>'
+            + '<label>当前等级 '
+            + '<input id="exp-art-level" type="number" min="0" max="20" step="1" value="0"></label>'
+            + '</div>'
+            + '<div class="exp-result" id="exp-art-result"></div>'
+            + '</div>'
+            + '</div>'
+            + '<p class="ledger-foot">经验书 20,000 / 5,000 / 1,000；祝圣油膏 2,500、祝圣精华 10,000。持有数量在「编辑资源」里修改。</p>'
+            + '</section>';
+    }
+
+    function bindResourceExp(resource) {
+        if (state.game !== 'genshin') {
+            return;
+        }
+        var charTotal = expBookTotal(resource);
+        var artTotal = artifactItemTotal(resource);
+        var charInput = $('#exp-char-level');
+        var charName = $('#exp-char-name');
+        var charAdd = $('#exp-char-add');
+        var charRowsEl = $('#exp-char-rows');
+        var charSum = $('#exp-char-sum');
+        var artLevel = $('#exp-art-level');
+        var artRarity = $('#exp-art-rarity');
+        var charOut = $('#exp-char-result');
+        var artOut = $('#exp-art-result');
+        if (!charInput || !charRowsEl || !artLevel || !artRarity || !charOut || !artOut) {
+            return;
+        }
+        var charRows = [];
+
+        function renderChar() {
+            var remaining = charTotal;
+            var spent = 0;
+            charRows.forEach(function (row) {
+                var result = climbExp(remaining, CHARACTER_EXP, 90, Math.max(1, row.level));
+                row.levelTo = result.level;
+                row.spent = result.spent;
+                remaining = result.rest;
+                spent += result.spent;
+            });
+
+            var html = charRows.map(function (row, index) {
+                return '<div class="exp-row"><span>' + esc(row.name || ('角色 ' + (index + 1)))
+                    + ' · Lv ' + Math.max(1, row.level) + ' → <strong>Lv ' + row.levelTo + '</strong>'
+                    + ' · 消耗 ' + fmt(row.spent) + '</span>'
+                    + '<button class="exp-row-del" type="button" data-index="' + index + '" aria-label="删除">×</button></div>';
+            }).join('');
+            charRowsEl.innerHTML = html;
+            charSum.innerHTML = charRows.length
+                ? '已保留 ' + charRows.length + ' 个角色 · 合计消耗 <strong>' + fmt(spent) + '</strong>'
+                    + ' · 剩余 ' + fmt(remaining)
+                : '';
+            charSum.hidden = !charRows.length;
+
+            var next = climbExp(remaining, CHARACTER_EXP, 90, Math.max(1, toInt(charInput.value)));
+            charOut.innerHTML = '可升到 <strong>Lv ' + next.level + '</strong>'
+                + ' · 消耗 ' + fmt(next.spent) + ' · 剩余 ' + fmt(next.rest)
+                + (next.level >= 90 ? ' · 已满级' : ' · 距 90 级还差 ' + fmt(next.gap));
+        }
+
+        function addChar() {
+            var name = charName ? charName.value : '';
+            charRows.push({
+                name: name,
+                level: Math.max(1, Math.min(90, toInt(charInput.value)))
+            });
+            if (charName) {
+                charName.value = '';
+            }
+            charInput.value = '1';
+            renderChar();
+        }
+
+        if (charAdd && charRowsEl) {
+            charAdd.addEventListener('click', addChar);
+            charRowsEl.addEventListener('click', function (event) {
+                var target = event.target.closest('.exp-row-del');
+                if (!target) {
+                    return;
+                }
+                charRows.splice(Number(target.getAttribute('data-index')), 1);
+                renderChar();
+            });
+        }
+
+        function renderArt() {
+            var rarity = artRarity.value;
+            var max = ARTIFACT_MAX_LEVEL[rarity];
+            artLevel.max = String(max);
+            var level = Math.max(0, Math.min(max, toInt(artLevel.value)));
+            artLevel.value = String(level);
+            var result = climbExp(artTotal, ARTIFACT_EXP[rarity], max, level);
+            artOut.innerHTML = '可升到 <strong>+' + result.level + '</strong>'
+                + ' · 消耗 ' + fmt(result.spent) + ' · 剩余 ' + fmt(result.rest)
+                + (result.level >= max ? ' · 已满级' : ' · 距 +' + max + ' 还差 ' + fmt(result.gap));
+        }
+
+        charInput.addEventListener('input', renderChar);
+        artLevel.addEventListener('input', renderArt);
+        artRarity.addEventListener('change', renderArt);
+        renderChar();
+        renderArt();
+    }
+
     function loadDashboard() {
         var el = $('#view-dashboard');
         var g = gameConfig();
@@ -1539,6 +1646,7 @@
                 + '</div>'
                 + '<div class="fortune-actions">'
                 + '<button class="btn btn-outline" id="resource-edit" type="button">编辑资源</button>'
+                + '<button class="btn btn-text" id="resource-convert" type="button">抽数换算</button>'
                 + '</div>'
                 + '</aside>'
                 + '</section>'
@@ -1550,7 +1658,9 @@
                 + resourceTile('◇', g.fateStandard, standard, '常驻池 · 不计入合计')
                 + '</div>'
 
-                + '<section class="ledger">'
+                + resourceExpHtml(resource)
+
+                + '<section class="ledger hidden" id="resource-ledger">'
                 + '<div class="ledger-head"><h3>抽数换算</h3>'
                 + '<span>常驻抽数不计入折算与合计</span></div>'
                 + '<div class="ledger-grid">'
@@ -1574,6 +1684,18 @@
                     });
                 });
             }
+
+            var convertBtn = $('#resource-convert');
+            var ledger = $('#resource-ledger');
+            if (convertBtn && ledger) {
+                convertBtn.addEventListener('click', function () {
+                    var show = ledger.classList.contains('hidden');
+                    ledger.classList.toggle('hidden', !show);
+                    convertBtn.textContent = show ? '收起换算' : '抽数换算';
+                });
+            }
+
+            bindResourceExp(resource);
         }).catch(function (err) {
             if (state.token) {
                 el.innerHTML = errorHtml(err);
@@ -1833,6 +1955,7 @@
             var calendar = state.game === 'genshin'
                 ? (loadLiveCalendar('genshin') || responses[1])
                 : null;
+            cache.calendar = calendar;
             var resource = data.resource;
             var name = (state.user && (state.user.nickname || state.user.username)) || '旅行者';
             cache.stats = data;
@@ -1874,13 +1997,11 @@
                     + (data.wishCount ? Math.round(data.fourStarWishes * 100 / data.wishCount) : 0) + '%', 'purple')
                 + statCard('五星平均抽数', data.avgFiveStarPity, '按记录中的保底进度')
                 + '</div>'
-                + '<section class="panel"><h3>统计摘要<span class="pool-tag">文本 / 图片</span></h3>'
-                + '<p class="panel-desc">把当前游戏的关键指标导出为 txt，或生成一张 PNG 战绩卡（UID 自动打码）。</p>'
+                + '<section class="panel"><h3>统计摘要<span class="pool-tag">文本</span></h3>'
+                + '<p class="panel-desc">把当前游戏的关键指标导出为 txt。</p>'
                 + '<div class="panel-actions">'
                 + '<button class="btn btn-outline btn-sm" id="stats-summary-export" type="button">'
-                + '导出统计摘要</button>'
-                + '<button class="btn btn-primary btn-sm" id="battle-card" type="button">'
-                + '生成战绩卡</button></div></section>'
+                + '导出统计摘要</button></div></section>'
                 + '<section class="panel"><h3>最近出货<span class="pool-tag">最近 '
                 + (data.recentWishes || []).length + ' 条</span></h3>'
                 + miniWishes(data.recentWishes) + '</section>'
@@ -1912,7 +2033,6 @@
             bindExpectation(data);
             bindCalendar(data);
             bindStatsSummary(data);
-            bindBattleCard(data);
             bindStatsDelegates();
         }).catch(function (err) {
             if (state.token) {
@@ -1928,9 +2048,6 @@
         var rarity = Number(item.rarity) || 3;
         var fiveStar = rarity >= 5;
         var meta = ['<span>' + esc(item.itemType || '—') + '</span>'];
-        if (item.uid) {
-            meta.push('<span class="meta-pill uid-pill">UID ' + esc(item.uid) + '</span>');
-        }
         if (fiveStar) {
             meta.push('<span class="meta-pill ' + (item.isUp ? 'good' : 'bad') + '">'
                 + (item.isUp ? 'UP 内' : '未中 UP') + '</span>');
@@ -1982,7 +2099,6 @@
             + '<div class="toolbar">'
             + '<div class="toolbar-filters">'
             + '<select id="wish-pool" class="input">' + poolOptions + '</select>'
-            + '<select id="wish-uid" class="input"><option value="">全部 UID</option></select>'
             + '<input id="wish-keyword" class="input wish-search" type="search" placeholder="搜索名称"'
             + ' value="' + esc(state.wishKeyword) + '"/>'
             + '<input id="wish-start" class="input wish-date" type="date" value="' + esc(state.wishStart) + '"/>'
@@ -2017,15 +2133,6 @@
             refreshWishList();
         });
 
-        var uidSelect = $('#wish-uid');
-        if (uidSelect) {
-            uidSelect.addEventListener('change', function (event) {
-                state.wishUid = event.target.value;
-                state.pages.wishes = 1;
-                refreshWishList();
-            });
-        }
-
         var keywordInput = $('#wish-keyword');
         var keywordTimer = null;
         if (keywordInput) {
@@ -2056,7 +2163,6 @@
         if (resetBtn) {
             resetBtn.addEventListener('click', function () {
                 state.wishPool = '';
-                state.wishUid = '';
                 state.wishKeyword = '';
                 state.wishStart = '';
                 state.wishEnd = '';
@@ -2114,22 +2220,6 @@
 
         bindWishTools();
 
-        guard(function () {
-            return api('/api/wishes/accounts').then(function (accounts) {
-                var select = $('#wish-uid');
-                if (!select) {
-                    return;
-                }
-                select.innerHTML = '<option value="">全部 UID</option>'
-                    + (accounts || []).map(function (account) {
-                        var label = account.uid + (account.region ? ' · ' + account.region : '');
-                        return '<option value="' + esc(account.uid) + '"'
-                            + (state.wishUid === account.uid ? ' selected' : '') + '>'
-                            + esc(label) + '</option>';
-                    }).join('');
-            });
-        });
-
         return refreshWishList();
     }
 
@@ -2172,9 +2262,6 @@
         }
         if (state.wishPool) {
             params.set('pool', state.wishPool);
-        }
-        if (state.wishUid) {
-            params.set('uid', state.wishUid);
         }
         if (state.wishKeyword) {
             params.set('keyword', state.wishKeyword);
@@ -3000,13 +3087,23 @@
 
     function editResource(resource) {
         var g = gameConfig();
-        return openForm('编辑账号资源 · ' + g.fullName, [
+        var fields = [
             { key: 'primogems', label: g.currency, type: 'number', min: 0, max: 999999999, step: '1', default: resource.primogems },
             { key: 'mora', label: g.credit, type: 'number', min: 0, max: 999999999, step: '1', default: resource.mora },
             { key: 'intertwinedFates', label: g.fateLimited + '（抽）', type: 'number', min: 0, max: 99999, step: '1', default: resource.intertwinedFates },
             { key: 'acquaintedFates', label: g.fateStandard + '（抽）', type: 'number', min: 0, max: 99999, step: '1', default: resource.acquaintedFates },
             { key: 'dailyPrimogems', label: '每天自动增加 ' + g.currency, type: 'number', min: 0, max: 999999, step: '10', default: resource.dailyPrimogems || 0 }
-        ], null, {
+        ];
+        if (state.game === 'genshin') {
+            fields = fields.concat([
+                { key: 'heroWit', label: '大英雄的经验（本）', type: 'number', min: 0, max: 999999, step: '1', default: resource.heroWit || 0 },
+                { key: 'adventurerExp', label: '冒险家的经验（本）', type: 'number', min: 0, max: 999999, step: '1', default: resource.adventurerExp || 0 },
+                { key: 'wandererAdvice', label: '流浪者的经验（本）', type: 'number', min: 0, max: 999999, step: '1', default: resource.wandererAdvice || 0 },
+                { key: 'sanctifyingUnction', label: '祝圣油膏（个）', type: 'number', min: 0, max: 999999, step: '1', default: resource.sanctifyingUnction || 0 },
+                { key: 'sanctifyingEssence', label: '祝圣精华（个）', type: 'number', min: 0, max: 999999, step: '1', default: resource.sanctifyingEssence || 0 }
+            ]);
+        }
+        return openForm('编辑账号资源 · ' + g.fullName, fields, null, {
             hint: '1 抽 = ' + resource.primogemsPerPull + ' ' + g.currency
                 + '；每日额度按自然日自动累加到资源，手动修改资产或额度后从当天重新计',
             submitText: '保存资源'

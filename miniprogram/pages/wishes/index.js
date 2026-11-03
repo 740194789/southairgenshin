@@ -139,8 +139,6 @@ Page({
     poolOptions: ['全部卡池'].concat(gameLib.config('genshin').pools.map(gameLib.poolLabel)),
     poolLabels: gameLib.config('genshin').pools.map(gameLib.poolLabel),
     poolIndex: 0,
-    uidOptions: ['全部 UID'],
-    uidIndex: 0,
     keyword: '',
     startDate: '',
     endDate: '',
@@ -181,7 +179,6 @@ Page({
       poolOptions: ['全部卡池'].concat(g.pools.map(gameLib.poolLabel)),
       poolLabels: g.pools.map(gameLib.poolLabel),
       poolIndex: 0,
-      uidIndex: 0,
       keyword: '',
       startDate: '',
       endDate: '',
@@ -200,16 +197,8 @@ Page({
   load: function () {
     var game = this.data.game;
     var pool = this.data.poolIndex === 0 ? '' : this.data.g.pools[this.data.poolIndex - 1];
-    var uids = store.uids(game);
-    var uidLabels = uids.map(function (uid) {
-      return uid + ' · ' + gameLib.regionOf(uid, game);
-    });
-    var uidOptions = ['全部 UID'].concat(uidLabels);
-    var uidIndex = Math.min(this.data.uidIndex, uidOptions.length - 1);
-    var uid = uidIndex > 0 ? uids[uidIndex - 1] : '';
     var result = store.pageWishes(game, pool, this.data.page, PAGE_SIZE,
       this.data.onlyFive ? 5 : null, {
-        uid: uid,
         keyword: this.data.keyword,
         start: this.data.startDate,
         end: this.data.endDate
@@ -225,7 +214,6 @@ Page({
         stars: starText(record.rarity),
         rarity: record.rarity,
         itemType: record.itemType || '—',
-        uid: record.uid || '',
         pool: gameLib.poolLabel(record.pool) || '未知卡池',
         isUp: record.isUp === true,
         capture: record.captureTriggered === true,
@@ -236,8 +224,6 @@ Page({
     });
 
     this.setData({
-      uidOptions: uidOptions,
-      uidIndex: uidIndex,
       rows: rows,
       allChecked: rows.length > 0 && rows.every(function (row) {
         return row.checked;
@@ -262,17 +248,6 @@ Page({
   onPoolChange: function (event) {
     this.setData({
       poolIndex: Number(event.detail.value),
-      page: 1,
-      selected: [],
-      selectedCount: 0,
-      allChecked: false
-    });
-    this.load();
-  },
-
-  onUidChange: function (event) {
-    this.setData({
-      uidIndex: Number(event.detail.value),
       page: 1,
       selected: [],
       selectedCount: 0,
@@ -317,7 +292,6 @@ Page({
   resetFilters: function () {
     this.setData({
       poolIndex: 0,
-      uidIndex: 0,
       keyword: '',
       startDate: '',
       endDate: '',

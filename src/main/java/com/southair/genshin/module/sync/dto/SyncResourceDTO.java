@@ -15,6 +15,12 @@ public class SyncResourceDTO implements Serializable {
     private Long acquaintedFates;
     private Long editedAt;
 
+    private Long heroWit;
+    private Long adventurerExp;
+    private Long wandererAdvice;
+    private Long sanctifyingUnction;
+    private Long sanctifyingEssence;
+
     public Long getPrimogems() {
         return primogems;
     }
@@ -54,4 +60,45 @@ public class SyncResourceDTO implements Serializable {
     public void setEditedAt(Long editedAt) {
         this.editedAt = editedAt;
     }
+
+    public Long getHeroWit() {
+        return heroWit;
+    }
+
+    public void setHeroWit(Long heroWit) {
+        this.heroWit = heroWit;
+    }
+
+    public Long getAdventurerExp() {
+        return adventurerExp;
+    }
+
+    public void setAdventurerExp(Long adventurerExp) {
+        this.adventurerExp = adventurerExp;
+    }
+
+    public Long getWandererAdvice() {
+        return wandererAdvice;
+    }
+
+    public void setWandererAdvice(Long wandererAdvice) {
+        this.wandererAdvice = wandererAdvice;
+    }
+
+    public Long getSanctifyingUnction() {
+        return sanctifyingUnction;
+    }
+
+    public void setSanctifyingUnction(Long sanctifyingUnction) {
+        this.sanctifyingUnction = sanctifyingUnction;
+    }
+
+    public Long getSanctifyingEssence() {
+        return sanctifyingEssence;
+    }
+
+    public void setSanctifyingEssence(Long sanctifyingEssence) {
+        this.sanctifyingEssence = sanctifyingEssence;
+    }
 }
+

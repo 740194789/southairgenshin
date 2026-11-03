@@ -439,6 +439,30 @@ function bannerNames(banners) {
   return names.join(' · ');
 }
 
+/** 当期武器池的 UP 五星武器：仅原神且日历能识别出名称时返回，否则返回空 */
+function currentWeaponNames(game) {
+  if (game !== 'genshin') {
+    return [];
+  }
+  var live = calendarLib.loadLive(game);
+  var info = live ? calendarLib.infoOf(live) : calendarLib.info(game);
+  var phase = info.current && info.current.phase;
+  if (!phase) {
+    return [];
+  }
+  var names = [];
+  (phase.banners || []).forEach(function (banner) {
+    if (!banner || typeof banner === 'string') {
+      return;
+    }
+    if (banner.pool === '武器活动' && banner.name && banner.name !== '武器活动'
+        && names.indexOf(banner.name) < 0) {
+      names.push(banner.name);
+    }
+  });
+  return names;
+}
+
 /** 卡池日历：仅原神有官方公告实时数据，星铁不显示日历 */
 function buildCalendar(game, unit) {
   if (game !== 'genshin') {
@@ -549,14 +573,23 @@ Page({
       weaponCostText: data.weaponUpSamples ? store.fmt(data.avgPrimogemsPerUpWeapon) : '—'
     };
 
-    var weaponOptions = Object.keys(weaponIcons[game] || {}).sort(function (a, b) {
-      return a.localeCompare(b, 'zh-Hans-CN');
-    });
+    var weaponOptions = [];
     var weaponTarget = '';
-    try {
-      weaponTarget = wx.getStorageSync('sg_weapon_target_' + game) || '';
-    } catch (e) {
-      weaponTarget = '';
+    if (game === 'genshin') {
+      weaponOptions = currentWeaponNames(game);
+      if (!weaponOptions.length) {
+        weaponOptions = Object.keys(weaponIcons[game] || {}).sort(function (a, b) {
+          return a.localeCompare(b, 'zh-Hans-CN');
+        });
+      }
+      try {
+        weaponTarget = wx.getStorageSync('sg_weapon_target_' + game) || '';
+      } catch (e) {
+        weaponTarget = '';
+      }
+      if (weaponTarget && weaponOptions.indexOf(weaponTarget) < 0) {
+        weaponOptions = weaponOptions.concat(weaponTarget);
+      }
     }
 
     var pools = data.poolStats.map(function (item) {
@@ -731,114 +764,6 @@ Page({
     }
     wx.showToast({ title: name ? '定轨目标：' + name : '已清除定轨目标', icon: 'none' });
     this.load(this.data.game);
-  },
-
-  /* ---------------- 战绩卡（Canvas） ---------------- */
-
-  onBattleCard: function () {
-    var data = store.overview(this.data.game);
-    var g = this.data.g;
-    var ctx = wx.createCanvasContext('battleCard', this);
-    function text(value, x, y, size, color, align) {
-      ctx.setFillStyle(color || '#e8ebf2');
-      ctx.setFontSize(size);
-      ctx.setTextAlign(align || 'left');
-      ctx.fillText(String(value), x, y);
-    }
-    function mask(uid) {
-      var value = String(uid || '').trim();
-      if (!value) {
-        return 'UID 未标注';
-      }
-      return value.length <= 5 ? ('UID ' + value)
-        : ('UID ' + value.slice(0, 3) + '***' + value.slice(-3));
-    }
-    var recentAll = data.recentWishes || [];
-    var uid = '';
-    for (var i = 0; i < recentAll.length; i++) {
-      if (recentAll[i].uid) {
-        uid = recentAll[i].uid;
-        break;
-      }
-    }
-    var fives = (data.fiveStarHistory || []).slice(-6).reverse();
-
-    ctx.setFillStyle('#0b0d16');
-    ctx.fillRect(0, 0, 720, 1000);
-    ctx.setStrokeStyle('rgba(231,197,128,0.55)');
-    ctx.setLineWidth(2);
-    ctx.strokeRect(26, 26, 668, 948);
-
-    text('SouthAir Genshin', 60, 96, 24, '#e7c580');
-    text(g.fullName + ' · 战绩卡', 60, 130, 18, '#9aa1b5');
-    text(mask(uid), 660, 96, 18, '#9aa1b5', 'right');
-    text(store.nowStr().slice(0, 10), 660, 128, 15, '#71778e', 'right');
-
-    text('合计可抽', 60, 196, 18, '#9aa1b5');
-    text(store.fmt(data.resource.totalPulls), 60, 280, 54, '#ffffff');
-    text('抽', 60 + 10 + 32 * String(store.fmt(data.resource.totalPulls)).length, 280, 20, '#9aa1b5');
-
-    var cards = [
-      ['抽卡记录', store.fmt(data.wishCount)],
-      ['五星出货', store.fmt(data.fiveStarWishes)],
-      ['五星出货率', data.fiveStarRate + '%'],
-      ['四星出货', store.fmt(data.fourStarWishes)]
-    ];
-    cards.forEach(function (item, index) {
-      var x = 60 + (index % 2) * 310;
-      var y = 350 + Math.floor(index / 2) * 118;
-      ctx.setFillStyle('rgba(255,255,255,0.04)');
-      ctx.fillRect(x, y, 280, 96);
-      text(item[0], x + 20, y + 30, 15, '#9aa1b5');
-      text(item[1], x + 20, y + 70, 28);
-    });
-
-    text('五星平均抽数', 60, 636, 16, '#9aa1b5');
-    text(data.avgFiveStarPity, 300, 636, 16, '#e8ebf2');
-    text('小保底不歪率', 400, 636, 16, '#9aa1b5');
-    text(data.softPityUpRate + '%', 660, 636, 16, '#e8ebf2', 'right');
-    text('连歪纪录', 60, 682, 16, '#9aa1b5');
-    text(data.maxLossStreak + ' 次', 300, 682, 16, '#e8ebf2');
-    text('连不歪纪录', 400, 682, 16, '#9aa1b5');
-    text(data.maxUpStreak + ' 次', 660, 682, 16, '#e8ebf2', 'right');
-
-    text('最近五星', 60, 744, 18, '#e7c580');
-    if (!fives.length) {
-      text('还没有五星记录', 60, 786, 16, '#71778e');
-    }
-    fives.forEach(function (item, index) {
-      var y = 786 + index * 38;
-      text(item.itemName || '未命名', 60, y, 17);
-      text((item.pityCount || 1) + ' 抽', 460, y, 15, '#9aa1b5');
-      text(item.pool || '', 660, y, 15, '#71778e', 'right');
-    });
-    text('数据来自本机记录 · 个人统计，仅供参考', 60, 944, 13, '#5d6479');
-    var that = this;
-    ctx.draw(false, function () {
-      wx.canvasToTempFilePath({
-        canvasId: 'battleCard',
-        x: 0,
-        y: 0,
-        width: 720,
-        height: 1000,
-        destWidth: 720,
-        destHeight: 1000,
-        success: function (res) {
-          wx.saveImageToPhotosAlbum({
-            filePath: res.tempFilePath,
-            success: function () {
-              wx.showToast({ title: '战绩卡已保存到相册', icon: 'none' });
-            },
-            fail: function () {
-              wx.previewImage({ urls: [res.tempFilePath] });
-            }
-          });
-        },
-        fail: function () {
-          wx.showToast({ title: '战绩卡生成失败', icon: 'none' });
-        }
-      }, that);
-    });
   },
 
   /** 卡池日历「用剩余 N 天」：写入攒抽规划的天数。 */

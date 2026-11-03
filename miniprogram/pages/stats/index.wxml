@@ -50,15 +50,7 @@
     </view>
 
     <view class="panel">
-      <view class="panel-title">战绩卡<text class="pool-tag inline">PNG · UID 打码</text></view>
-      <view class="panel-desc">把当前账号的关键指标生成一张图片，可保存到相册或分享。</view>
-      <view class="toolbar">
-        <view class="btn btn-primary btn-sm" bindtap="onBattleCard">生成战绩卡</view>
-      </view>
-    </view>
-
-    <view class="panel">
-      <view class="panel-title">最近出货<text class="pool-tag inline">最近 {{recent.length}} 条</text></view>
+      <view class="panel-title">最近出货</view>
       <block wx:if="{{recent.length}}">
         <view class="list-row" wx:for="{{recent}}" wx:key="id">
           <view class="recent-name">
@@ -364,7 +356,4 @@
       <view class="foot-tip">离线版数据只存在本机缓存；卸载、清理缓存或换机会丢失。账号资源可直接在「资源」页修改。</view>
     </view>
   </view>
-
-  <!-- 战绩卡离屏画布 -->
-  <canvas canvas-id="battleCard" class="battle-canvas"></canvas>
 </view>

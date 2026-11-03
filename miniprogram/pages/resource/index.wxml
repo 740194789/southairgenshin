@@ -12,7 +12,10 @@
       <view class="section-title">账号资源</view>
       <view class="section-sub">{{g.fullName}} · 资源与抽数换算</view>
     </view>
-    <view class="btn btn-outline btn-sm" bindtap="openEdit">编辑资源</view>
+    <view class="head-actions">
+      <view class="btn btn-outline btn-sm" bindtap="toggleConvert">{{showConvert ? '收起换算' : '抽数换算'}}</view>
+      <view class="btn btn-outline btn-sm" bindtap="openEdit">编辑资源</view>
+    </view>
   </view>
 
   <view class="stat-grid">
@@ -38,7 +41,60 @@
     </view>
   </view>
 
-  <view class="panel">
+  <view class="panel" wx:if="{{game === 'genshin'}}">
+    <view class="panel-title">养成经验</view>
+    <view class="panel-desc">按持有经验素材推算可练到的等级，数量在「编辑资源」里修改。</view>
+
+    <view class="exp-card">
+      <view class="exp-card-title">角色经验书</view>
+      <view class="exp-count">大英雄的经验 {{exp.heroWitText}} 本 · 冒险家的经验 {{exp.adventurerExpText}} 本 · 流浪者的经验 {{exp.wandererAdviceText}} 本</view>
+      <view class="exp-total">合计经验 {{exp.charTotalText}}</view>
+      <view class="form-row">
+        <text class="form-label">角色</text>
+        <picker class="form-control" range="{{charOptions}}" value="{{charIndex}}" bindchange="onCharName">
+          <view class="picker-box">{{charOptions[charIndex]}}</view>
+        </picker>
+      </view>
+      <view class="form-row">
+        <text class="form-label">角色当前等级</text>
+        <view class="exp-level-box">
+          <input class="form-input" type="number" value="{{expCharLevel}}" bindinput="onCharLevel" placeholder="1"/>
+          <view class="btn btn-outline btn-sm" bindtap="onAddChar">保留结果</view>
+        </view>
+      </view>
+      <view class="exp-result">可升到 <text class="exp-strong">Lv {{exp.charLevel}}</text> · 消耗 {{exp.charSpentText}} · 剩余 {{exp.charRestText}}</view>
+      <view class="exp-note">{{exp.charNote}}</view>
+      <view class="exp-plan" wx:if="{{charPlanView.length}}">
+        <view class="exp-plan-row" wx:for="{{charPlanView}}" wx:key="index">
+          <text>{{item.name}} · Lv {{item.fromLevel}} → Lv {{item.toLevel}} · 消耗 {{item.spentText}}</text>
+          <view class="exp-row-del" data-index="{{index}}" bindtap="onRemoveChar">×</view>
+        </view>
+        <view class="exp-sum">已保留 {{charPlanView.length}} 个角色 · 合计消耗 {{exp.planSpentText}} · 剩余 {{exp.planRestText}}</view>
+      </view>
+    </view>
+
+    <view class="exp-card">
+      <view class="exp-card-title">圣遗物经验</view>
+      <view class="exp-count">祝圣油膏 {{exp.unctionText}} 个 · 祝圣精华 {{exp.essenceText}} 个</view>
+      <view class="exp-total">合计经验 {{exp.artTotalText}}</view>
+      <view class="form-row">
+        <text class="form-label">星级</text>
+        <picker class="form-control" range="{{artRarityOptions}}" value="{{artRarityIndex}}" bindchange="onArtRarity">
+          <view class="picker-box">{{artRarityOptions[artRarityIndex]}}</view>
+        </picker>
+      </view>
+      <view class="form-row">
+        <text class="form-label">圣遗物当前等级</text>
+        <input class="form-input" type="number" value="{{artLevel}}" bindinput="onArtLevel" placeholder="0"/>
+      </view>
+      <view class="exp-result">可升到 <text class="exp-strong">+{{exp.artLevel}}</text> · 消耗 {{exp.artSpentText}} · 剩余 {{exp.artRestText}}</view>
+      <view class="exp-note">{{exp.artNote}}</view>
+    </view>
+
+    <view class="foot-tip">经验书 20,000 / 5,000 / 1,000；祝圣油膏 2,500、祝圣精华 10,000。</view>
+  </view>
+
+  <view class="panel" wx:if="{{showConvert}}">
     <view class="panel-title">抽数换算</view>
     <view class="panel-desc">常驻池抽数（{{g.fateStandard}}）不计入货币折算与合计可抽。</view>
 
@@ -90,7 +146,7 @@
       <text class="modal-title">编辑资源 · {{g.fullName}}</text>
       <view class="modal-close" bindtap="closeEdit">×</view>
     </view>
-    <view class="modal-body" style="height:auto; padding-bottom:16rpx;">
+    <scroll-view class="modal-body" scroll-y="true" style="height:60vh; padding-bottom:16rpx;">
       <view class="form-row">
         <text class="form-label">{{g.currency}}</text>
         <input class="form-input" type="number" value="{{form.primogems}}" data-key="primogems" bindinput="onInput" placeholder="0"/>
@@ -111,8 +167,30 @@
         <text class="form-label">每天自动增加 {{g.currency}}</text>
         <input class="form-input" type="number" value="{{form.dailyPrimogems}}" data-key="dailyPrimogems" bindinput="onInput" placeholder="0"/>
       </view>
+      <block wx:if="{{game === 'genshin'}}">
+        <view class="form-row">
+          <text class="form-label">大英雄的经验（本）</text>
+          <input class="form-input" type="number" value="{{form.heroWit}}" data-key="heroWit" bindinput="onInput" placeholder="0"/>
+        </view>
+        <view class="form-row">
+          <text class="form-label">冒险家的经验（本）</text>
+          <input class="form-input" type="number" value="{{form.adventurerExp}}" data-key="adventurerExp" bindinput="onInput" placeholder="0"/>
+        </view>
+        <view class="form-row">
+          <text class="form-label">流浪者的经验（本）</text>
+          <input class="form-input" type="number" value="{{form.wandererAdvice}}" data-key="wandererAdvice" bindinput="onInput" placeholder="0"/>
+        </view>
+        <view class="form-row">
+          <text class="form-label">祝圣油膏（个）</text>
+          <input class="form-input" type="number" value="{{form.sanctifyingUnction}}" data-key="sanctifyingUnction" bindinput="onInput" placeholder="0"/>
+        </view>
+        <view class="form-row">
+          <text class="form-label">祝圣精华（个）</text>
+          <input class="form-input" type="number" value="{{form.sanctifyingEssence}}" data-key="sanctifyingEssence" bindinput="onInput" placeholder="0"/>
+        </view>
+      </block>
       <view class="foot-tip">每日额度按自然日自动累加到资源，修改资产或额度后从当天重新计；留空按 0 处理。</view>
-    </view>
+    </scroll-view>
     <view class="modal-foot">
       <view class="btn btn-text" bindtap="closeEdit">取消</view>
       <view class="btn btn-primary" bindtap="saveEdit">保存</view>

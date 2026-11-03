@@ -727,12 +727,3 @@
   margin-left: 12rpx;
 }
 
-/* 战绩卡离屏画布 */
-.battle-canvas {
-  position: fixed;
-  left: -2000px;
-  top: 0;
-  width: 720px;
-  height: 1000px;
-  pointer-events: none;
-}

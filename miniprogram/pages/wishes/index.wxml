@@ -23,9 +23,6 @@
   </view>
 
   <view class="wish-filters">
-    <picker class="pool-picker" range="{{uidOptions}}" value="{{uidIndex}}" bindchange="onUidChange">
-      <view class="pool-picker-box">{{uidOptions[uidIndex]}} ▾</view>
-    </picker>
     <input class="wish-search" type="text" value="{{keyword}}" placeholder="搜索名称"
            bindinput="onKeywordInput"/>
     <picker mode="date" value="{{startDate}}" bindchange="onStartDate">
@@ -61,7 +58,6 @@
           </view>
           <view class="record-meta">
             <text>{{item.itemType}}</text>
-            <text wx:if="{{item.uid}}" class="uid-pill">UID {{item.uid}}</text>
             <text wx:if="{{item.rarity === 5}}" class="{{item.isUp ? 'up-text' : 'lost-text'}}">{{item.isUp ? 'UP 内' : '未中 UP'}}</text>
             <text wx:if="{{item.rarity === 5}}">用了 {{item.pityCount}} 抽</text>
             <text wx:if="{{item.rarity === 5 && item.capture}}" class="capture">捕获明光</text>

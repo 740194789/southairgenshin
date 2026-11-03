@@ -54,6 +54,21 @@ public class ResourceService {
         if (request.getDailyPrimogems() != null) {
             entity.setDailyPrimogems(request.getDailyPrimogems());
         }
+        if (request.getHeroWit() != null) {
+            entity.setHeroWit(request.getHeroWit());
+        }
+        if (request.getAdventurerExp() != null) {
+            entity.setAdventurerExp(request.getAdventurerExp());
+        }
+        if (request.getWandererAdvice() != null) {
+            entity.setWandererAdvice(request.getWandererAdvice());
+        }
+        if (request.getSanctifyingUnction() != null) {
+            entity.setSanctifyingUnction(request.getSanctifyingUnction());
+        }
+        if (request.getSanctifyingEssence() != null) {
+            entity.setSanctifyingEssence(request.getSanctifyingEssence());
+        }
         // 手动修改资产或每日额度后，从今天重新开始累积，避免补发历史差额
         if (request.getPrimogems() != null || request.getDailyPrimogems() != null) {
             entity.setLastAccrualDate(LocalDate.now().toString());

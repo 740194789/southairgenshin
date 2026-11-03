@@ -64,6 +64,26 @@ public class AccountResource extends BaseEntity {
     @Column(name = "edited_at")
     private Long editedAt;
 
+    /** 大英雄的经验（角色经验书，20000 经验 / 本） */
+    @Column(name = "hero_wit")
+    private Long heroWit = 0L;
+
+    /** 冒险家的经验（角色经验书，5000 经验 / 本） */
+    @Column(name = "adventurer_exp")
+    private Long adventurerExp = 0L;
+
+    /** 流浪者的经验（角色经验书，1000 经验 / 本） */
+    @Column(name = "wanderer_advice")
+    private Long wandererAdvice = 0L;
+
+    /** 祝圣油膏（圣遗物经验素材，2500 经验 / 个） */
+    @Column(name = "sanctifying_unction")
+    private Long sanctifyingUnction = 0L;
+
+    /** 祝圣精华（圣遗物经验素材，10000 经验 / 个） */
+    @Column(name = "sanctifying_essence")
+    private Long sanctifyingEssence = 0L;
+
     public Long getId() {
         return id;
     }
@@ -142,5 +162,45 @@ public class AccountResource extends BaseEntity {
 
     public void setLastAccrualDate(String lastAccrualDate) {
         this.lastAccrualDate = lastAccrualDate;
+    }
+
+    public Long getHeroWit() {
+        return heroWit;
+    }
+
+    public void setHeroWit(Long heroWit) {
+        this.heroWit = heroWit;
+    }
+
+    public Long getAdventurerExp() {
+        return adventurerExp;
+    }
+
+    public void setAdventurerExp(Long adventurerExp) {
+        this.adventurerExp = adventurerExp;
+    }
+
+    public Long getWandererAdvice() {
+        return wandererAdvice;
+    }
+
+    public void setWandererAdvice(Long wandererAdvice) {
+        this.wandererAdvice = wandererAdvice;
+    }
+
+    public Long getSanctifyingUnction() {
+        return sanctifyingUnction;
+    }
+
+    public void setSanctifyingUnction(Long sanctifyingUnction) {
+        this.sanctifyingUnction = sanctifyingUnction;
+    }
+
+    public Long getSanctifyingEssence() {
+        return sanctifyingEssence;
+    }
+
+    public void setSanctifyingEssence(Long sanctifyingEssence) {
+        this.sanctifyingEssence = sanctifyingEssence;
     }
 }

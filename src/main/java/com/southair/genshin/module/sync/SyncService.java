@@ -114,6 +114,21 @@ public class SyncService {
         if (incoming.getAcquaintedFates() != null) {
             entity.setAcquaintedFates(Math.max(0L, incoming.getAcquaintedFates()));
         }
+        if (incoming.getHeroWit() != null) {
+            entity.setHeroWit(Math.max(0L, incoming.getHeroWit()));
+        }
+        if (incoming.getAdventurerExp() != null) {
+            entity.setAdventurerExp(Math.max(0L, incoming.getAdventurerExp()));
+        }
+        if (incoming.getWandererAdvice() != null) {
+            entity.setWandererAdvice(Math.max(0L, incoming.getWandererAdvice()));
+        }
+        if (incoming.getSanctifyingUnction() != null) {
+            entity.setSanctifyingUnction(Math.max(0L, incoming.getSanctifyingUnction()));
+        }
+        if (incoming.getSanctifyingEssence() != null) {
+            entity.setSanctifyingEssence(Math.max(0L, incoming.getSanctifyingEssence()));
+        }
     }
 
     private void mergeRecord(Long userId, String game, SyncRecordDTO incoming) {
@@ -240,6 +255,11 @@ public class SyncService {
         dto.setMora(nvl(entity.getMora()));
         dto.setIntertwinedFates(nvl(entity.getIntertwinedFates()));
         dto.setAcquaintedFates(nvl(entity.getAcquaintedFates()));
+        dto.setHeroWit(nvl(entity.getHeroWit()));
+        dto.setAdventurerExp(nvl(entity.getAdventurerExp()));
+        dto.setWandererAdvice(nvl(entity.getWandererAdvice()));
+        dto.setSanctifyingUnction(nvl(entity.getSanctifyingUnction()));
+        dto.setSanctifyingEssence(nvl(entity.getSanctifyingEssence()));
         dto.setEditedAt(entity.getEditedAt() == null ? 0L : entity.getEditedAt());
         return dto;
     }

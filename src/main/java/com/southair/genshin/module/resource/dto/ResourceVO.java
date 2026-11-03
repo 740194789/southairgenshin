@@ -44,6 +44,13 @@ public class ResourceVO implements Serializable {
     /** 全部货币资产 = 货币 + 限定池抽数折算（常驻池抽数不计入） */
     private long totalPrimogems;
 
+    /** 角色经验书 / 圣遗物经验素材的持有数量 */
+    private long heroWit;
+    private long adventurerExp;
+    private long wandererAdvice;
+    private long sanctifyingUnction;
+    private long sanctifyingEssence;
+
     public static ResourceVO of(AccountResource entity, int primogemsPerPull) {
         ResourceVO vo = new ResourceVO();
         int unit = primogemsPerPull <= 0 ? 160 : primogemsPerPull;
@@ -53,6 +60,11 @@ public class ResourceVO implements Serializable {
         vo.intertwinedFates = nvl(entity.getIntertwinedFates());
         vo.acquaintedFates = nvl(entity.getAcquaintedFates());
         vo.dailyPrimogems = nvl(entity.getDailyPrimogems());
+        vo.heroWit = nvl(entity.getHeroWit());
+        vo.adventurerExp = nvl(entity.getAdventurerExp());
+        vo.wandererAdvice = nvl(entity.getWandererAdvice());
+        vo.sanctifyingUnction = nvl(entity.getSanctifyingUnction());
+        vo.sanctifyingEssence = nvl(entity.getSanctifyingEssence());
         vo.primogemsPerPull = unit;
         vo.pullsFromPrimogems = vo.primogems / unit;
         vo.primogemsRemainder = vo.primogems % unit;
@@ -169,5 +181,45 @@ public class ResourceVO implements Serializable {
 
     public void setDailyPulls(long dailyPulls) {
         this.dailyPulls = dailyPulls;
+    }
+
+    public long getHeroWit() {
+        return heroWit;
+    }
+
+    public void setHeroWit(long heroWit) {
+        this.heroWit = heroWit;
+    }
+
+    public long getAdventurerExp() {
+        return adventurerExp;
+    }
+
+    public void setAdventurerExp(long adventurerExp) {
+        this.adventurerExp = adventurerExp;
+    }
+
+    public long getWandererAdvice() {
+        return wandererAdvice;
+    }
+
+    public void setWandererAdvice(long wandererAdvice) {
+        this.wandererAdvice = wandererAdvice;
+    }
+
+    public long getSanctifyingUnction() {
+        return sanctifyingUnction;
+    }
+
+    public void setSanctifyingUnction(long sanctifyingUnction) {
+        this.sanctifyingUnction = sanctifyingUnction;
+    }
+
+    public long getSanctifyingEssence() {
+        return sanctifyingEssence;
+    }
+
+    public void setSanctifyingEssence(long sanctifyingEssence) {
+        this.sanctifyingEssence = sanctifyingEssence;
     }
 }

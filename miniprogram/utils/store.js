@@ -144,6 +144,11 @@ function getResource(game) {
     intertwinedFates: Math.max(0, toInt(res.intertwinedFates)),
     acquaintedFates: Math.max(0, toInt(res.acquaintedFates)),
     dailyPrimogems: Math.max(0, toInt(res.dailyPrimogems)),
+    heroWit: Math.max(0, toInt(res.heroWit)),
+    adventurerExp: Math.max(0, toInt(res.adventurerExp)),
+    wandererAdvice: Math.max(0, toInt(res.wandererAdvice)),
+    sanctifyingUnction: Math.max(0, toInt(res.sanctifyingUnction)),
+    sanctifyingEssence: Math.max(0, toInt(res.sanctifyingEssence)),
     lastAccrualDate: String(res.lastAccrualDate || '')
   });
 }
@@ -175,13 +180,20 @@ function saveResource(game, res) {
     intertwinedFates: Math.max(0, toInt(res.intertwinedFates)),
     acquaintedFates: Math.max(0, toInt(res.acquaintedFates)),
     dailyPrimogems: clamp(res.dailyPrimogems, 0, 999999, 0),
+    heroWit: Math.max(0, toInt(res.heroWit)),
+    adventurerExp: Math.max(0, toInt(res.adventurerExp)),
+    wandererAdvice: Math.max(0, toInt(res.wandererAdvice)),
+    sanctifyingUnction: Math.max(0, toInt(res.sanctifyingUnction)),
+    sanctifyingEssence: Math.max(0, toInt(res.sanctifyingEssence)),
     lastAccrualDate: String(res.lastAccrualDate || '')
   });
 }
 
 function updateResource(game, patch) {
   var next = getResource(game);
-  ['primogems', 'mora', 'intertwinedFates', 'acquaintedFates'].forEach(function (key) {
+  ['primogems', 'mora', 'intertwinedFates', 'acquaintedFates',
+    'heroWit', 'adventurerExp', 'wandererAdvice',
+    'sanctifyingUnction', 'sanctifyingEssence'].forEach(function (key) {
     if (patch[key] !== undefined) {
       next[key] = Math.max(0, toInt(patch[key]));
     }
@@ -353,7 +365,12 @@ function resourceVO(res) {
     totalPulls: pulls + res.intertwinedFates,
     totalPrimogems: res.primogems + res.intertwinedFates * unit,
     dailyPrimogems: res.dailyPrimogems || 0,
-    dailyPulls: Math.floor((res.dailyPrimogems || 0) / unit * 10) / 10
+    dailyPulls: Math.floor((res.dailyPrimogems || 0) / unit * 10) / 10,
+    heroWit: res.heroWit || 0,
+    adventurerExp: res.adventurerExp || 0,
+    wandererAdvice: res.wandererAdvice || 0,
+    sanctifyingUnction: res.sanctifyingUnction || 0,
+    sanctifyingEssence: res.sanctifyingEssence || 0
   };
 }
 
