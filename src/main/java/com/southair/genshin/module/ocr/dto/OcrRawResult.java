@@ -14,6 +14,16 @@ public class OcrRawResult implements Serializable {
     private String tsv;
     /** 命之座界面里识别出的已激活命座数；不是该界面时为 null */
     private Integer constellation;
+    /** 左上角识别出的角色 / 武器名称；读不到时为 null */
+    private String characterName;
+
+    public String getCharacterName() {
+        return characterName;
+    }
+
+    public void setCharacterName(String characterName) {
+        this.characterName = characterName;
+    }
 
     public Integer getConstellation() {
         return constellation;

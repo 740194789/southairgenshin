@@ -59,6 +59,23 @@ public class TesseractEngine {
         return hint;
     }
 
+    /** 当前配置的中文识别语言包，默认 chi_sim+eng */
+    public String getLanguage() {
+        String lang = properties.getTesseract().getLang();
+        return lang == null || lang.trim().isEmpty() ? "chi_sim+eng" : lang.trim();
+    }
+
+    /**
+     * 左上角标题专用语言：只用 chi_sim。
+     *
+     * <p>混入 eng 时 tesseract 会把「冰元素 / 甘雨」这类小字整体判成拉丁字母（实测输出 ICH / HE），
+     * 单用中文包才能稳定识别。</p>
+     */
+    public String getChineseLanguage() {
+        String lang = getLanguage();
+        return lang.contains("chi_sim") ? "chi_sim" : lang;
+    }
+
     private synchronized void refresh() {
         long now = System.currentTimeMillis();
         if (now - checkedAt < CHECK_TTL) {
@@ -120,13 +137,26 @@ public class TesseractEngine {
      * 避免「6」被整页识别成「0」这类单字符误差。
      */
     public String recognizeNumber(byte[] image, String ext) {
-        return recognizeSingleLine(image, ext, true);
+        return recognizeSingleLine(image, ext, true, "eng");
+    }
+
+    /**
+     * 单行文字识别（用于命之座界面左上角的元素 / 角色名）：按中文语言包识别，
+     * 截图已由调用方裁剪、放大并二值化成深色字 / 浅色底。
+     */
+    public String recognizeLine(byte[] image, String ext, String lang) {
+        return recognizeSingleLine(image, ext, false, lang);
     }
 
     private String recognizeSingleLine(byte[] image, String ext, boolean digitsOnly) {
+        return recognizeSingleLine(image, ext, digitsOnly, "eng");
+    }
+
+    private String recognizeSingleLine(byte[] image, String ext, boolean digitsOnly, String lang) {
         if (!isAvailable()) {
             return "";
         }
+        String language = lang == null || lang.trim().isEmpty() ? "eng" : lang.trim();
         Path input = null;
         Path dir = null;
         try {
@@ -138,7 +168,7 @@ public class TesseractEngine {
 
             List<String> args = new ArrayList<>(Arrays.asList(
                     command(), input.toString(), outputBase.toString(),
-                    "-l", "eng", "--psm", "7",
+                    "-l", language, "--psm", "7",
                     "-c", "tessedit_create_txt=1"));
             if (digitsOnly) {
                 args.add("-c");

@@ -4383,12 +4383,18 @@
     }
 
     /** 识图结果先做成候选，确认后才写入本机收藏记录 */
-    function openCollectionOcrForm(text, constellation) {
+    function openCollectionOcrForm(text, constellation, characterName) {
         var g = gameConfig();
         var defs = collectionDefs(g);
         var lists = nameLists('genshin');
-        var charMatch = matchOcrName(text, lists.characters);
-        var weaponMatch = matchOcrName(text, lists.weapons);
+        var header = String(characterName || '').trim();
+        // 左上角标题单独识别后再匹配；命中不够可信时仍回退到整页文本
+        function headerMatch(names) {
+            var match = header ? matchOcrName(header, names) : null;
+            return match && match.score >= 0.8 ? match : null;
+        }
+        var charMatch = headerMatch(lists.characters) || matchOcrName(text, lists.characters);
+        var weaponMatch = headerMatch(lists.weapons) || matchOcrName(text, lists.weapons);
         var kind = 'character';
         var best = null;
         if (charMatch && (!weaponMatch || charMatch.score >= weaponMatch.score)) {
@@ -4424,9 +4430,9 @@
         }
         var rankLabel = section === 'weapons5' ? '精炼等级' : '命座数';
         var hint = best
-            ? '识别到「' + best.name + '」，' + rankLabel + (scannedRank === null
-                ? '未读到，请手动确认' : '为 ' + rank)
-            : '没有识别到角色 / 武器名称，请手动选择';
+            ? '识别到「' + best.name + '」' + (header ? '（左上角）' : '') + '，' + rankLabel
+                + (scannedRank === null ? '未读到，请手动确认' : '为 ' + rank)
+            : (header ? '左上角读到「' + header + '」但未匹配到收藏，请手动选择' : '没有识别到角色 / 武器名称，请手动选择');
 
         var categoryField = {
             key: 'category',
@@ -4535,7 +4541,7 @@
             if (!raw) {
                 return null;
             }
-            return openCollectionOcrForm(raw.text || '', raw.constellation);
+            return openCollectionOcrForm(raw.text || '', raw.constellation, raw.characterName);
         });
     }
 

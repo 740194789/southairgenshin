@@ -165,21 +165,124 @@ public class OcrService {
         result.setText(output.getText());
         result.setTsv(output.getTsv());
         if ("page".equalsIgnoreCase(mode)) {
-            result.setConstellation(readConstellation(bytes));
+            BufferedImage image = readImage(bytes);
+            result.setConstellation(readConstellation(image));
+            result.setCharacterName(readCharacterName(image));
         }
         return result;
+    }
+
+    private BufferedImage readImage(byte[] bytes) {
+        try {
+            return ImageIO.read(new ByteArrayInputStream(bytes));
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
     }
 
     /**
      * 命之座界面没有「命座 N」这样的文字，改成数右侧 6 个节点的点亮个数。
      * 只有普通整页识别（收藏识图）才尝试，出金历史不会走这里。
      */
-    private Integer readConstellation(byte[] bytes) {
+    private Integer readConstellation(BufferedImage image) {
         try {
-            return constellationRecognizer.recognize(ImageIO.read(new ByteArrayInputStream(bytes)));
-        } catch (IOException | RuntimeException e) {
+            return constellationRecognizer.recognize(image);
+        } catch (RuntimeException e) {
             return null;
         }
+    }
+
+    /** 左上角名称区域（元素 / 角色名，武器详情页则是武器名）占整图的比例；
+     *  左边界跳过最左侧的元素图标，右边界避开顶部角色头像栏 */
+    private static final double HEADER_LEFT = 0.070;
+    private static final double HEADER_RIGHT = 0.22;
+    private static final double HEADER_TOP = 0.012;
+    private static final double HEADER_BOTTOM = 0.085;
+    /** 左上角标题的白字阈值：高于该亮度视为文字 */
+    private static final int HEADER_WHITE_THRESHOLD = 150;
+
+    /**
+     * 命之座 / 武器详情页左上角的小字整页识别经常漏掉，单独裁剪、放大并二值化后再做单行识别。
+     *
+     * @return 清理后的名称（如「甘雨」）；识别不到返回 null
+     */
+    private String readCharacterName(BufferedImage image) {
+        if (image == null) {
+            return null;
+        }
+        int width = image.getWidth();
+        int height = image.getHeight();
+        int left = (int) Math.round(width * HEADER_LEFT);
+        int right = (int) Math.round(width * HEADER_RIGHT);
+        int top = (int) Math.round(height * HEADER_TOP);
+        int bottom = (int) Math.round(height * HEADER_BOTTOM);
+        if (right - left < 20 || bottom - top < 10) {
+            return null;
+        }
+        BufferedImage crop = image.getSubimage(left, top, right - left, bottom - top);
+        BufferedImage enlarged = upscale(crop, 4);
+        String lang = tesseractEngine.getChineseLanguage();
+        // 游戏内标题是深色半透明底上的白字，直接放大识别效果最好
+        String text = tesseractEngine.recognizeLine(toPng(enlarged), ".png", lang);
+        String name = extractHeaderName(text);
+        if (name == null) {
+            // 背景较亮或压缩较重时白字对比度不足，再二值化成「浅底深字」重试
+            byte[] png = toPng(binarizeHeader(enlarged));
+            if (png != null) {
+                name = extractHeaderName(tesseractEngine.recognizeLine(png, ".png", lang));
+            }
+        }
+        return name;
+    }
+
+    /** 标题是深色半透明底上的白字；转成「浅底 + 深色字」更适合 tesseract 单行识别 */
+    private BufferedImage binarizeHeader(BufferedImage image) {
+        BufferedImage target = new BufferedImage(image.getWidth(), image.getHeight(),
+                BufferedImage.TYPE_INT_RGB);
+        for (int y = 0; y < image.getHeight(); y++) {
+            for (int x = 0; x < image.getWidth(); x++) {
+                int rgb = image.getRGB(x, y);
+                int r = (rgb >> 16) & 0xFF;
+                int g = (rgb >> 8) & 0xFF;
+                int b = rgb & 0xFF;
+                int luminance = (int) (r * 0.299 + g * 0.587 + b * 0.114);
+                target.setRGB(x, y, luminance >= HEADER_WHITE_THRESHOLD ? 0x000000 : 0xFFFFFF);
+            }
+        }
+        return target;
+    }
+
+    /**
+     * 从「冰元素 / 甘雨」这类标题里取出名称：
+     * 去掉元素前缀、斜杠及其左侧内容，再清掉非汉字噪声。
+     */
+    private String extractHeaderName(String text) {
+        if (!StringUtils.hasText(text)) {
+            return null;
+        }
+        String compact = text.replaceAll("\\s+", "")
+                .replace('／', '/')
+                .replace('｜', '/')
+                .replace('|', '/');
+        // 空白/无关画面上 tesseract 可能只吐出一个噪声汉字，整行没有斜杠且汉字不足 2 个时视为无效
+        if (!compact.contains("/") && compact.replaceAll("[^\\u4e00-\\u9fa5]", "").length() < 2) {
+            return null;
+        }
+        compact = compact.replaceAll("(冰|火|水|雷|风|草|岩)元素", "");
+        compact = compact.replaceAll("元素", "");
+        int slash = compact.lastIndexOf('/');
+        if (slash >= 0) {
+            compact = compact.substring(slash + 1);
+        }
+        compact = compact.replaceAll("[^\\u4e00-\\u9fa5]", "");
+        if (compact.isEmpty()) {
+            return null;
+        }
+        // 极少数截图会把等级等尾部文字一起读入，只保留末尾最多 6 个汉字
+        if (compact.length() > 6) {
+            compact = compact.substring(compact.length() - 6);
+        }
+        return compact;
     }
 
     private void requireTesseract(String engine) {
