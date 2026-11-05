@@ -4,6 +4,7 @@ import com.southair.genshin.common.R;
 import com.southair.genshin.module.ocr.dto.OcrEngineStatus;
 import com.southair.genshin.module.ocr.dto.OcrParseRequest;
 import com.southair.genshin.module.ocr.dto.OcrRawResult;
+import com.southair.genshin.module.ocr.dto.OcrResourceResult;
 import com.southair.genshin.module.ocr.dto.OcrWishResult;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -45,11 +46,19 @@ public class OcrController {
         return R.ok(ocrService.recognizeWishes(file, engine, game));
     }
 
-    /** 只返回文字与坐标，供前端解析其它截图格式（出金历史）。 */
+    /** 识别原神资源截图（原石 / 摩拉 / 抽数 / 经验素材），结果仅作候选。 */
+    @PostMapping("/resource")
+    public R<OcrResourceResult> resource(@RequestParam("file") MultipartFile file,
+                                         @RequestParam(defaultValue = "tesseract") String engine) {
+        return R.ok(ocrService.recognizeResource(file, engine));
+    }
+
+    /** 只返回文字与坐标，供前端解析其它截图格式（出金历史 / 收藏识图）。 */
     @PostMapping("/raw")
     public R<OcrRawResult> raw(@RequestParam("file") MultipartFile file,
-                               @RequestParam(defaultValue = "tesseract") String engine) {
-        return R.ok(ocrService.recognizeRaw(file, engine));
+                               @RequestParam(defaultValue = "tesseract") String engine,
+                               @RequestParam(defaultValue = "history") String mode) {
+        return R.ok(ocrService.recognizeRaw(file, engine, mode));
     }
 
     /** 浏览器 OCR 回传文本的解析入口。 */

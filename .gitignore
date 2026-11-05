@@ -6,3 +6,8 @@ project.private.config.json
 .idea/
 .vscode/
 *.iml
+launcher/libs/
+launcher/out/
+launcher/webview2.zip
+launcher/webview2-pkg/
+launcher/southair.ico

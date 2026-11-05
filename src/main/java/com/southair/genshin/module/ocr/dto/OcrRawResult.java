@@ -12,6 +12,16 @@ public class OcrRawResult implements Serializable {
     private String engine;
     private String text;
     private String tsv;
+    /** 命之座界面里识别出的已激活命座数；不是该界面时为 null */
+    private Integer constellation;
+
+    public Integer getConstellation() {
+        return constellation;
+    }
+
+    public void setConstellation(Integer constellation) {
+        this.constellation = constellation;
+    }
 
     public String getEngine() {
         return engine;

@@ -878,7 +878,8 @@ body.game-starrail {
 .fortune {
     position: relative;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    /* 右栏固定上限，避免长文案把 max-content 撑大、把左栏挤成竖排文字 */
+    grid-template-columns: minmax(0, 1fr) minmax(230px, 340px);
     align-items: center;
     gap: 28px;
     margin-bottom: 16px;
@@ -1024,7 +1025,8 @@ body.game-starrail {
     flex-direction: column;
     align-items: stretch;
     gap: 18px;
-    min-width: 196px;
+    min-width: 0;
+    max-width: 340px;
 }
 
 .asset {
@@ -1443,6 +1445,62 @@ body.game-starrail {
     font-size: 12px;
     color: var(--gold-2);
     border-color: rgba(211, 188, 142, 0.35);
+}
+
+.exp-flower {
+    margin-top: 12px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    border: 1px solid rgba(211, 188, 142, 0.18);
+    background: rgba(211, 188, 142, 0.05);
+}
+
+.exp-flower-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.exp-flower-head label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: #8b93a7;
+}
+
+.exp-flower-head select {
+    padding: 4px 8px;
+    border-radius: 8px;
+    border: 1px solid rgba(211, 188, 142, 0.28);
+    background: rgba(12, 15, 24, 0.8);
+    color: #e6e8f0;
+    font-size: 12px;
+}
+
+.exp-flower-per {
+    font-size: 11px;
+    line-height: 1.5;
+    color: #7d849a;
+}
+
+.exp-flower-result {
+    margin: 8px 0 0;
+    font-size: 12px;
+    line-height: 1.65;
+    color: #c8ccdb;
+}
+
+.exp-flower-result strong {
+    color: var(--gold-2);
+}
+
+.exp-flower-sum {
+    padding-top: 8px;
+    border-top: 1px dashed rgba(211, 188, 142, 0.2);
+    color: #e6e8f0;
 }
 
 .resource-tools {
@@ -2399,6 +2457,57 @@ body.game-starrail {
     max-width: 142px;
 }
 
+/* 日期筛选：文本输入限制 4 位年份，右侧保留日历选择按钮 */
+.wish-date-field {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    max-width: 142px;
+}
+
+.wish-date-field .wish-date {
+    width: 142px;
+    max-width: none;
+    padding-right: 34px;
+    font-variant-numeric: tabular-nums;
+}
+
+.wish-date-pick {
+    position: absolute;
+    right: 5px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 26px;
+    height: 26px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: none;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    transition: color 0.18s ease, background 0.18s ease;
+}
+
+.wish-date-pick:hover {
+    color: var(--gold-2);
+    background: rgba(211, 188, 142, 0.10);
+}
+
+.wish-date-native {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    border: 0;
+    opacity: 0;
+    pointer-events: none;
+}
+
 .record-sub .capture-mark {
     padding: 0 8px;
     border-radius: 999px;
@@ -3273,6 +3382,15 @@ body.game-starrail {
         flex: 1 1 100%;
     }
 
+    .wish-date-field {
+        flex: 1 1 100%;
+        max-width: none;
+    }
+
+    .wish-date-field .wish-date {
+        width: 100%;
+    }
+
     .toolbar-actions {
         width: 100%;
         margin-left: 0;
@@ -3514,6 +3632,68 @@ body.game-starrail {
     color: var(--danger);
 }
 
+/* ---------- 实时抓图弹窗 ---------- */
+
+.live-capture-modal {
+    max-width: 920px;
+}
+
+.live-capture-body {
+    position: relative;
+    display: grid;
+    place-items: center;
+    min-height: 220px;
+    max-height: 56vh;
+    margin: 14px 20px 0;
+    border-radius: 14px;
+    border: 1px solid var(--line);
+    background: #05060b;
+    overflow: hidden;
+}
+
+.live-capture-preview {
+    display: block;
+    max-width: 100%;
+    max-height: 56vh;
+    object-fit: contain;
+}
+
+.live-capture-placeholder {
+    padding: 44px 22px;
+    text-align: center;
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--muted);
+}
+
+.live-capture-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 12px 20px 4px;
+}
+
+.live-capture-status {
+    flex: 1;
+    min-width: 0;
+    font-size: 12px;
+    color: var(--muted);
+    overflow-wrap: anywhere;
+}
+
+.live-capture-status.error {
+    color: var(--danger);
+}
+
+.ocr-live-body {
+    min-height: 240px;
+    max-height: 50vh;
+}
+
+.ocr-live-body .live-capture-preview {
+    max-height: 50vh;
+}
+
 .ocr-result:empty {
     display: none;
 }
@@ -3699,6 +3879,22 @@ body.game-starrail {
 
     .ocr-bar {
         margin: 12px 18px 0;
+    }
+
+    .live-capture-body,
+    .ocr-live-body {
+        margin: 12px 18px 0;
+        max-height: 46vh;
+    }
+
+    .live-capture-preview,
+    .ocr-live-body .live-capture-preview {
+        max-height: 46vh;
+    }
+
+    .live-capture-bar {
+        margin: 12px 18px 4px;
+        flex-wrap: wrap;
     }
 
     .ocr-result {
@@ -3918,6 +4114,25 @@ body.game-starrail {
     border-color: rgba(211, 188, 142, 0.55);
 }
 
+.collection-ocr-chip {
+    align-self: center;
+    padding: 3px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(90, 169, 230, 0.32);
+    background: rgba(90, 169, 230, 0.08);
+    color: var(--fate-b);
+    font-size: 10px;
+    line-height: 1.5;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
+}
+
+.collection-ocr-chip:active {
+    border-color: rgba(90, 169, 230, 0.6);
+}
+
 @media (max-width: 720px) {
     .collection-grid {
         grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
@@ -3928,5 +4143,324 @@ body.game-starrail {
         width: 52px;
         height: 52px;
         font-size: 18px;
+    }
+}
+
+
+
+/* ============================================================
+   视觉精修（2026-11-05）
+   在不改变信息结构的前提下，统一层次、留白、金色点缀与微动效
+   ============================================================ */
+
+/* 背景：更深的夜色与两处柔光，避免大面积纯色 */
+body {
+    background:
+        radial-gradient(1100px 560px at 12% -12%, rgba(211, 188, 142, 0.12), transparent 62%),
+        radial-gradient(900px 520px at 108% 2%, rgba(90, 120, 255, 0.12), transparent 60%),
+        linear-gradient(180deg, #0a0c15 0%, #0b0d16 46%, #090b12 100%);
+}
+
+/* 顶栏：更轻的玻璃层 + 金色收边 */
+.topbar {
+    background: linear-gradient(180deg, rgba(11, 13, 22, 0.94), rgba(11, 13, 22, 0.80));
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22);
+}
+
+.topbar::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -1px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(211, 188, 142, 0.45), transparent);
+    opacity: 0.55;
+    pointer-events: none;
+}
+
+.topbar-inner {
+    padding: 10px 22px;
+}
+
+.nav-btn {
+    position: relative;
+    padding: 7px 15px;
+    border-radius: 999px;
+    font-size: 13.5px;
+}
+
+.nav-btn::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: 3px;
+    width: 0;
+    height: 2px;
+    border-radius: 2px;
+    background: linear-gradient(90deg, transparent, var(--gold), transparent);
+    transform: translateX(-50%);
+    transition: width 0.22s ease;
+    opacity: 0.9;
+}
+
+.nav-btn:hover {
+    background: rgba(255, 255, 255, 0.035);
+}
+
+.nav-btn.active {
+    background: linear-gradient(180deg, rgba(211, 188, 142, 0.16), rgba(211, 188, 142, 0.06));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.nav-btn.active::after {
+    width: 24px;
+}
+
+.game-switch {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 6px 16px rgba(0, 0, 0, 0.18);
+}
+
+.game-btn.active {
+    box-shadow: 0 4px 14px rgba(211, 188, 142, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+/* 主体与页头：更从容的留白和收束的标题 */
+.main {
+    padding: 26px 26px 72px;
+}
+
+.page-head {
+    margin-bottom: 24px;
+    padding-bottom: 18px;
+}
+
+.page-head h2 {
+    font-size: 27px;
+    letter-spacing: 1.4px;
+    text-shadow: 0 2px 18px rgba(211, 188, 142, 0.10);
+}
+
+.page-head .eyebrow {
+    letter-spacing: 4px;
+    opacity: 0.82;
+}
+
+.page-head .sub {
+    font-size: 13px;
+    line-height: 1.65;
+}
+
+.page-head > div:first-child::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: -3px;
+    width: 5px;
+    height: 5px;
+    border: 1px solid rgba(211, 188, 142, 0.7);
+    transform: rotate(45deg);
+    background: rgba(211, 188, 142, 0.22);
+}
+
+/* 面板：顶部金色发丝线 + 内高光，统一悬浮层次 */
+.panel {
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.20), inset 0 1px 0 rgba(255, 255, 255, 0.045);
+}
+
+.panel::before {
+    content: "";
+    position: absolute;
+    left: 18px;
+    right: 18px;
+    top: 0;
+    height: 1px;
+    background: linear-gradient(90deg, rgba(211, 188, 142, 0.5), rgba(211, 188, 142, 0.08) 46%, transparent);
+    pointer-events: none;
+}
+
+.panel h3 {
+    letter-spacing: 0.6px;
+}
+
+/* 数据卡：更有质感的悬浮和收角 */
+.stat-card {
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.16);
+}
+
+.stat-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.26);
+}
+
+.stat-value {
+    letter-spacing: -0.01em;
+}
+
+.stat-card::after {
+    content: "";
+    position: absolute;
+    right: 14px;
+    bottom: 12px;
+    width: 20px;
+    height: 20px;
+    border-right: 1px solid rgba(211, 188, 142, 0.22);
+    border-bottom: 1px solid rgba(211, 188, 142, 0.22);
+    border-radius: 0 0 6px 0;
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+/* 资源主卡：进度条与资产数字更精致 */
+.fortune {
+    box-shadow: 0 26px 64px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+.compose {
+    height: 12px;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+.compose .seg-currency {
+    box-shadow: 0 0 14px rgba(211, 188, 142, 0.28);
+}
+
+.compose .seg-fate {
+    box-shadow: 0 0 14px rgba(169, 221, 255, 0.24);
+}
+
+.fortune-legend {
+    gap: 8px 26px;
+    margin-top: 15px;
+}
+
+.fortune-legend strong {
+    color: var(--gold-2);
+}
+
+.fortune-actions {
+    gap: 10px;
+}
+
+/* 资源方块：图标徽章与更柔和的悬浮 */
+.inventory-tile {
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.16);
+}
+
+.inventory-tile:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 18px 36px rgba(0, 0, 0, 0.24);
+}
+
+.tile-glyph {
+    top: 12px;
+    right: 12px;
+    width: 30px;
+    height: 30px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    border: 1px solid rgba(211, 188, 142, 0.26);
+    background: rgba(211, 188, 142, 0.07);
+    font-size: 15px;
+    opacity: 0.9;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    transition: border-color 0.25s ease, box-shadow 0.25s ease, color 0.25s ease;
+}
+
+.inventory-tile:hover .tile-glyph {
+    color: var(--gold-2);
+    border-color: rgba(211, 188, 142, 0.55);
+    box-shadow: 0 0 18px rgba(211, 188, 142, 0.20);
+}
+
+.tile-label {
+    padding-right: 40px;
+}
+
+/* 抽卡记录：更清晰的悬浮层次 */
+.record-row {
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.12);
+}
+
+.record-row:hover {
+    box-shadow: 0 18px 36px rgba(0, 0, 0, 0.28);
+}
+
+.record-avatar {
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06), 0 6px 16px rgba(0, 0, 0, 0.28);
+}
+
+/* 按钮与输入：焦点可见，主按钮更有光泽 */
+.btn {
+    border-radius: 11px;
+}
+
+.btn-primary {
+    box-shadow: 0 8px 22px rgba(211, 188, 142, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+
+.btn-primary:hover {
+    box-shadow: 0 10px 26px rgba(211, 188, 142, 0.26), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.btn-outline:hover {
+    background: rgba(211, 188, 142, 0.12);
+    box-shadow: inset 0 0 0 1px rgba(211, 188, 142, 0.18);
+}
+
+.btn:focus-visible,
+.nav-btn:focus-visible,
+.game-btn:focus-visible,
+.tab-btn:focus-visible,
+.input:focus-visible,
+.field input:focus-visible,
+.field select:focus-visible,
+.field textarea:focus-visible {
+    outline: 2px solid rgba(211, 188, 142, 0.55);
+    outline-offset: 2px;
+}
+
+/* 弹窗：更聚焦的遮罩与边缘高光 */
+.modal {
+    background: linear-gradient(165deg, #242b42 0%, #141824 62%, #10131d 100%);
+    box-shadow: 0 28px 70px rgba(0, 0, 0, 0.52), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.modal-mask {
+    background: rgba(4, 6, 12, 0.72);
+}
+
+/* 移动端适配补充 */
+@media (max-width: 720px) {
+    .topbar-inner {
+        padding: 9px 14px;
+        gap: 10px;
+    }
+
+    .main {
+        padding: 18px 14px 56px;
+    }
+
+    .page-head h2 {
+        font-size: 23px;
+        letter-spacing: 1px;
+    }
+
+    .fortune {
+        padding: 22px 18px;
+        border-radius: 18px;
+    }
+}
+
+/* 尊重系统的减少动效偏好 */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
     }
 }

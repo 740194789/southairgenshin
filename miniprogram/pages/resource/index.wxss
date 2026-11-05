@@ -198,3 +198,36 @@
   line-height: 1.7;
 }
 
+.exp-flower {
+  margin-top: 18rpx;
+  padding: 16rpx 18rpx;
+  border-radius: 14rpx;
+  border: 1rpx solid rgba(211, 188, 142, 0.18);
+  background: rgba(211, 188, 142, 0.05);
+}
+
+.exp-flower-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  font-size: 24rpx;
+  color: #8b90a6;
+}
+
+.exp-wl-picker {
+  padding: 6rpx 16rpx;
+  border-radius: 999rpx;
+  border: 1rpx solid rgba(211, 188, 142, 0.32);
+  background: rgba(12, 15, 24, 0.6);
+  color: #f2e2bd;
+  font-size: 22rpx;
+}
+
+.exp-flower-per {
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  line-height: 1.6;
+  color: #7d849a;
+}
+

@@ -63,6 +63,70 @@ function levelPlan(fromLevel, toLevel) {
 var CHAR_ITEM_EXP = { heroWit: 20000, adventurerExp: 5000, wandererAdvice: 1000 };
 var ART_ITEM_EXP = { sanctifyingUnction: 2500, sanctifyingEssence: 10000 };
 
+/* 地脉衍出·启示之花：每次消耗 20 树脂，掉落数量随世界等级变化 */
+var EXP_FLOWER_REWARDS = {
+  0: { hero: [0, 0], adv: [3, 4], wanderer: [7, 8] },
+  1: { hero: [0, 0], adv: [5, 6], wanderer: [10, 12] },
+  2: { hero: [0, 0], adv: [10, 11], wanderer: [0, 0] },
+  3: { hero: [0, 0], adv: [13, 14], wanderer: [0, 0] },
+  4: { hero: [2, 3], adv: [6, 7], wanderer: [0, 0] },
+  5: { hero: [3, 4], adv: [6, 7], wanderer: [0, 0] },
+  6: { hero: [4, 5], adv: [6, 7], wanderer: [0, 0] },
+  7: { hero: [4, 5], adv: [6, 7], wanderer: [0, 0] },
+  8: { hero: [4, 5], adv: [6, 7], wanderer: [0, 0] },
+  9: { hero: [4, 5], adv: [6, 7], wanderer: [0, 0] }
+};
+var EXP_FLOWER_RESIN = 20;
+var WL_LEVELS = ['世界等级 0', '世界等级 1', '世界等级 2', '世界等级 3', '世界等级 4',
+  '世界等级 5', '世界等级 6', '世界等级 7', '世界等级 8', '世界等级 9'];
+
+function expFlowerPerRun(level) {
+  var row = EXP_FLOWER_REWARDS[toInt(level)] || EXP_FLOWER_REWARDS[8];
+  var min = row.hero[0] * CHAR_ITEM_EXP.heroWit
+    + row.adv[0] * CHAR_ITEM_EXP.adventurerExp
+    + row.wanderer[0] * CHAR_ITEM_EXP.wandererAdvice;
+  var max = row.hero[1] * CHAR_ITEM_EXP.heroWit
+    + row.adv[1] * CHAR_ITEM_EXP.adventurerExp
+    + row.wanderer[1] * CHAR_ITEM_EXP.wandererAdvice;
+  var books = [];
+  if (row.hero[1] > 0) {
+    books.push(row.hero[0] + '–' + row.hero[1] + ' 大英雄的经验');
+  }
+  if (row.adv[1] > 0) {
+    books.push(row.adv[0] + '–' + row.adv[1] + ' 冒险家的经验');
+  }
+  if (row.wanderer[1] > 0) {
+    books.push(row.wanderer[0] + '–' + row.wanderer[1] + ' 流浪者的经验');
+  }
+  return { min: min, max: max, books: books.join(' + ') };
+}
+
+function expFlowerPlan(deficit, level) {
+  var per = expFlowerPerRun(level);
+  var need = Math.max(0, toInt(deficit));
+  var minRuns = need > 0 ? Math.ceil(need / Math.max(1, per.max)) : 0;
+  var maxRuns = need > 0 ? Math.ceil(need / Math.max(1, per.min)) : 0;
+  return {
+    per: per,
+    need: need,
+    minRuns: minRuns,
+    maxRuns: maxRuns,
+    resinMin: minRuns * EXP_FLOWER_RESIN,
+    resinMax: maxRuns * EXP_FLOWER_RESIN
+  };
+}
+
+function expFlowerRunsText(plan) {
+  if (plan.need <= 0) {
+    return '经验书已足够，不需要再打经验花';
+  }
+  if (plan.minRuns === plan.maxRuns) {
+    return '还需打 ' + plan.minRuns + ' 次经验花（约 ' + store.fmt(plan.resinMin) + ' 树脂）';
+  }
+  return '还需打 ' + plan.minRuns + '–' + plan.maxRuns + ' 次经验花（约 '
+    + store.fmt(plan.resinMin) + '–' + store.fmt(plan.resinMax) + ' 树脂）';
+}
+
 function toInt(value) {
   var number = parseInt(value, 10);
   return isNaN(number) ? 0 : number;
@@ -87,6 +151,8 @@ Page({
     fromIndex: 0,
     toLevels: toLevelsFor(1),
     toIndex: 0,
+    wlLevels: WL_LEVELS,
+    wlIndex: 8,
     form: {
       primogems: '',
       mora: '',
@@ -104,7 +170,14 @@ Page({
   onLoad: function () {
     var info = wx.getSystemInfoSync();
     this._charPlan = [];
-    this.setData({ statusBarHeight: info.statusBarHeight || 20 });
+    var savedWl = wx.getStorageSync('sg_exp_flower_wl');
+    var wlIndex = (savedWl === '' || savedWl === null || savedWl === undefined)
+      ? 8
+      : Math.max(0, Math.min(9, toInt(savedWl)));
+    this.setData({
+      statusBarHeight: info.statusBarHeight || 20,
+      wlIndex: wlIndex
+    });
   },
 
   onShow: function () {
@@ -172,12 +245,27 @@ Page({
     var available = Math.max(0, charTotal - needed);
     var artCount = Math.floor(artTotal / FIVE_STAR_ARTIFACT_EXP);
     var artRest = artTotal % FIVE_STAR_ARTIFACT_EXP;
+    var wl = this.data.wlIndex || 0;
+    var per = expFlowerPerRun(wl);
+    var deficit = Math.max(0, needed - charTotal);
+    var previewDeficit = Math.max(0, preview.exp - available);
 
     this.setData({
       charPlanView: planView,
       exp: {
         charTotalText: store.fmt(charTotal),
         artTotalText: store.fmt(artTotal),
+        flowerPerText: '每次 ' + per.books + ' ≈ ' + store.fmt(per.min) + '–'
+          + store.fmt(per.max) + ' 经验 · 20 树脂',
+        flowerPreviewText: preview.exp <= 0
+          ? '当前等级已越过 90 级，只消耗无主的命星，不需要打经验花'
+          : '当前选择：' + expFlowerRunsText(expFlowerPlan(previewDeficit, wl)),
+        flowerSumText: planView.length
+          ? '已保留 ' + planView.length + ' 个角色 · '
+            + (deficit > 0
+              ? '合计还差 ' + store.fmt(deficit) + ' 经验，' + expFlowerRunsText(expFlowerPlan(deficit, wl))
+              : '经验书已足够（剩余 ' + store.fmt(charTotal - needed) + ' 经验）')
+          : '',
         charPreviewText: 'Lv ' + preview.from + ' → Lv ' + preview.to
           + ' · 需 ' + store.fmt(preview.exp) + ' 经验'
           + (preview.stars ? ' · 无主的命星 ' + preview.stars + ' 枚' : '')
@@ -238,6 +326,13 @@ Page({
 
   onCharTo: function (event) {
     this.setData({ toIndex: Number(event.detail.value) || 0 });
+    this.applyExp();
+  },
+
+  onWlChange: function (event) {
+    var index = Math.max(0, Math.min(9, Number(event.detail.value) || 0));
+    wx.setStorageSync('sg_exp_flower_wl', index);
+    this.setData({ wlIndex: index });
     this.applyExp();
   },
 

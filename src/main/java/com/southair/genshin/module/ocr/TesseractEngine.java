@@ -107,6 +107,63 @@ public class TesseractEngine {
         return run(image, ext, true);
     }
 
+    /**
+     * 识别单个背包格子的数量数字：固定 eng + 单行模式，失败时返回空串。
+     * 背包格子的数字很小，整图识别容易漏；按格子裁剪后单独识别更稳定。
+     */
+    public String recognizeDigits(byte[] image, String ext) {
+        return recognizeSingleLine(image, ext, false);
+    }
+
+    /**
+     * 只含数字的条带（背包底栏的原石 / 摩拉）：加数字白名单，
+     * 避免「6」被整页识别成「0」这类单字符误差。
+     */
+    public String recognizeNumber(byte[] image, String ext) {
+        return recognizeSingleLine(image, ext, true);
+    }
+
+    private String recognizeSingleLine(byte[] image, String ext, boolean digitsOnly) {
+        if (!isAvailable()) {
+            return "";
+        }
+        Path input = null;
+        Path dir = null;
+        try {
+            String writeExt = ext == null || ext.isEmpty() ? ".png" : ext;
+            dir = Files.createTempDirectory("sag-digit-");
+            input = dir.resolve("input" + writeExt);
+            Files.write(input, image);
+            Path outputBase = dir.resolve("out");
+
+            List<String> args = new ArrayList<>(Arrays.asList(
+                    command(), input.toString(), outputBase.toString(),
+                    "-l", "eng", "--psm", "7",
+                    "-c", "tessedit_create_txt=1"));
+            if (digitsOnly) {
+                args.add("-c");
+                args.add("tessedit_char_whitelist=0123456789");
+            }
+            Process process = new ProcessBuilder(args).redirectErrorStream(true).start();
+            int timeout = Math.max(5, properties.getTesseract().getTimeoutSeconds());
+            if (!process.waitFor(timeout, TimeUnit.SECONDS)) {
+                process.destroyForcibly();
+                return "";
+            }
+            if (process.exitValue() != 0) {
+                return "";
+            }
+            return readQuietly(dir.resolve("out.txt")).trim();
+        } catch (Exception e) {
+            return "";
+        } finally {
+            deleteQuietly(input);
+            if (dir != null) {
+                deleteQuietly(dir.toFile());
+            }
+        }
+    }
+
     /** 识别结果：文本 + 已换算回原图坐标的 TSV */
     public static class OcrOutput {
         private final String text;
@@ -152,7 +209,9 @@ public class TesseractEngine {
                     command(), input.toString(), outputBase.toString(),
                     "-l", history ? "chi_sim" : properties.getTesseract().getLang(),
                     "--psm", history ? "11" : "6",
-                    "-c", "tessedit_create_tsv=1"));
+                    // tesseract 5 开启 TSV 后不再默认输出 txt，需要显式同时开启
+                    "-c", "tessedit_create_tsv=1",
+                    "-c", "tessedit_create_txt=1"));
 
             Process process = new ProcessBuilder(args).redirectErrorStream(true).start();
             int timeout = Math.max(5, properties.getTesseract().getTimeoutSeconds());

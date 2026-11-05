@@ -188,6 +188,19 @@
             });
     }
 
+    /* 所有日期时间文本框统一限制年份最多 4 位 */
+    document.addEventListener('input', function (event) {
+        var input = event.target;
+        if (!input || !input.getAttribute || input.getAttribute('data-datetime') !== '1') {
+            return;
+        }
+        var text = String(input.value || '');
+        var match = /^(\d{4,})(.*)$/.exec(text);
+        if (match && match[1].length > 4) {
+            input.value = match[1].slice(0, 4) + match[2];
+        }
+    });
+
     function fmt(value) {
         var n = Number(value);
         if (!isFinite(n)) {
@@ -261,6 +274,90 @@
     }
     var CHAR_ITEM_EXP = { heroWit: 20000, adventurerExp: 5000, wandererAdvice: 1000 };
     var ART_ITEM_EXP = { sanctifyingUnction: 2500, sanctifyingEssence: 10000 };
+
+    /* 地脉衍出·启示之花：每次消耗 20 树脂，掉落数量随世界等级变化（区间来自官方观测数据） */
+    var EXP_FLOWER_REWARDS = {
+        0: { hero: [0, 0], adv: [3, 4], wanderer: [7, 8] },
+        1: { hero: [0, 0], adv: [5, 6], wanderer: [10, 12] },
+        2: { hero: [0, 0], adv: [10, 11], wanderer: [0, 0] },
+        3: { hero: [0, 0], adv: [13, 14], wanderer: [0, 0] },
+        4: { hero: [2, 3], adv: [6, 7], wanderer: [0, 0] },
+        5: { hero: [3, 4], adv: [6, 7], wanderer: [0, 0] },
+        6: { hero: [4, 5], adv: [6, 7], wanderer: [0, 0] },
+        7: { hero: [4, 5], adv: [6, 7], wanderer: [0, 0] },
+        8: { hero: [4, 5], adv: [6, 7], wanderer: [0, 0] },
+        9: { hero: [4, 5], adv: [6, 7], wanderer: [0, 0] }
+    };
+    var EXP_FLOWER_RESIN = 20;
+    var EXP_FLOWER_LEVEL_KEY = 'sg_exp_flower_wl';
+
+    function expFlowerReward(level) {
+        return EXP_FLOWER_REWARDS[toInt(level)] || EXP_FLOWER_REWARDS[8];
+    }
+
+    /** 单次经验花的经验区间与掉落文案 */
+    function expFlowerPerRun(level) {
+        var row = expFlowerReward(level);
+        var min = row.hero[0] * CHAR_ITEM_EXP.heroWit
+            + row.adv[0] * CHAR_ITEM_EXP.adventurerExp
+            + row.wanderer[0] * CHAR_ITEM_EXP.wandererAdvice;
+        var max = row.hero[1] * CHAR_ITEM_EXP.heroWit
+            + row.adv[1] * CHAR_ITEM_EXP.adventurerExp
+            + row.wanderer[1] * CHAR_ITEM_EXP.wandererAdvice;
+        var books = [];
+        if (row.hero[1] > 0) {
+            books.push(row.hero[0] + '–' + row.hero[1] + ' 大英雄的经验');
+        }
+        if (row.adv[1] > 0) {
+            books.push(row.adv[0] + '–' + row.adv[1] + ' 冒险家的经验');
+        }
+        if (row.wanderer[1] > 0) {
+            books.push(row.wanderer[0] + '–' + row.wanderer[1] + ' 流浪者的经验');
+        }
+        return { min: min, max: max, books: books.join(' + ') };
+    }
+
+    /** 还差 exp 经验时，需要打经验花的次数与树脂区间 */
+    function expFlowerPlan(deficit, level) {
+        var per = expFlowerPerRun(level);
+        var need = Math.max(0, toInt(deficit));
+        var minRuns = need > 0 ? Math.ceil(need / Math.max(1, per.max)) : 0;
+        var maxRuns = need > 0 ? Math.ceil(need / Math.max(1, per.min)) : 0;
+        return {
+            per: per,
+            need: need,
+            minRuns: minRuns,
+            maxRuns: maxRuns,
+            resinMin: minRuns * EXP_FLOWER_RESIN,
+            resinMax: maxRuns * EXP_FLOWER_RESIN
+        };
+    }
+
+    function expFlowerRunsText(plan) {
+        if (plan.need <= 0) {
+            return '经验书已足够，不需要再打经验花';
+        }
+        if (plan.minRuns === plan.maxRuns) {
+            return '还需打 <strong>' + plan.minRuns + '</strong> 次经验花'
+                + '（约 ' + fmt(plan.resinMin) + ' 树脂）';
+        }
+        return '还需打 <strong>' + plan.minRuns + '–' + plan.maxRuns + '</strong> 次经验花'
+            + '（约 ' + fmt(plan.resinMin) + '–' + fmt(plan.resinMax) + ' 树脂）';
+    }
+
+    function expFlowerLevelOptionsHtml(selected) {
+        var list = [];
+        for (var level = 0; level <= 9; level += 1) {
+            list.push('<option value="' + level + '"'
+                + (level === toInt(selected) ? ' selected' : '') + '>世界等级 ' + level + '</option>');
+        }
+        return list.join('');
+    }
+
+    function expFlowerSavedLevel() {
+        var saved = localStorage.getItem(EXP_FLOWER_LEVEL_KEY);
+        return saved === null || saved === '' ? 8 : Math.max(0, Math.min(9, toInt(saved)));
+    }
 
     function toInt(value) {
         var number = parseInt(value, 10);
@@ -1489,6 +1586,14 @@
             + '<div class="exp-result" id="exp-char-result"></div>'
             + '<div class="exp-rows" id="exp-char-rows"></div>'
             + '<div class="exp-result exp-sum" id="exp-char-sum"></div>'
+            + '<div class="exp-flower">'
+            + '<div class="exp-flower-head">'
+            + '<label>经验花 <select id="exp-flower-wl">' + expFlowerLevelOptionsHtml(expFlowerSavedLevel()) + '</select></label>'
+            + '<span class="exp-flower-per" id="exp-flower-per"></span>'
+            + '</div>'
+            + '<p class="exp-flower-result" id="exp-flower-result"></p>'
+            + '<p class="exp-flower-result exp-flower-sum" id="exp-flower-sum" hidden></p>'
+            + '</div>'
             + '</div>'
             + '<div class="exp-card">'
             + '<h4>圣遗物经验</h4>'
@@ -1538,6 +1643,10 @@
         var charSum = $('#exp-char-sum');
         var charOut = $('#exp-char-result');
         var artOut = $('#exp-art-result');
+        var flowerWl = $('#exp-flower-wl');
+        var flowerPer = $('#exp-flower-per');
+        var flowerResult = $('#exp-flower-result');
+        var flowerSum = $('#exp-flower-sum');
         if (!charFrom || !charTo || !charRowsEl || !charOut || !artOut) {
             return;
         }
@@ -1594,6 +1703,37 @@
                 + (plan.exp > available
                     ? ' · 还差 ' + fmt(plan.exp - available)
                     : ' · 可用 ' + fmt(available) + '，足够');
+            renderFlower(plan, available, needed);
+        }
+
+        function renderFlower(plan, available, needed) {
+            if (!flowerWl || !flowerPer || !flowerResult || !flowerSum) {
+                return;
+            }
+            var level = Math.max(0, Math.min(9, toInt(flowerWl.value)));
+            localStorage.setItem(EXP_FLOWER_LEVEL_KEY, String(level));
+            var per = expFlowerPerRun(level);
+            flowerPer.textContent = '每次 ' + per.books + ' ≈ ' + fmt(per.min) + '–'
+                + fmt(per.max) + ' 经验 · 20 树脂';
+
+            if (plan.exp <= 0) {
+                flowerResult.innerHTML = '当前等级已越过 90 级，只消耗无主的命星，不需要打经验花';
+            } else {
+                flowerResult.innerHTML = '当前选择：'
+                    + expFlowerRunsText(expFlowerPlan(plan.exp - available, level));
+            }
+
+            if (charRows.length) {
+                var deficit = Math.max(0, needed - charTotal);
+                flowerSum.hidden = false;
+                flowerSum.innerHTML = '已保留 ' + charRows.length + ' 个角色 · '
+                    + (deficit > 0
+                        ? '合计还差 ' + fmt(deficit) + ' 经验，' + expFlowerRunsText(expFlowerPlan(deficit, level))
+                        : '经验书已足够（剩余 ' + fmt(charTotal - needed) + ' 经验）');
+            } else {
+                flowerSum.hidden = true;
+                flowerSum.innerHTML = '';
+            }
         }
 
         function addChar() {
@@ -1649,6 +1789,9 @@
             renderChar();
         });
         charTo.addEventListener('change', renderChar);
+        if (flowerWl) {
+            flowerWl.addEventListener('change', renderChar);
+        }
         syncToOptions();
         renderChar();
         renderArt();
@@ -1705,6 +1848,9 @@
                 + '<span class="asset-note">≈ ' + num(dailyPulls) + ' 抽/天 · 每天自动计入资源</span>'
                 + '</div>'
                 + '<div class="fortune-actions">'
+                + (state.game === 'genshin'
+                    ? '<button class="btn btn-text" id="resource-ocr" type="button">识图填充</button>'
+                    : '')
                 + '<button class="btn btn-outline" id="resource-edit" type="button">编辑资源</button>'
                 + '</div>'
                 + '</aside>'
@@ -1748,6 +1894,15 @@
                 editBtn.addEventListener('click', function () {
                     guard(function () {
                         return editResource(resource);
+                    });
+                });
+            }
+
+            var ocrBtn = $('#resource-ocr');
+            if (ocrBtn) {
+                ocrBtn.addEventListener('click', function () {
+                    guard(function () {
+                        return openResourceOcr(resource);
                     });
                 });
             }
@@ -2088,6 +2243,61 @@
             + '</div>';
     }
 
+    function pad2(value) {
+        var text = String(value);
+        return text.length < 2 ? '0' + text : text;
+    }
+
+    /** 日期输入只保留 4 位年份，并自动补 YYYY-MM-DD 的分隔符 */
+    function formatWishDate(value) {
+        var text = String(value || '');
+        var separated = text.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+        if (separated) {
+            return separated[1] + '-' + pad2(separated[2]) + '-' + pad2(separated[3]);
+        }
+        var digits = text.replace(/\D/g, '').slice(0, 8);
+        if (digits.length <= 4) {
+            return digits;
+        }
+        if (digits.length <= 6) {
+            return digits.slice(0, 4) + '-' + digits.slice(4);
+        }
+        return digits.slice(0, 4) + '-' + digits.slice(4, 6) + '-' + digits.slice(6, 8);
+    }
+
+    function isValidDateText(value) {
+        if (!value) {
+            return true;
+        }
+        var match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+        if (!match) {
+            return false;
+        }
+        var year = Number(match[1]);
+        var month = Number(match[2]);
+        var day = Number(match[3]);
+        if (month < 1 || month > 12 || day < 1 || day > 31) {
+            return false;
+        }
+        var date = new Date(year, month - 1, day);
+        return date.getFullYear() === year
+            && date.getMonth() === month - 1
+            && date.getDate() === day;
+    }
+
+    function wishDateFieldHtml(id, value) {
+        return '<div class="wish-date-field">'
+            + '<input id="' + id + '" class="input wish-date" type="text" inputmode="numeric"'
+            + ' maxlength="10" placeholder="YYYY-MM-DD" autocomplete="off" value="' + esc(value) + '"/>'
+            + '<button class="wish-date-pick" type="button" data-date-pick="' + id + '" aria-label="选择日期">'
+            + '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">'
+            + '<rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.2"/>'
+            + '<path d="M2 7h12M5 2v3M11 2v3" fill="none" stroke="currentColor" stroke-width="1.2"/>'
+            + '</svg></button>'
+            + '<input id="' + id + '-picker" class="wish-date-native" type="date" tabindex="-1" aria-hidden="true"/>'
+            + '</div>';
+    }
+
     function loadWishes() {
         var el = $('#view-wishes');
         var pools = gameConfig().pools;
@@ -2108,8 +2318,8 @@
             + '<select id="wish-pool" class="input">' + poolOptions + '</select>'
             + '<input id="wish-keyword" class="input wish-search" type="search" placeholder="搜索名称"'
             + ' value="' + esc(state.wishKeyword) + '"/>'
-            + '<input id="wish-start" class="input wish-date" type="date" value="' + esc(state.wishStart) + '"/>'
-            + '<input id="wish-end" class="input wish-date" type="date" value="' + esc(state.wishEnd) + '"/>'
+            + wishDateFieldHtml('wish-start', state.wishStart)
+            + wishDateFieldHtml('wish-end', state.wishEnd)
             + '<label class="filter-check"><input type="checkbox" id="wish-only-five"'
             + (state.wishOnlyFive ? ' checked' : '') + '/>只看五星</label>'
             + '<div class="toolbar-actions">'
@@ -2153,17 +2363,72 @@
             });
         }
 
-        ['#wish-start', '#wish-end'].forEach(function (selector) {
-            var input = $(selector);
+        function bindWishDateField(id, key) {
+            var input = $('#' + id);
+            var picker = $('#' + id + '-picker');
+            var button = $('[data-date-pick="' + id + '"]');
             if (!input) {
                 return;
             }
-            input.addEventListener('change', function (event) {
-                state[selector === '#wish-start' ? 'wishStart' : 'wishEnd'] = event.target.value;
+            function apply(value) {
+                input.value = value;
+                state[key] = value;
                 state.pages.wishes = 1;
                 refreshWishList();
+            }
+            input.addEventListener('input', function () {
+                var formatted = formatWishDate(input.value);
+                if (formatted !== input.value) {
+                    input.value = formatted;
+                }
+                if (formatted === '' || isValidDateText(formatted)) {
+                    state[key] = formatted;
+                    state.pages.wishes = 1;
+                    refreshWishList();
+                }
             });
-        });
+            input.addEventListener('blur', function () {
+                if (input.value && !isValidDateText(input.value)) {
+                    toast('日期请填写 YYYY-MM-DD，年份最多 4 位', 'error');
+                    input.value = state[key] || '';
+                    return;
+                }
+                if (state[key] !== input.value) {
+                    apply(input.value);
+                }
+            });
+            input.addEventListener('keydown', function (event) {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    input.blur();
+                }
+            });
+            if (!button || !picker) {
+                return;
+            }
+            button.addEventListener('click', function () {
+                picker.value = isValidDateText(input.value) ? input.value : '';
+                if (typeof picker.showPicker === 'function') {
+                    try {
+                        picker.showPicker();
+                    } catch (e) {
+                        picker.focus();
+                        picker.click();
+                    }
+                } else {
+                    picker.focus();
+                    picker.click();
+                }
+            });
+            picker.addEventListener('change', function () {
+                if (picker.value) {
+                    apply(picker.value);
+                }
+            });
+        }
+
+        bindWishDateField('wish-start', 'wishStart');
+        bindWishDateField('wish-end', 'wishEnd');
 
         var resetBtn = $('#wish-filter-reset');
         if (resetBtn) {
@@ -2566,7 +2831,8 @@
         }
         var attrs = ' name="' + field.key + '" value="' + esc(valueText) + '"';
         if (field.type === 'datetime') {
-            attrs += ' type="text" placeholder="YYYY-MM-DD HH:mm" autocomplete="off"';
+            attrs += ' type="text" placeholder="YYYY-MM-DD HH:mm" autocomplete="off"'
+                + ' maxlength="16" data-datetime="1"';
         } else {
             attrs += ' type="' + (field.type || 'text') + '"';
         }
@@ -2770,7 +3036,8 @@
             + ' placeholder="角色 / 武器名称"/>'
             + '<label class="batch-up"><input class="batch-isup" type="checkbox"' + (up ? ' checked' : '') + '/>UP</label>'
             + '<input class="batch-pity" type="number" min="1" max="90" value="' + esc(pity) + '" title="用了多少抽"/>'
-            + '<input class="batch-time" type="text" placeholder="YYYY-MM-DD HH:mm" value="' + esc(time) + '"/>'
+            + '<input class="batch-time" type="text" placeholder="YYYY-MM-DD HH:mm" maxlength="16"'
+            + ' data-datetime="1" value="' + esc(time) + '"/>'
             + '</div>';
     }
 
@@ -2894,7 +3161,7 @@
         });
     }
 
-    /* 抽卡链接导入：后端代理读取米游社接口，避开浏览器跨域限制 */
+    /* 抽卡链接导入：后端代理读取抽卡记录接口，避开浏览器跨域限制 */
     function importFromLink() {
         var g = gameConfig();
         return openForm('从抽卡链接导入 · ' + g.fullName, [
@@ -2914,7 +3181,7 @@
                 var url = values.url || '';
                 var hostOk = /^https:\/\/(public-operation-(hk4e|hkrpg)|webstatic(-sea)?)\.(mihoyo|hoyoverse)\.com/.test(url);
                 if (!hostOk || url.indexOf('authkey=') < 0) {
-                    return '请粘贴完整的米游社抽卡记录链接';
+                    return '请粘贴完整的抽卡记录链接';
                 }
                 return null;
             }
@@ -3019,7 +3286,7 @@
 
     /* ---------------- 账号资源 ---------------- */
 
-    function editResource(resource) {
+    function resourceFormFields(resource) {
         var g = gameConfig();
         var fields = [
             { key: 'primogems', label: g.currency, type: 'number', min: 0, max: 999999999, step: '1', default: resource.primogems },
@@ -3037,6 +3304,12 @@
                 { key: 'sanctifyingEssence', label: '祝圣精华（个）', type: 'number', min: 0, max: 999999, step: '1', default: resource.sanctifyingEssence || 0 }
             ]);
         }
+        return fields;
+    }
+
+    function editResource(resource) {
+        var g = gameConfig();
+        var fields = resourceFormFields(resource);
         return openForm('编辑账号资源 · ' + g.fullName, fields, null, {
             hint: '1 抽 = ' + resource.primogemsPerPull + ' ' + g.currency
                 + '；每日额度按自然日自动累加到资源，手动修改资产或额度后从当天重新计',
@@ -3050,6 +3323,318 @@
                 toast('资源已更新');
                 loadDashboard();
                 return updated;
+            });
+        });
+    }
+
+    /* ---------------- 实时抓图（启动器每秒回传原神窗口画面） ---------------- */
+
+    var liveCaptureSession = null;
+
+    function liveCaptureSupported() {
+        return !!(window.chrome && window.chrome.webview);
+    }
+
+    /** 打开实时预览弹窗，点「识别当前画面」后以 File 形式返回当前帧。 */
+    function openLiveCapture(options) {
+        var opts = options || {};
+        if (!liveCaptureSupported()) {
+            return Promise.reject(new Error('识图需要在 SouthAir 启动器内运行，并保持原神窗口化或无边框模式'));
+        }
+        return new Promise(function (resolve) {
+            var mask = document.createElement('div');
+            mask.className = 'modal-mask';
+            mask.innerHTML = '<div class="modal live-capture-modal">'
+                + '<header><h3>' + esc(opts.title || '实时识图') + '</h3>'
+                + '<button class="modal-close" type="button" aria-label="关闭">×</button></header>'
+                + (opts.hint ? '<p class="modal-hint">' + esc(opts.hint) + '</p>' : '')
+                + '<div class="live-capture-body">'
+                + '<img id="live-preview" class="live-capture-preview" alt="原神实时画面" hidden/>'
+                + '<div id="live-placeholder" class="live-capture-placeholder">正在连接原神窗口…</div>'
+                + '</div>'
+                + '<div class="live-capture-bar">'
+                + '<span id="live-status" class="live-capture-status">正在连接…</span>'
+                + '<button id="live-retry" class="btn btn-outline btn-sm" type="button" hidden>重试</button>'
+                + '<button id="live-recognize" class="btn btn-primary btn-sm" type="button" disabled>识别当前画面</button>'
+                + '</div></div>'
+                + '<footer class="modal-foot"><button type="button" class="btn btn-text modal-cancel">关闭</button></footer>'
+                + '</div>';
+            document.body.appendChild(mask);
+            document.body.style.overflow = 'hidden';
+
+            var preview = $('#live-preview', mask);
+            var placeholder = $('#live-placeholder', mask);
+            var statusEl = $('#live-status', mask);
+            var retryBtn = $('#live-retry', mask);
+            var recognizeBtn = $('#live-recognize', mask);
+            var latest = null;
+            var closed = false;
+            var connectTimer = null;
+
+            function setStatus(text, isError) {
+                statusEl.textContent = text || '';
+                statusEl.className = 'live-capture-status' + (isError ? ' error' : '');
+            }
+
+            function clearConnectTimer() {
+                if (connectTimer) {
+                    clearTimeout(connectTimer);
+                    connectTimer = null;
+                }
+            }
+
+            function stopCapture() {
+                liveCaptureSession = null;
+                try {
+                    window.chrome.webview.postMessage({ action: 'captureLiveStop' });
+                } catch (e) {
+                    // 启动器已关闭时忽略
+                }
+            }
+
+            function showError(message) {
+                latest = null;
+                preview.hidden = true;
+                placeholder.hidden = false;
+                placeholder.textContent = message || '抓取失败';
+                recognizeBtn.disabled = true;
+                retryBtn.hidden = false;
+                setStatus(message || '抓取失败', true);
+            }
+
+            function startCapture() {
+                latest = null;
+                preview.hidden = true;
+                preview.removeAttribute('src');
+                placeholder.hidden = false;
+                placeholder.textContent = '正在连接原神窗口…';
+                recognizeBtn.disabled = true;
+                retryBtn.hidden = true;
+                setStatus('正在连接…');
+                clearConnectTimer();
+                liveCaptureSession = {
+                    onFrame: function (message) {
+                        if (closed) {
+                            return;
+                        }
+                        clearConnectTimer();
+                        latest = message.dataUrl;
+                        preview.src = latest;
+                        preview.hidden = false;
+                        placeholder.hidden = true;
+                        recognizeBtn.disabled = false;
+                        retryBtn.hidden = true;
+                        setStatus('实时画面 · 每秒刷新');
+                    },
+                    onError: function (message) {
+                        if (closed) {
+                            return;
+                        }
+                        clearConnectTimer();
+                        showError(message);
+                    }
+                };
+                window.chrome.webview.postMessage({ action: 'captureLiveStart' });
+                connectTimer = setTimeout(function () {
+                    if (!closed && !latest) {
+                        stopCapture();
+                        showError('等待原神画面超时，请确认游戏已启动、未最小化，并切换为窗口化或无边框模式');
+                    }
+                }, 20000);
+            }
+
+            function close(file) {
+                if (closed) {
+                    return;
+                }
+                closed = true;
+                clearConnectTimer();
+                stopCapture();
+                document.removeEventListener('pagehide', onPageHide);
+                mask.remove();
+                document.body.style.overflow = '';
+                resolve(file || null);
+            }
+
+            function onPageHide() {
+                stopCapture();
+            }
+
+            startCapture();
+            document.addEventListener('pagehide', onPageHide);
+            $('.modal-close', mask).addEventListener('click', function () {
+                close(null);
+            });
+            $('.modal-cancel', mask).addEventListener('click', function () {
+                close(null);
+            });
+            mask.addEventListener('click', function (event) {
+                if (event.target === mask) {
+                    close(null);
+                }
+            });
+            retryBtn.addEventListener('click', startCapture);
+            recognizeBtn.addEventListener('click', function () {
+                if (!latest) {
+                    return;
+                }
+                recognizeBtn.disabled = true;
+                setStatus('正在读取当前画面…');
+                fetch(latest).then(function (res) {
+                    return res.blob();
+                }).then(function (blob) {
+                    var type = blob.type || 'image/jpeg';
+                    var ext = /jpeg|jpg/.test(type) ? '.jpg' : '.png';
+                    close(new File([blob], 'genshin-live' + ext, { type: type }));
+                }).catch(function (err) {
+                    recognizeBtn.disabled = false;
+                    setStatus('截图读取失败：' + (err.message || ''), true);
+                });
+            });
+        });
+    }
+
+    function uploadRawImage(file, mode) {
+        var form = new FormData();
+        form.append('file', file);
+        var headers = {};
+        if (state.token) {
+            headers.Authorization = 'Bearer ' + state.token;
+        }
+        return fetch('/api/ocr/raw?engine=tesseract&mode=' + encodeURIComponent(mode || 'history'), {
+            method: 'POST',
+            headers: headers,
+            body: form
+        }).then(function (res) {
+            return res.text().then(function (text) {
+                var payload = safeParse(text);
+                if (res.status === 401) {
+                    logout(true);
+                    throw new Error('登录已失效，请重新登录');
+                }
+                if (!res.ok) {
+                    throw new Error((payload && payload.message) || ('识别失败（' + res.status + '）'));
+                }
+                if (payload && payload.code !== 0) {
+                    throw new Error(payload.message || '识别失败');
+                }
+                return payload ? payload.data : null;
+            });
+        });
+    }
+
+    /* ---------------- 资源截图识别 ---------------- */
+
+    var RESOURCE_OCR_LABELS = {
+        primogems: '原石',
+        mora: '摩拉',
+        intertwinedFates: '纠缠之缘',
+        acquaintedFates: '相遇之缘',
+        heroWit: '大英雄的经验',
+        adventurerExp: '冒险家的经验',
+        wandererAdvice: '流浪者的经验',
+        sanctifyingUnction: '祝圣油膏',
+        sanctifyingEssence: '祝圣精华'
+    };
+
+    function openResourceOcr(resource) {
+        return openLiveCapture({
+            title: '识图填充 · 原神资源',
+            hint: '打开背包「贵重道具」看原石/摩拉/纠缠/相遇，或「养成道具」看三本经验书；按图案识别，不限排序，再点「识别当前画面」。识别结果只作为候选，需确认后保存。'
+        }).then(function (file) {
+            if (!file) {
+                return null;
+            }
+            toast('正在识别资源截图…');
+            return uploadResourceImage(file).then(function (result) {
+                var found = result.values || {};
+                var merged = {};
+                var foundKeys = [];
+                var missingKeys = [];
+                Object.keys(RESOURCE_OCR_LABELS).forEach(function (key) {
+                    if (found[key] != null) {
+                        merged[key] = found[key];
+                        foundKeys.push(key);
+                    } else {
+                        merged[key] = resource[key] || 0;
+                        missingKeys.push(RESOURCE_OCR_LABELS[key]);
+                    }
+                });
+                var hint = '识别到 ' + foundKeys.length + ' 项'
+                    + (foundKeys.length
+                        ? '：' + foundKeys.map(function (key) {
+                            return RESOURCE_OCR_LABELS[key] + ' ' + fmt(merged[key]);
+                        }).join(' · ')
+                        : '')
+                    + (missingKeys.length
+                        ? '。未识别：' + missingKeys.join('、') + '（保留原值）'
+                        : '')
+                    + '。请核对后再保存。';
+                var fields = resourceFormFields(resource);
+                return openForm('识图结果 · 原神资源', fields, merged, {
+                    hint: hint,
+                    submitText: '确认填入',
+                    maskClosable: false
+                }).then(function (values) {
+                    if (!values) {
+                        return null;
+                    }
+                    return api('/api/resources', { method: 'PUT', body: values }).then(function (updated) {
+                        toast('资源已更新');
+                        loadDashboard();
+                        return updated;
+                    });
+                });
+            });
+        });
+    }
+
+    /** 启动器回传的实时画面消息。 */
+    function bindLauncherMessages() {
+        if (!(window.chrome && window.chrome.webview)) {
+            return;
+        }
+        window.chrome.webview.addEventListener('message', function (event) {
+            var message = event.data || {};
+            if (message.action === 'gameCaptureFrame' && message.dataUrl) {
+                if (liveCaptureSession && liveCaptureSession.onFrame) {
+                    liveCaptureSession.onFrame(message);
+                }
+                return;
+            }
+            if (message.action === 'gameCaptureError' && message.live) {
+                if (liveCaptureSession && liveCaptureSession.onError) {
+                    liveCaptureSession.onError(message.message || '抓取原神窗口失败');
+                }
+            }
+        });
+    }
+
+    function uploadResourceImage(file) {
+        var form = new FormData();
+        form.append('file', file);
+        var headers = {};
+        if (state.token) {
+            headers.Authorization = 'Bearer ' + state.token;
+        }
+        return fetch('/api/ocr/resource?engine=tesseract', {
+            method: 'POST',
+            headers: headers,
+            body: form
+        }).then(function (res) {
+            return res.text().then(function (text) {
+                var payload = safeParse(text);
+                if (res.status === 401) {
+                    logout(true);
+                    throw new Error('登录已失效，请重新登录');
+                }
+                if (!res.ok) {
+                    throw new Error((payload && payload.message) || ('识别失败（' + res.status + '）'));
+                }
+                if (payload && payload.code !== 0) {
+                    throw new Error(payload.message || '识别失败');
+                }
+                return payload ? payload.data : null;
             });
         });
     }
@@ -3341,7 +3926,7 @@
                 restoreOwnedSnapshot(data.owned, values.mode);
                 toast('全部数据导入完成：抽卡 ' + result.wishes + ' 条'
                     + (result.resourceUpdated ? '，资源已更新' : '')
-                    + (data.owned ? '，手动补充已恢复' : '')
+                    + (data.owned ? '，收藏补充已恢复' : '')
                     + (result.skipped ? '，跳过 ' + result.skipped + ' 条' : ''));
                 switchView('settings');
                 return result;
@@ -3532,14 +4117,20 @@
     }
 
     /** 全量备份用：两个游戏的手动补充一起打包 */
+    function ownedSnapshotFor(game) {
+        var data = loadOwnedDataFor(game);
+        data.ocr = loadOcrOwnedFor(game);
+        return data;
+    }
+
     function ownedSnapshot() {
         return {
-            genshin: loadOwnedDataFor('genshin'),
-            starrail: loadOwnedDataFor('starrail')
+            genshin: ownedSnapshotFor('genshin'),
+            starrail: ownedSnapshotFor('starrail')
         };
     }
 
-    /** 恢复手动补充：合并取较大值，覆盖直接用备份值 */
+    /** 恢复手动补充与识图记录：手动补充合并取较大值，覆盖直接用备份值 */
     function restoreOwnedSnapshot(owned, mode) {
         if (!owned || typeof owned !== 'object') {
             return;
@@ -3574,6 +4165,377 @@
                 }
             });
             localStorage.setItem(ownedStorageKeyFor(game), JSON.stringify(data));
+
+            var ocrIncoming = incoming.ocr && typeof incoming.ocr === 'object' ? incoming.ocr : null;
+            if (!ocrIncoming) {
+                return;
+            }
+            var ocrBase = mode !== 'replace' ? loadOcrOwnedFor(game) : null;
+            var ocrData = {
+                characters4: {},
+                characters5: {},
+                weapons5: {}
+            };
+            ['characters4', 'characters5', 'weapons5'].forEach(function (key) {
+                if (ocrBase) {
+                    Object.keys(ocrBase[key] || {}).forEach(function (name) {
+                        ocrData[key][name] = ocrBase[key][name];
+                    });
+                }
+                var source = ocrIncoming[key] || {};
+                Object.keys(source).forEach(function (name) {
+                    var rank = Math.floor(Number(source[name]));
+                    if (isFinite(rank) && rank >= 0) {
+                        ocrData[key][name] = rank;
+                    }
+                });
+            });
+            saveOcrOwnedFor(game, ocrData);
+        });
+    }
+
+    /* ---------------- 收藏识图（游戏截图 OCR，仅原神） ---------------- */
+
+    function ocrOwnedKeyFor(game) {
+        var uid = (state.user && (state.user.id || state.user.username)) || 'guest';
+        return 'sg_owned_ocr_' + uid + '_' + game;
+    }
+
+    function loadOcrOwnedFor(game) {
+        var raw = safeParse(localStorage.getItem(ocrOwnedKeyFor(game))) || {};
+        return {
+            characters4: raw.characters4 || {},
+            characters5: raw.characters5 || {},
+            weapons5: raw.weapons5 || {}
+        };
+    }
+
+    function loadOcrOwned() {
+        return loadOcrOwnedFor(state.game);
+    }
+
+    function saveOcrOwnedFor(game, data) {
+        localStorage.setItem(ocrOwnedKeyFor(game), JSON.stringify(data));
+    }
+
+    function saveOcrOwned(data) {
+        saveOcrOwnedFor(state.game, data);
+    }
+
+    var OCR_CN_DIGITS = { '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6 };
+
+    function parseOcrDigit(value) {
+        if (value === undefined || value === null) {
+            return null;
+        }
+        var text = String(value).trim();
+        if (/^\d+$/.test(text)) {
+            return Number(text);
+        }
+        return OCR_CN_DIGITS[text] || null;
+    }
+
+    /** 从 OCR 文本里读命座 / 精炼等级；读不到时返回 null，交给用户确认 */
+    function parseOcrRank(text, kind) {
+        var compact = String(text || '').replace(/\s+/g, '');
+        var patterns;
+        var i;
+        var value;
+        if (kind === 'weapon') {
+            patterns = [
+                /精炼[^0-9一二三四五六]{0,8}([0-9一二三四五六])/,
+                /([0-9一二三四五六])[阶级]?精炼/,
+                /精炼[^0-9一二三四五六]{0,8}R([0-9一二三四五六])/
+            ];
+            for (i = 0; i < patterns.length; i += 1) {
+                value = parseOcrDigit((compact.match(patterns[i]) || [])[1]);
+                if (value !== null && value >= 1 && value <= 5) {
+                    return value;
+                }
+            }
+            return null;
+        }
+        patterns = [
+            /命之座[^0-9一二三四五六]{0,8}([0-9一二三四五六])/,
+            /命座[^0-9一二三四五六]{0,8}([0-9一二三四五六])/,
+            /第([0-9一二三四五六])[层命]/,
+            /([0-9])命/
+        ];
+        for (i = 0; i < patterns.length; i += 1) {
+            value = parseOcrDigit((compact.match(patterns[i]) || [])[1]);
+            if (value !== null && value >= 0 && value <= 6) {
+                return value;
+            }
+        }
+        /* 部分界面逐条标注激活状态：至少出现 3 条状态时才按「已激活」计数 */
+        var activated = compact.match(/已激活/g) || [];
+        var locked = compact.match(/未激活|未解锁/g) || [];
+        if (activated.length + locked.length >= 3 && activated.length <= 6) {
+            return activated.length;
+        }
+        return null;
+    }
+
+    function normalizeOcrLine(text) {
+        return String(text || '').replace(/\s+/g, '')
+            .replace(/[·•・\-–—_:：,，.。!！?？"'“”‘’()（）\[\]【】<>《》/\\|+*#%&@~^$]/g, '');
+    }
+
+    function editDistance(a, b) {
+        var prev = [];
+        var i;
+        var j;
+        for (j = 0; j <= b.length; j += 1) {
+            prev[j] = j;
+        }
+        for (i = 1; i <= a.length; i += 1) {
+            var curr = [i];
+            for (j = 1; j <= b.length; j += 1) {
+                curr[j] = Math.min(
+                    prev[j] + 1,
+                    curr[j - 1] + 1,
+                    prev[j - 1] + (a.charAt(i - 1) === b.charAt(j - 1) ? 0 : 1)
+                );
+            }
+            prev = curr;
+        }
+        return prev[b.length];
+    }
+
+    function lineSimilarity(a, b) {
+        if (!a || !b) {
+            return 0;
+        }
+        if (a === b) {
+            return 1;
+        }
+        return 1 - editDistance(a, b) / Math.max(a.length, b.length);
+    }
+
+    /** 在 OCR 文本里找最可能的名称；单字名只认短行，避免误匹配 */
+    function matchOcrName(text, names) {
+        var source = String(text || '');
+        if (!source.trim() || !names.length) {
+            return null;
+        }
+        var compact = normalizeOcrLine(source);
+        var lines = source.split(/[\r\n]+/).map(normalizeOcrLine).filter(Boolean);
+        var best = null;
+        names.forEach(function (name) {
+            var key = normalizeOcrLine(name);
+            if (!key) {
+                return;
+            }
+            var score = 0;
+            if (key.length === 1) {
+                lines.forEach(function (line) {
+                    if (line === key) {
+                        score = 1;
+                    } else if (line.indexOf(key) === 0 && line.length <= 4) {
+                        score = Math.max(score, 0.9);
+                    }
+                });
+            } else {
+                var hits = 0;
+                var from = 0;
+                while (true) {
+                    var at = compact.indexOf(key, from);
+                    if (at < 0) {
+                        break;
+                    }
+                    hits += 1;
+                    from = at + key.length;
+                }
+                if (hits) {
+                    score = 1 + Math.min(hits, 5) * 0.1;
+                } else {
+                    lines.forEach(function (line) {
+                        if (Math.abs(line.length - key.length) <= 3) {
+                            score = Math.max(score, lineSimilarity(line, key));
+                        }
+                    });
+                }
+            }
+            if (score > (best ? best.score : 0.62)) {
+                best = { name: name, score: score };
+            }
+        });
+        return best;
+    }
+
+    function ocrRankOptions(section) {
+        if (section === 'weapons5') {
+            return [1, 2, 3, 4, 5].map(function (n) {
+                return { value: n, label: 'R' + n + ' · 精炼 ' + n + ' 阶' };
+            });
+        }
+        return [0, 1, 2, 3, 4, 5, 6].map(function (n) {
+            return { value: n, label: n === 0 ? 'C0 · 暂无命座' : 'C' + n + ' · ' + n + ' 命' };
+        });
+    }
+
+    function renderSelectOptions(selectEl, options, current) {
+        selectEl.innerHTML = options.map(function (option) {
+            return '<option value="' + esc(option.value) + '"'
+                + (String(option.value) === String(current) ? ' selected' : '')
+                + '>' + esc(option.label) + '</option>';
+        }).join('');
+    }
+
+    /** 识图结果先做成候选，确认后才写入本机收藏记录 */
+    function openCollectionOcrForm(text, constellation) {
+        var g = gameConfig();
+        var defs = collectionDefs(g);
+        var lists = nameLists('genshin');
+        var charMatch = matchOcrName(text, lists.characters);
+        var weaponMatch = matchOcrName(text, lists.weapons);
+        var kind = 'character';
+        var best = null;
+        if (charMatch && (!weaponMatch || charMatch.score >= weaponMatch.score)) {
+            best = charMatch;
+        } else if (weaponMatch) {
+            best = weaponMatch;
+            kind = 'weapon';
+        }
+        if (best && best.score < 0.72) {
+            best = null;
+        }
+
+        var section = best
+            ? (kind === 'weapon'
+                ? 'weapons5'
+                : (FOUR_STAR_CHARACTERS.genshin.indexOf(best.name) >= 0 ? 'characters4' : 'characters5'))
+            : 'characters5';
+        var name = best ? best.name : '';
+        var scannedRank = parseOcrRank(text, kind);
+        /* 命之座界面没有命座数字文字，用后端数出的点亮节点数兜底 */
+        if (scannedRank === null && kind === 'character'
+            && constellation !== null && constellation !== undefined
+            && isFinite(Number(constellation))) {
+            scannedRank = Math.max(0, Math.min(6, Math.floor(Number(constellation))));
+        }
+        var rank = scannedRank;
+        var ocr = loadOcrOwned();
+        if (rank === null && name && ocr[section] && ocr[section][name] != null) {
+            rank = Number(ocr[section][name]);
+        }
+        if (rank === null) {
+            rank = section === 'weapons5' ? 1 : 0;
+        }
+        var rankLabel = section === 'weapons5' ? '精炼等级' : '命座数';
+        var hint = best
+            ? '识别到「' + best.name + '」，' + rankLabel + (scannedRank === null
+                ? '未读到，请手动确认' : '为 ' + rank)
+            : '没有识别到角色 / 武器名称，请手动选择';
+
+        var categoryField = {
+            key: 'category',
+            label: '类别',
+            type: 'select',
+            full: true,
+            options: defs.map(function (def) {
+                return { value: def.key, label: def.title };
+            }),
+            default: section
+        };
+        var nameField = {
+            key: 'name',
+            label: '名称',
+            type: 'name-picker',
+            full: true,
+            options: ownedNameOptions('genshin', section)
+        };
+        var rankField = {
+            key: 'rank',
+            label: rankLabel,
+            type: 'select',
+            full: true,
+            options: ocrRankOptions(section)
+        };
+
+        return openForm('识图确认 · 原神收藏', [
+            categoryField,
+            nameField,
+            rankField
+        ], { category: section, name: name, rank: rank }, {
+            hint: hint + '。核对后保存，同一名称会覆盖旧的识图记录。',
+            submitText: '写入收藏',
+            maskClosable: false,
+            onMount: function (mask) {
+                var categoryEl = $('select[name="category"]', mask);
+                var nameEl = $('input[name="name"]', mask);
+                var rankEl = $('select[name="rank"]', mask);
+                var trigger = $('.name-picker-trigger[data-picker-key="name"]', mask);
+                if (!categoryEl || !nameEl || !rankEl || !trigger) {
+                    return;
+                }
+                var rankLabelEl = rankEl.parentNode ? $('span', rankEl.parentNode) : null;
+                categoryEl.addEventListener('change', function () {
+                    var next = categoryEl.value;
+                    section = next;
+                    nameField.options = ownedNameOptions('genshin', next);
+                    nameEl.value = '';
+                    updateNameTrigger(trigger, '');
+                    rankField.options = ocrRankOptions(next);
+                    renderSelectOptions(rankEl, rankField.options, next === 'weapons5' ? 1 : 0);
+                    if (rankLabelEl) {
+                        rankLabelEl.textContent = next === 'weapons5' ? '精炼等级' : '命座数';
+                    }
+                });
+            },
+            validate: function (values) {
+                if (!String(values.name || '').trim()) {
+                    return '请选择角色 / 武器';
+                }
+                var value = Math.floor(Number(values.rank));
+                if (!isFinite(value)) {
+                    return '请选择' + (values.category === 'weapons5' ? '精炼等级' : '命座数');
+                }
+                return null;
+            }
+        }).then(function (values) {
+            if (!values) {
+                return null;
+            }
+            var ocrData = loadOcrOwned();
+            var sectionKey = values.category;
+            var itemName = String(values.name || '').trim();
+            var value = Math.floor(Number(values.rank));
+            var max = sectionKey === 'weapons5' ? 5 : 6;
+            var min = sectionKey === 'weapons5' ? 1 : 0;
+            value = Math.max(min, Math.min(max, value));
+            ['characters4', 'characters5', 'weapons5'].forEach(function (key) {
+                if (key !== sectionKey && ocrData[key]) {
+                    delete ocrData[key][itemName];
+                }
+            });
+            ocrData[sectionKey][itemName] = value;
+            saveOcrOwned(ocrData);
+            toast('已记录 ' + itemName + ' · ' + (sectionKey === 'weapons5' ? 'R' + value : 'C' + value));
+            loadCollection();
+            return values;
+        });
+    }
+
+    function openCollectionOcr() {
+        if (state.game !== 'genshin') {
+            toast('识图目前只支持原神', 'error');
+            return null;
+        }
+        return openLiveCapture({
+            title: '识图读取收藏',
+            hint: '打开「角色 → 命之座」界面（会自动数右侧命座点亮个数），或武器详情（看精炼等级），再点「识别当前画面」。'
+        }).then(function (file) {
+            if (!file) {
+                return null;
+            }
+            toast('正在识别截图…');
+            return uploadRawImage(file, 'page');
+        }).then(function (raw) {
+            if (!raw) {
+                return null;
+            }
+            return openCollectionOcrForm(raw.text || '', raw.constellation);
         });
     }
 
@@ -3599,16 +4561,21 @@
         return '';
     }
 
-    function collectionCardHtml(game, sectionKey, kind, name, copies, manual, iconMap, rarity) {
+    function collectionCardHtml(game, sectionKey, kind, name, copies, manual, iconMap, rarity, ocrRank) {
         var icon = iconMap[name] || '';
+        var scanned = ocrRank !== null && ocrRank !== undefined && isFinite(Number(ocrRank));
         var badge;
         var sub;
         if (kind === 'character') {
-            badge = 'C' + Math.min(6, Math.max(0, copies - 1));
-            sub = '共 ' + copies + ' 份';
+            badge = 'C' + (scanned
+                ? Math.min(6, Math.max(0, Math.floor(Number(ocrRank))))
+                : Math.min(6, Math.max(0, copies - 1)));
+            sub = scanned ? '识图确认' : '共 ' + copies + ' 份';
         } else {
-            badge = 'R' + Math.min(5, Math.max(1, copies));
-            sub = '共 ' + copies + ' 把';
+            badge = 'R' + (scanned
+                ? Math.min(5, Math.max(1, Math.floor(Number(ocrRank))))
+                : Math.min(5, Math.max(1, copies)));
+            sub = scanned ? '识图确认' : '共 ' + copies + ' 把';
         }
         return '<div class="collection-card rarity-' + rarity + '">'
             + '<div class="collection-icon"><span>' + esc(name.charAt(0)) + '</span>'
@@ -3617,6 +4584,10 @@
             + '<div class="collection-name" title="' + esc(name) + '">' + esc(name) + '</div>'
             + '<div class="collection-meta"><span class="collection-rank">' + badge + '</span>'
             + '<span>' + sub + '</span></div>'
+            + (scanned
+                ? '<button class="collection-ocr-chip" type="button" title="长按清除识图记录" data-section="'
+                    + esc(sectionKey) + '" data-name="' + esc(name) + '">识图 ' + badge + '</button>'
+                : '')
             + (manual > 0
                 ? '<button class="collection-manual-chip" type="button" title="长按清除手动补充" data-section="'
                     + esc(sectionKey) + '" data-name="' + esc(name) + '">手动 +' + manual + '</button>'
@@ -3624,7 +4595,7 @@
             + '</div>';
     }
 
-    function collectionSectionsHtml(game, items, owned, g) {
+    function collectionSectionsHtml(game, items, owned, g, ocr) {
         var defs = collectionDefs(g);
         var avatarMap = (window.SG_AVATARS || {})[game] || {};
         var weaponMap = (window.SG_WEAPON_ICONS || {})[game] || {};
@@ -3665,6 +4636,21 @@
                     sections[def.key].push({ name: name, count: 0, manual: copies });
                 }
             });
+            var ocrMap = (ocr && ocr[def.key]) || {};
+            Object.keys(ocrMap).forEach(function (name) {
+                var rank = Math.floor(Number(ocrMap[name]));
+                if (!isFinite(rank) || rank < 0) {
+                    return;
+                }
+                var existing = sections[def.key].filter(function (entry) {
+                    return entry.name === name;
+                })[0];
+                if (existing) {
+                    existing.ocrRank = rank;
+                } else {
+                    sections[def.key].push({ name: name, count: 0, manual: 0, ocrRank: rank });
+                }
+            });
             sections[def.key].sort(function (a, b) {
                 var totalA = a.count + a.manual;
                 var totalB = b.count + b.manual;
@@ -3680,7 +4666,7 @@
             var cards = sections[def.key].map(function (entry) {
                 var copies = entry.count + entry.manual;
                 return collectionCardHtml(game, def.key, def.kind, entry.name, copies,
-                    entry.manual, iconMap, def.rarity);
+                    entry.manual, iconMap, def.rarity, entry.ocrRank);
             }).join('');
             return '<section class="panel collection-panel">'
                 + '<h3>' + esc(def.title) + '<span class="pool-tag">' + sections[def.key].length + '</span></h3>'
@@ -3773,20 +4759,33 @@
         el.innerHTML = '<div class="loading">加载中…</div>';
         return api('/api/wishes/collection').then(function (items) {
             var owned = loadOwnedData();
+            var ocr = loadOcrOwned();
             el.innerHTML =
                 '<div class="page-head">'
                 + '<div><p class="eyebrow">Collection</p><h2>收藏图鉴</h2>'
                 + '<p class="sub">四星角色 · 五星角色 · 五星' + (g.itemTypes[1] === '光锥' ? '光锥' : '武器')
-                + ' · 角色最高 C6，武器最高 R5</p></div>'
+                + ' · 角色最高 C6，武器最高 R5'
+                + (game === 'genshin' ? ' · 支持截图识图' : '') + '</p></div>'
                 + '<div class="head-actions">'
+                + (game === 'genshin'
+                    ? '<button class="btn btn-outline" id="collection-ocr" type="button">识图读取</button>'
+                    : '')
                 + '<button class="btn btn-primary" id="collection-add" type="button">+ 补充已有</button>'
                 + '</div></div>'
-                + collectionSectionsHtml(game, items || [], owned, g)
-                + '<p class="foot-tip">手动补充保存在本机浏览器，已随全量备份一起导出 / 导入；长按「手动 +N」标签才会清除，抽卡记录会随导入自动更新。</p>';
+                + collectionSectionsHtml(game, items || [], owned, g, ocr)
+                + '<p class="foot-tip">手动补充与识图记录保存在本机浏览器，已随全量备份一起导出 / 导入；'
+                + '长按「手动 +N」或「识图 C/R」标签才会清除，抽卡记录会随导入自动更新。</p>';
 
             $('#collection-add').addEventListener('click', function () {
                 guard(openOwnedForm);
             });
+
+            var ocrButton = $('#collection-ocr');
+            if (ocrButton) {
+                ocrButton.addEventListener('click', function () {
+                    guard(openCollectionOcr);
+                });
+            }
 
             function removeOwned(section, name) {
                 if (!window.confirm('清除「' + name + '」的手动补充？')) {
@@ -3801,25 +4800,43 @@
                 loadCollection();
             }
 
-            $$('.collection-manual-chip', el).forEach(function (btn) {
-                var timer = null;
-                function cancel() {
-                    if (timer) {
-                        clearTimeout(timer);
-                        timer = null;
-                    }
+            function removeOcr(section, name) {
+                if (!window.confirm('清除「' + name + '」的识图记录？')) {
+                    return;
                 }
-                btn.addEventListener('pointerdown', function () {
-                    cancel();
-                    timer = setTimeout(function () {
-                        timer = null;
-                        removeOwned(btn.dataset.section, btn.dataset.name);
-                    }, 650);
+                var data = loadOcrOwned();
+                if (data[section]) {
+                    delete data[section][name];
+                }
+                saveOcrOwned(data);
+                toast('已清除 ' + name + ' 的识图记录');
+                loadCollection();
+            }
+
+            function bindLongPress(selector, handler) {
+                $$(selector, el).forEach(function (btn) {
+                    var timer = null;
+                    function cancel() {
+                        if (timer) {
+                            clearTimeout(timer);
+                            timer = null;
+                        }
+                    }
+                    btn.addEventListener('pointerdown', function () {
+                        cancel();
+                        timer = setTimeout(function () {
+                            timer = null;
+                            handler(btn.dataset.section, btn.dataset.name);
+                        }, 650);
+                    });
+                    ['pointerup', 'pointerleave', 'pointercancel'].forEach(function (name) {
+                        btn.addEventListener(name, cancel);
+                    });
                 });
-                ['pointerup', 'pointerleave', 'pointercancel'].forEach(function (name) {
-                    btn.addEventListener(name, cancel);
-                });
-            });
+            }
+
+            bindLongPress('.collection-manual-chip', removeOwned);
+            bindLongPress('.collection-ocr-chip', removeOcr);
         }).catch(function (err) {
             el.innerHTML = errorHtml(err);
         });
@@ -3903,7 +4920,7 @@
                 }).then(function (data) {
                     data.owned = ownedSnapshot();
                     downloadJsonObject(data, 'southair-all-backup.json');
-                    toast('全部数据已导出（含收藏手动补充）');
+                    toast('全部数据已导出（含收藏补充与识图）');
                     return data;
                 });
             });
@@ -4132,44 +5149,12 @@
         return String(text).replace('T', ' ').slice(0, 16);
     }
 
-    /** 大图先在本地缩放/压缩，避免超过 8MB 上限或上传过慢 */
-    function compressOcrImage(file) {
-        var LIMIT = 8 * 1024 * 1024;
-        var MAX_SIDE = 2000;
-        return new Promise(function (resolve) {
-            var url = URL.createObjectURL(file);
-            var img = new Image();
-            img.onload = function () {
-                URL.revokeObjectURL(url);
-                var side = Math.max(img.width, img.height);
-                var scale = Math.min(1, MAX_SIDE / side);
-                if (scale === 1 && file.size <= LIMIT) {
-                    resolve(file);
-                    return;
-                }
-                var canvas = document.createElement('canvas');
-                canvas.width = Math.round(img.width * scale);
-                canvas.height = Math.round(img.height * scale);
-                canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-                canvas.toBlob(function (blob) {
-                    if (!blob) {
-                        resolve(file);
-                        return;
-                    }
-                    var out = new File([blob], 'ocr.jpg', { type: 'image/jpeg' });
-                    resolve(out.size <= LIMIT ? out : file);
-                }, 'image/jpeg', 0.88);
-            };
-            img.onerror = function () {
-                URL.revokeObjectURL(url);
-                resolve(file);
-            };
-            img.src = url;
-        });
-    }
-
     function openOcrDialog() {
         var g = gameConfig();
+        if (!liveCaptureSupported()) {
+            toast('截图识别需要在 SouthAir 启动器内运行，并保持原神窗口化或无边框模式', 'error');
+            return Promise.resolve(false);
+        }
         var selected = localStorage.getItem(OCR_ENGINE_KEY) || '';
         var mode = localStorage.getItem(OCR_MODE_KEY) === 'history' ? 'history' : 'wishes';
         var currentFile = null;
@@ -4188,13 +5173,13 @@
                 + '</div>'
                 + '<p class="modal-hint" id="ocr-mode-hint">' + esc(OCR_MODE_HINTS[mode]) + '</p>'
                 + '<div class="ocr-engines" id="ocr-engines"><span class="ocr-loading">正在检测可用引擎…</span></div>'
-                + '<div class="ocr-drop" id="ocr-drop" role="button" tabindex="0">'
-                + '<input id="ocr-file" type="file" accept="image/*" hidden/>'
-                + '<div class="ocr-drop-hint" id="ocr-drop-hint">点击选择、拖入图片，或按 Ctrl+V 粘贴截图</div>'
-                + '<img id="ocr-preview" class="ocr-preview" hidden alt="待识别截图"/>'
+                + '<div class="live-capture-body ocr-live-body">'
+                + '<img id="ocr-preview" class="live-capture-preview" alt="原神实时画面" hidden/>'
+                + '<div id="ocr-live-placeholder" class="live-capture-placeholder">正在连接原神窗口…</div>'
                 + '</div>'
                 + '<div class="ocr-bar">'
-                + '<span class="ocr-status" id="ocr-status"></span>'
+                + '<span class="ocr-status" id="ocr-status">正在连接原神窗口…</span>'
+                + '<button class="btn btn-outline btn-sm" id="ocr-live-retry" type="button" hidden>重连</button>'
                 + '<button class="btn btn-primary btn-sm" id="ocr-run" type="button" disabled>开始识别</button>'
                 + '</div>'
                 + '<div id="ocr-result" class="ocr-result"></div>'
@@ -4206,10 +5191,8 @@
             document.body.style.overflow = 'hidden';
 
             function close(result) {
-                document.removeEventListener('paste', onPaste);
-                if (previewUrl) {
-                    URL.revokeObjectURL(previewUrl);
-                }
+                clearLiveTimer();
+                stopLiveCapture();
                 mask.remove();
                 document.body.style.overflow = '';
                 resolve(result);
@@ -4230,13 +5213,93 @@
             var enginesBox = $('#ocr-engines', mask);
             var modesBox = $('#ocr-modes', mask);
             var modeHint = $('#ocr-mode-hint', mask);
-            var drop = $('#ocr-drop', mask);
-            var fileInput = $('#ocr-file', mask);
             var preview = $('#ocr-preview', mask);
+            var placeholder = $('#ocr-live-placeholder', mask);
+            var retryBtn = $('#ocr-live-retry', mask);
             var runBtn = $('#ocr-run', mask);
             var statusEl = $('#ocr-status', mask);
             var resultBox = $('#ocr-result', mask);
             var engines = [];
+            var liveLatest = null;
+            var liveTimer = null;
+
+            function clearLiveTimer() {
+                if (liveTimer) {
+                    clearTimeout(liveTimer);
+                    liveTimer = null;
+                }
+            }
+
+            function stopLiveCapture() {
+                liveCaptureSession = null;
+                try {
+                    window.chrome.webview.postMessage({ action: 'captureLiveStop' });
+                } catch (e) {
+                    // 启动器已关闭时忽略
+                }
+            }
+
+            function updateRunState() {
+                runBtn.disabled = !liveLatest || !selected;
+            }
+
+            function startLiveCapture() {
+                liveLatest = null;
+                currentFile = null;
+                preview.hidden = true;
+                preview.removeAttribute('src');
+                placeholder.hidden = false;
+                placeholder.textContent = '正在连接原神窗口…';
+                retryBtn.hidden = true;
+                setStatus('正在连接原神窗口…');
+                updateRunState();
+                clearLiveTimer();
+                liveCaptureSession = {
+                    onFrame: function (message) {
+                        clearLiveTimer();
+                        liveLatest = message.dataUrl;
+                        preview.src = liveLatest;
+                        preview.hidden = false;
+                        placeholder.hidden = true;
+                        retryBtn.hidden = true;
+                        setStatus('实时画面 · 每秒刷新');
+                        updateRunState();
+                    },
+                    onError: function (message) {
+                        clearLiveTimer();
+                        liveLatest = null;
+                        currentFile = null;
+                        preview.hidden = true;
+                        preview.removeAttribute('src');
+                        placeholder.hidden = false;
+                        placeholder.textContent = message || '抓取失败';
+                        retryBtn.hidden = false;
+                        setStatus(message || '抓取失败', true);
+                        updateRunState();
+                    }
+                };
+                window.chrome.webview.postMessage({ action: 'captureLiveStart' });
+                liveTimer = setTimeout(function () {
+                    if (!liveLatest) {
+                        stopLiveCapture();
+                        placeholder.textContent =
+                            '等待原神画面超时，请确认游戏已启动、未最小化，并切换为窗口化或无边框模式';
+                        retryBtn.hidden = false;
+                        setStatus('连接超时', true);
+                        updateRunState();
+                    }
+                }, 20000);
+            }
+
+            function frameToFile(dataUrl) {
+                return fetch(dataUrl).then(function (res) {
+                    return res.blob();
+                }).then(function (blob) {
+                    var type = blob.type || 'image/jpeg';
+                    var ext = /jpeg|jpg/.test(type) ? '.jpg' : '.png';
+                    return new File([blob], 'genshin-live' + ext, { type: type });
+                });
+            }
 
             function setStatus(text, isError) {
                 statusEl.textContent = text || '';
@@ -4290,54 +5353,6 @@
                 });
             }
 
-            function updateRunState() {
-                runBtn.disabled = !currentFile || !selected;
-            }
-
-            var previewUrl = '';
-
-            function pickFile(file) {
-                if (!file) {
-                    return;
-                }
-                if (!/^image\//.test(file.type)) {
-                    toast('请选择图片文件', 'error');
-                    return;
-                }
-                setStatus('正在处理图片…');
-                compressOcrImage(file).then(function (ready) {
-                    if (ready.size > 8 * 1024 * 1024) {
-                        toast('图片过大，压缩后仍超过 8MB', 'error');
-                        setStatus('');
-                        return;
-                    }
-                    currentFile = ready;
-                    if (previewUrl) {
-                        URL.revokeObjectURL(previewUrl);
-                    }
-                    previewUrl = URL.createObjectURL(ready);
-                    preview.src = previewUrl;
-                    preview.hidden = false;
-                    $('#ocr-drop-hint', mask).hidden = true;
-                    resultBox.innerHTML = '';
-                    setStatus(ready === file ? '' : '图片已压缩至 ' + Math.round(ready.size / 1024) + 'KB');
-                    updateRunState();
-                });
-            }
-
-            function onPaste(event) {
-                var items = (event.clipboardData && event.clipboardData.items) || [];
-                for (var i = 0; i < items.length; i++) {
-                    if (items[i].type && items[i].type.indexOf('image/') === 0) {
-                        event.preventDefault();
-                        pickFile(items[i].getAsFile());
-                        return;
-                    }
-                }
-            }
-
-            document.addEventListener('paste', onPaste);
-
             api('/api/ocr/engines').then(function (status) {
                 engines = engineOptions(status || {});
                 var enabled = engines.filter(function (item) {
@@ -4354,33 +5369,8 @@
                 enginesBox.innerHTML = '<span class="ocr-loading">引擎检测失败：' + esc(err.message) + '</span>';
             });
 
-            drop.addEventListener('click', function () {
-                fileInput.click();
-            });
-            drop.addEventListener('keydown', function (event) {
-                if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    fileInput.click();
-                }
-            });
-            drop.addEventListener('dragover', function (event) {
-                event.preventDefault();
-                drop.classList.add('dragging');
-            });
-            drop.addEventListener('dragleave', function () {
-                drop.classList.remove('dragging');
-            });
-            drop.addEventListener('drop', function (event) {
-                event.preventDefault();
-                drop.classList.remove('dragging');
-                var files = event.dataTransfer && event.dataTransfer.files;
-                pickFile(files && files[0]);
-            });
-            fileInput.addEventListener('change', function (event) {
-                var file = event.target.files && event.target.files[0];
-                event.target.value = '';
-                pickFile(file);
-            });
+            startLiveCapture();
+            retryBtn.addEventListener('click', startLiveCapture);
 
             function engineLabel(key) {
                 var hit = engines.filter(function (item) {
@@ -4426,11 +5416,22 @@
             }
 
             runBtn.addEventListener('click', function () {
-                if (!currentFile || !selected) {
+                if (!liveLatest || !selected) {
                     return;
                 }
                 runBtn.disabled = true;
                 resultBox.innerHTML = '';
+                setStatus('正在读取当前画面…');
+                frameToFile(liveLatest).then(function (file) {
+                    currentFile = file;
+                    runRecognition();
+                }).catch(function (err) {
+                    setStatus('画面读取失败：' + (err.message || ''), true);
+                    runBtn.disabled = false;
+                });
+            });
+
+            function runRecognition() {
                 var runMode = mode;
                 // 当前引擎优先，失败时按顺序自动降级到其它可用引擎
                 var chain = [selected].concat(engines
@@ -4468,7 +5469,7 @@
                 }
 
                 attempt();
-            });
+            }
         });
     }
 
@@ -5041,7 +6042,8 @@
                     + '<input class="input" type="number" min="1" max="90" data-w="pityCount" value="'
                     + (item.pityCount === null || item.pityCount === undefined ? '' : item.pityCount)
                     + '" placeholder="第几抽"/>'
-                    + '<input class="input" type="text" placeholder="YYYY-MM-DD HH:mm" data-w="wishTime" value="'
+                    + '<input class="input" type="text" placeholder="YYYY-MM-DD HH:mm" maxlength="16"'
+                    + ' data-datetime="1" data-w="wishTime" value="'
                     + esc(localTimeValue(item.wishTime)) + '"/>'
                     + '</div>'
                     + ocrMatchHtml(item)
@@ -5129,7 +6131,8 @@
                     + '<input class="input" type="number" min="1" max="200" data-w="pityCount" value="'
                     + (item.pityCount === null || item.pityCount === undefined ? '' : item.pityCount)
                     + '" placeholder="第几抽"/>'
-                    + '<input class="input" type="text" placeholder="YYYY-MM-DD HH:mm" data-w="wishTime" value="'
+                    + '<input class="input" type="text" placeholder="YYYY-MM-DD HH:mm" maxlength="16"'
+                    + ' data-datetime="1" data-w="wishTime" value="'
                     + esc(localTimeValue(item.wishTime)) + '"/>'
                     + '</div>'
                     + ocrMatchHtml(item)
@@ -5252,6 +6255,7 @@
         applyGameUI();
         bindAuth();
         bindShell();
+        bindLauncherMessages();
 
         if (!state.token) {
             return;
@@ -5266,6 +6270,28 @@
             }
         });
     }
+
+    /* 桌面启动器桥接：供内嵌 WebView2 的启动器调用导航与游戏切换 */
+    window.SG_LAUNCHER = {
+        nav: function (view) {
+            if (!$('#app-view') || $('#app-view').hidden) {
+                return false;
+            }
+            switchView(view);
+            return true;
+        },
+        setGame: function (game) {
+            setGame(game);
+            return state.game;
+        },
+        current: function () {
+            return {
+                game: state.game,
+                view: state.view,
+                loggedIn: !!state.token && !!state.user
+            };
+        }
+    };
 
     document.addEventListener('DOMContentLoaded', init);
 })();

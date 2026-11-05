@@ -27,7 +27,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * 通过米游社「抽卡记录」链接导入。
+ * 通过游戏内「抽卡记录」链接导入。
  *
  * <p>浏览器直连该接口会被跨域拦截，因此由后端代理抓取；链接中的 authkey
  * 属于账号凭证，只在本次请求内使用，不落库、不写日志。</p>
@@ -128,7 +128,7 @@ public class GachaLinkImporter {
         boolean webLink = host != null && WEB_HOSTS.contains(host);
         boolean apiLink = host != null && ALLOWED_HOSTS.contains(host);
         if (!webLink && !apiLink) {
-            throw new BusinessException("链接不是米游社抽卡记录地址，请重新复制");
+            throw new BusinessException("链接不是抽卡记录地址，请重新复制");
         }
 
         String gameKey = GameType.normalize(game);
@@ -293,7 +293,7 @@ public class GachaLinkImporter {
     private void fetchType(String base, String gachaType, String pool, List<GachaItem> out) {
         String endId = "0";
         for (int page = 1; page <= MAX_PAGES_PER_TYPE; page++) {
-            // 米游社接口对连续请求较敏感，逐页之间稍作间隔
+            // 抽卡记录接口对连续请求较敏感，逐页之间稍作间隔
             throttle(page > 1);
             String requestUrl = base + "&gacha_type=" + gachaType + "&page=" + page
                     + "&size=" + PAGE_SIZE + "&end_id=" + endId;
@@ -335,7 +335,7 @@ public class GachaLinkImporter {
     }
 
     /**
-     * 米游社在高频请求下可能返回 -110，稍等后重试一次再判定 authkey 失效。
+     * 接口在高频请求下可能返回 -110，稍等后重试一次再判定 authkey 失效。
      */
     private JsonNode requestWithRetry(String url) {
         JsonNode root = readJson(url);
@@ -419,7 +419,7 @@ public class GachaLinkImporter {
                 return objectMapper.readTree(new String(buffer.toByteArray(), StandardCharsets.UTF_8));
             }
         } catch (IOException e) {
-            throw new BusinessException("无法连接米游社接口，请检查网络后重试");
+            throw new BusinessException("无法连接抽卡记录接口，请检查网络后重试");
         } finally {
             if (connection != null) {
                 connection.disconnect();
@@ -438,7 +438,7 @@ public class GachaLinkImporter {
             case -111:
                 return "登录凭证无效，请重新复制链接";
             case -500001:
-                return "米游社接口繁忙，请稍后重试";
+                return "抽卡记录接口繁忙，请稍后重试";
             default:
                 return "读取抽卡记录失败（错误码 " + retcode + "）";
         }

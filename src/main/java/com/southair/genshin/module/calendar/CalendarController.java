@@ -33,7 +33,7 @@ import java.util.regex.Pattern;
  * 卡池日历：内置数据 + 官方公告实时同步。
  *
  * <p>内置数据完全离线，读取 classpath 下的 calendar/banners.json；
- * 实时数据从米游社官方公告接口抓取「活动祈愿」条目，按结束时间归并为上下期。</p>
+ * 实时数据从官方公告接口抓取「活动祈愿」条目，按结束时间归并为上下期。</p>
  */
 @RestController
 @RequestMapping("/api/calendar")
@@ -127,7 +127,7 @@ public class CalendarController {
         ObjectNode calendar = objectMapper.createObjectNode();
         calendar.put("currency", "原石");
         calendar.put("updatedAt", updatedAt);
-        calendar.put("note", "来自米游社官方公告实时同步；预估收入未提供，剩余天数按公告结束时间计算");
+        calendar.put("note", "来自官方公告实时同步；预估收入未提供，剩余天数按公告结束时间计算");
         ArrayNode versions = calendar.putArray("versions");
         ObjectNode versionNode = versions.addObject();
         versionNode.put("version", version.isEmpty() ? "实时" : version);

@@ -95,6 +95,17 @@
         </view>
         <view class="exp-sum">已保留 {{charPlanView.length}} 个角色 · 合计需要 {{exp.planNeedText}} · {{exp.planDiffText}}</view>
       </view>
+      <view class="exp-flower">
+        <view class="exp-flower-head">
+          <text>经验花</text>
+          <picker range="{{wlLevels}}" value="{{wlIndex}}" bindchange="onWlChange">
+            <view class="exp-wl-picker">{{wlLevels[wlIndex]}} ›</view>
+          </picker>
+        </view>
+        <view class="exp-flower-per">{{exp.flowerPerText}}</view>
+        <view class="exp-result">{{exp.flowerPreviewText}}</view>
+        <view class="exp-sum" wx:if="{{exp.flowerSumText}}">{{exp.flowerSumText}}</view>
+      </view>
     </view>
 
     <view class="exp-card">
