@@ -1,6 +1,8 @@
 /* 内置版本 / 卡池日历（与网页端 src/main/resources/calendar/banners.json 保持一致）
    数据为内置示例，按官方公告维护版本、卡池起止时间与预估收入。 */
 
+var net = require('./net');
+
 var DATA = {
   genshin: {
     currency: '原石',
@@ -294,11 +296,21 @@ function fetchLive(game) {
       },
       fail: function (err) {
         var message = String((err && err.errMsg) || '');
-        if (message.indexOf('domain list') >= 0 || message.indexOf('合法域名') >= 0) {
-          reject(new Error('未配置请求域名：请在小程序后台添加 hk4e-api.mihoyo.com'));
-        } else {
-          reject(new Error('联网获取失败，请检查网络'));
+        if (net.isDomainError(message)) {
+          /* 后台还没配好 request 合法域名时，用云函数代理再试一次 */
+          net.proxyJson(LIVE_URL).then(function (root) {
+            var calendar = parseLive(root);
+            if (!calendar.versions[0].phases.length) {
+              reject(new Error('官方公告里没有可用卡池'));
+              return;
+            }
+            resolve(calendar);
+          }, function () {
+            reject(new Error('未配置请求域名：请在小程序后台添加 hk4e-api.mihoyo.com'));
+          });
+          return;
         }
+        reject(new Error('联网获取失败，请检查网络'));
       }
     });
   });

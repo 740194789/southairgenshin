@@ -4,6 +4,7 @@
 
 var avatars = require('./avatars');
 var weaponIcons = require('./weaponIcons');
+var net = require('./net');
 
 var CACHE_KEY = 'sg_catalog_';
 var CACHE_TTL = 24 * 3600 * 1000;
@@ -197,7 +198,14 @@ function getJson(url, game) {
         resolve(body);
       },
       fail: function (err) {
-        reject(requestError(err, game));
+        if (!net.isDomainError(err && err.errMsg)) {
+          reject(requestError(err, game));
+          return;
+        }
+        /* 后台还没配好 request 合法域名时，用云函数代理再试一次 */
+        net.proxyJson(url).then(resolve, function () {
+          reject(requestError(err, game));
+        });
       }
     });
   });
