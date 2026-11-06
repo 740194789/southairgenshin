@@ -77,19 +77,22 @@ $manifest = Join-Path $PSScriptRoot "app.manifest"
 & $csc /nologo /target:winexe /optimize /codepage:65001 /utf8output `
     "/win32icon:$iconPath" `
     "/win32manifest:$manifest" `
-    "/out:$outDir\SouthAirGenshin.exe" `
+    "/out:$outDir\南空提瓦特小助手.exe" `
     $refArgs `
     (Join-Path $PSScriptRoot "SouthAirLauncher.cs")
 if ($LASTEXITCODE -ne 0) {
     throw "启动器编译失败（退出码 $LASTEXITCODE）"
 }
 
-Copy-Item (Join-Path $outDir "SouthAirGenshin.exe") $distDir -Force
+Copy-Item (Join-Path $outDir "南空提瓦特小助手.exe") $distDir -Force
+# 清理旧名字的可执行文件，避免绿色版里同时出现两个启动器
+$legacyExe = Join-Path $distDir "SouthAirGenshin.exe"
+if (Test-Path $legacyExe) { Remove-Item $legacyExe -Force -ErrorAction SilentlyContinue }
 Copy-Item (Join-Path $PSScriptRoot "libs\Microsoft.Web.WebView2.Core.dll") $distDir -Force
 Copy-Item (Join-Path $PSScriptRoot "libs\Microsoft.Web.WebView2.WinForms.dll") $distDir -Force
 Copy-Item (Join-Path $PSScriptRoot "libs\WebView2Loader.dll") $distDir -Force
 
-Write-Host "启动器已输出到 $distDir\SouthAirGenshin.exe"
+Write-Host "启动器已输出到 $distDir\南空提瓦特小助手.exe"
 
 
 

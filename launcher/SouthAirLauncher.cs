@@ -5,9 +5,11 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.IO;
+using System.Net;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -19,13 +21,13 @@ namespace SouthAirLauncher
 {
     internal static class Program
     {
-        private const string WindowTitle = "SouthAir Genshin 启动器";
+        private const string WindowTitle = "南空提瓦特小助手";
 
         [STAThread]
         private static void Main()
         {
             bool created;
-            Mutex mutex = new Mutex(true, "SouthAirGenshinLauncherSingleInstance", out created);
+            Mutex mutex = new Mutex(true, "NankongTeyvatLauncherSingleInstance", out created);
             if (!created)
             {
                 IntPtr handle = FindWindow(null, WindowTitle);
@@ -398,6 +400,10 @@ namespace SouthAirLauncher
         private const int Port = 8080;
         private const string ServiceUrl = "http://127.0.0.1:8080/";
         private const int MaxTicks = 240; // 400ms * 240 ≈ 96 秒
+        private const string RepoLatestRelease =
+            "https://api.github.com/repos/740194789/southairgenshin/releases/latest";
+        private const string JarFileName = "南空提瓦特小助手.jar";
+        private const string UpdateUserAgent = "NankongTeyvat-Launcher";
 
         private readonly string baseDir;
         private readonly string dataDir;
@@ -430,6 +436,7 @@ namespace SouthAirLauncher
         private bool serviceReady;
         private bool webInitialized;
         private bool closing;
+        private bool updateBusy;
 
         private readonly Dictionary<string, SideButton> navButtons = new Dictionary<string, SideButton>();
 
@@ -439,7 +446,7 @@ namespace SouthAirLauncher
             dataDir = Path.Combine(baseDir, "data");
             logPath = Path.Combine(baseDir, "launcher.log");
 
-            Text = "SouthAir Genshin 启动器";
+            Text = "南空提瓦特小助手";
             FormBorderStyle = FormBorderStyle.None;
             StartPosition = FormStartPosition.Manual;
             BackColor = UiColors.Bg;
@@ -764,7 +771,7 @@ namespace SouthAirLauncher
 
             Label brandTitle = new Label();
             brandTitle.AutoSize = true;
-            brandTitle.Text = "SouthAir Genshin";
+            brandTitle.Text = "南空提瓦特小助手";
             brandTitle.ForeColor = UiColors.GoldLight;
             brandTitle.Font = new Font("Microsoft YaHei UI", 15f, FontStyle.Bold);
             brandTitle.Location = new Point(30, 24);
@@ -858,7 +865,7 @@ namespace SouthAirLauncher
 
             Panel bottom = new Panel();
             bottom.Dock = DockStyle.Bottom;
-            bottom.Height = 186;
+            bottom.Height = 222;
             bottom.BackColor = UiColors.SideBg;
             sidebar.Controls.Add(bottom);
 
@@ -866,13 +873,16 @@ namespace SouthAirLauncher
             AddSideAction(bottom, "查看启动日志", 48, OpenLog);
             AddSideAction(bottom, "重启本地服务", 86, RestartService);
             AddSideAction(bottom, "刷新页面", 124, RefreshPage);
+            AddSideAction(bottom, "检查更新", 162, CheckUpdate);
 
+            string localVersion = ReadLocalVersion();
             versionLabel = new Label();
             versionLabel.AutoSize = false;
-            versionLabel.Text = "v1.5.0 · 本地端口 " + Port;
+            versionLabel.Text = "v" + (localVersion.Length > 0 ? localVersion : "1.5.0")
+                + " · 本地端口 " + Port;
             versionLabel.ForeColor = UiColors.TextFaint;
             versionLabel.Font = new Font("Microsoft YaHei UI", 8f);
-            versionLabel.SetBounds(30, 160, 204, 20);
+            versionLabel.SetBounds(30, 198, 204, 20);
             bottom.Controls.Add(versionLabel);
         }
 
@@ -1043,12 +1053,12 @@ namespace SouthAirLauncher
             }
 
             Directory.CreateDirectory(dataDir);
-            string jarPath = Path.Combine(baseDir, "SouthAirGenshin.jar");
+            string jarPath = Path.Combine(baseDir, JarFileName);
             string javaPath = Path.Combine(baseDir, Path.Combine("jre", Path.Combine("bin", "java.exe")));
 
             if (!File.Exists(jarPath))
             {
-                ShowError("缺少 SouthAirGenshin.jar，请确认整个绿色版文件夹完整。");
+                ShowError("缺少南空提瓦特小助手.jar，请确认整个绿色版文件夹完整。");
                 return;
             }
             if (!File.Exists(javaPath))
@@ -1058,7 +1068,7 @@ namespace SouthAirLauncher
             }
             if (PortOpen(Port))
             {
-                ShowError("端口 " + Port + " 已被占用，请先关闭其它 SouthAirGenshin 或占用该端口的程序。");
+                ShowError("端口 " + Port + " 已被占用，请先关闭其它南空提瓦特小助手或占用该端口的程序。");
                 return;
             }
 
@@ -1559,7 +1569,7 @@ namespace SouthAirLauncher
                 return best;
             }
 
-            // 兜底：只匹配 yuanshen / genshinimpact，并排除启动器自身（SouthAirGenshin）
+            // 兜底：只匹配 yuanshen / genshinimpact，并排除启动器自身（南空提瓦特小助手）
             foreach (Process process in processes)
             {
                 try
@@ -1577,7 +1587,7 @@ namespace SouthAirLauncher
                     {
                         continue;
                     }
-                    if (name.Contains("southair"))
+                    if (name.Contains("southair") || name.Contains("南空提瓦特小助手"))
                     {
                         continue;
                     }
@@ -1749,7 +1759,7 @@ namespace SouthAirLauncher
                         }
                         string name = process.ProcessName;
                         string lower = name.ToLowerInvariant();
-                        if (lower.Contains("southair"))
+                        if (lower.Contains("southair") || lower.Contains("南空提瓦特小助手"))
                         {
                             continue;
                         }
@@ -1929,6 +1939,284 @@ namespace SouthAirLauncher
                     // 忽略
                 }
             }
+        }
+
+        /* ---------------- 检查更新 ---------------- */
+
+        private string LocalVersionPath
+        {
+            get { return Path.Combine(baseDir, "version.json"); }
+        }
+
+        private string ReadLocalVersion()
+        {
+            return ReadLocalVersionField("\"version\"\\s*:\\s*\"([^\"]+)\"");
+        }
+
+        private string ReadLocalCommit()
+        {
+            return ReadLocalVersionField("\"commit\"\\s*:\\s*\"([a-fA-F0-9]+)\"");
+        }
+
+        private string ReadLocalVersionField(string pattern)
+        {
+            try
+            {
+                if (!File.Exists(LocalVersionPath))
+                {
+                    return "";
+                }
+                string json = File.ReadAllText(LocalVersionPath, Encoding.UTF8);
+                Match match = Regex.Match(json, pattern);
+                return match.Success ? match.Groups[1].Value : "";
+            }
+            catch
+            {
+                return "";
+            }
+        }
+
+        private void WriteLocalVersion(string commit)
+        {
+            try
+            {
+                string version = ReadLocalVersion();
+                if (version.Length == 0)
+                {
+                    version = "1.5.0";
+                }
+                string json = "{\"version\":\"" + version + "\",\"commit\":\"" + commit
+                    + "\",\"built\":\"" + DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ssK") + "\"}";
+                File.WriteAllText(LocalVersionPath, json, new UTF8Encoding(false));
+            }
+            catch (Exception ex)
+            {
+                AppendLog("写入 version.json 失败：" + ex.Message);
+            }
+        }
+
+        private static string ShortCommit(string commit)
+        {
+            return commit.Length > 7 ? commit.Substring(0, 7) : commit;
+        }
+
+        /** 本地与 Release 标签都按短提交号比较，避免长度与大小写差异 */
+        private static bool SameCommit(string local, string remote)
+        {
+            if (local.Length == 0 || remote.Length == 0)
+            {
+                return false;
+            }
+            int length = Math.Min(7, Math.Min(local.Length, remote.Length));
+            return string.Equals(local.Substring(0, length), remote.Substring(0, length),
+                StringComparison.OrdinalIgnoreCase);
+        }
+
+        private void ResetStatus()
+        {
+            if (serviceReady)
+            {
+                SetStatus("本地服务运行中 · 端口 " + Port, UiColors.Green, false);
+            }
+            else
+            {
+                SetStatus("正在启动本地服务…", UiColors.Gold, true);
+            }
+        }
+
+        /** 读取 GitHub 最新 Release：标签为 build-<commit>，资产为南空提瓦特小助手.jar */
+        private static ReleaseInfo FetchLatestRelease()
+        {
+            try
+            {
+                // 旧版 .NET Framework 默认可能不带 TLS 1.2，GitHub API 会直接断开
+                ServicePointManager.SecurityProtocol |= (SecurityProtocolType)3072;
+            }
+            catch
+            {
+                // 不支持时保持默认协议
+            }
+            using (WebClient client = new WebClient())
+            {
+                client.Headers["User-Agent"] = UpdateUserAgent;
+                client.Headers["Accept"] = "application/vnd.github+json";
+                string json = client.DownloadString(RepoLatestRelease);
+
+                ReleaseInfo info = new ReleaseInfo();
+                Match tag = Regex.Match(json, "\"tag_name\"\\s*:\\s*\"([^\"]+)\"");
+                if (tag.Success)
+                {
+                    info.Tag = tag.Groups[1].Value;
+                }
+                if (!info.Tag.StartsWith("build-", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException("最新 Release 标签不是 build-<commit> 格式");
+                }
+                info.Commit = info.Tag.Substring("build-".Length);
+
+                /* 资产名可能包含中文，browser_download_url 是百分号编码，所以只按 .jar 后缀匹配 */
+                Match asset = Regex.Match(json, "\"browser_download_url\"\\s*:\\s*\"([^\"]+\\.jar)\"");
+                if (!asset.Success)
+                {
+                    throw new InvalidOperationException("最新 Release 中没有 .jar 资产");
+                }
+                info.AssetUrl = asset.Groups[1].Value;
+                return info;
+            }
+        }
+
+        private static void DownloadJar(string url, string target)
+        {
+            using (WebClient client = new WebClient())
+            {
+                client.Headers["User-Agent"] = UpdateUserAgent;
+                client.DownloadFile(url, target);
+            }
+        }
+
+        /** Spring Boot 的可执行 jar 本身就是 zip，能打开即可视为下载完整 */
+        private static bool IsValidJar(string path)
+        {
+            try
+            {
+                if (!File.Exists(path) || new FileInfo(path).Length < 1024 * 1024)
+                {
+                    return false;
+                }
+                using (System.IO.Compression.ZipArchive archive =
+                    System.IO.Compression.ZipFile.OpenRead(path))
+                {
+                    return archive.Entries.Count > 0;
+                }
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private async void CheckUpdate(object sender, EventArgs e)
+        {
+            if (updateBusy)
+            {
+                return;
+            }
+            updateBusy = true;
+            bool applied = false;
+            try
+            {
+                SetStatus("正在检查更新…", UiColors.Gold, true);
+                ReleaseInfo release = await Task.Run(() => FetchLatestRelease());
+                string localCommit = ReadLocalCommit();
+
+                if (SameCommit(localCommit, release.Commit))
+                {
+                    MessageBox.Show(this,
+                        "当前已是最新版本。" + Environment.NewLine + Environment.NewLine
+                            + "本地提交：" + ShortCommit(localCommit) + Environment.NewLine
+                            + "最新发布：" + release.Tag,
+                        "检查更新", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                string localText = localCommit.Length > 0
+                    ? ShortCommit(localCommit) : "未记录（旧版绿色包）";
+                DialogResult answer = MessageBox.Show(this,
+                    "发现新版本：" + release.Tag + Environment.NewLine
+                        + "本地提交：" + localText + " → 最新提交：" + ShortCommit(release.Commit)
+                        + Environment.NewLine + Environment.NewLine
+                        + "将下载新的南空提瓦特小助手.jar 并替换，随后自动重启本地服务；"
+                        + "data 目录与配置都会保留。" + Environment.NewLine + Environment.NewLine
+                        + "现在下载并更新吗？",
+                    "发现新版本", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                if (answer != DialogResult.Yes)
+                {
+                    return;
+                }
+
+                string temp = Path.Combine(baseDir, JarFileName + ".new");
+                if (File.Exists(temp))
+                {
+                    File.Delete(temp);
+                }
+                SetStatus("正在下载更新…", UiColors.Gold, true);
+                await Task.Run(delegate { DownloadJar(release.AssetUrl, temp); });
+                if (!IsValidJar(temp))
+                {
+                    File.Delete(temp);
+                    throw new InvalidOperationException("下载的 jar 校验失败，请稍后重试");
+                }
+
+                ApplyJarUpdate(temp, release);
+                applied = true;
+            }
+            catch (WebException ex)
+            {
+                AppendLog("检查更新失败：" + ex.Message);
+                MessageBox.Show(this,
+                    "检查更新失败：" + ex.Message + Environment.NewLine + Environment.NewLine
+                        + "如果 GitHub 仓库尚未设为公开，匿名访问会返回 404；"
+                        + "把仓库改为 Public 后再试即可。",
+                    "检查更新", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            catch (Exception ex)
+            {
+                AppendLog("检查更新失败：" + ex.Message);
+                MessageBox.Show(this, "检查更新失败：" + ex.Message,
+                    "检查更新", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            finally
+            {
+                updateBusy = false;
+                if (!applied)
+                {
+                    ResetStatus();
+                }
+            }
+        }
+
+        /** 替换 jar 前先停服务并备份旧文件，替换失败时回滚到旧版本 */
+        private void ApplyJarUpdate(string tempPath, ReleaseInfo release)
+        {
+            string jarPath = Path.Combine(baseDir, JarFileName);
+            string backupPath = jarPath + ".bak";
+            KillJava();
+            try
+            {
+                if (File.Exists(jarPath))
+                {
+                    File.Copy(jarPath, backupPath, true);
+                    File.Delete(jarPath);
+                }
+                File.Move(tempPath, jarPath);
+            }
+            catch
+            {
+                try
+                {
+                    if (!File.Exists(jarPath) && File.Exists(backupPath))
+                    {
+                        File.Copy(backupPath, jarPath, true);
+                    }
+                }
+                catch
+                {
+                    // 回滚失败时由上层提示，避免掩盖原始错误
+                }
+                throw;
+            }
+
+            WriteLocalVersion(release.Commit);
+            AppendLog("已更新到 " + release.Tag + "，旧 jar 备份为 " + Path.GetFileName(backupPath));
+            SetStatus("更新完成，正在重启本地服务…", UiColors.Gold, true);
+            RestartService(null, EventArgs.Empty);
+        }
+
+        private sealed class ReleaseInfo
+        {
+            public string Tag = "";
+            public string Commit = "";
+            public string AssetUrl = "";
         }
 
         /* ---------------- 启动原神 ---------------- */
