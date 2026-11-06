@@ -1,0 +1,44 @@
+name: build-release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 8
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "8"
+          cache: maven
+
+      - name: Build jar
+        run: mvn -B -DskipTests package
+
+      - name: Prepare asset
+        run: |
+          cp target/southair-genshin.jar 南空提瓦特小助手.jar
+          ls -lh 南空提瓦特小助手.jar
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.sha }}
+          name: SouthAirGenshin build-${{ github.sha }}
+          body: |
+            提交：${{ github.sha }}
+            构建：${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            下载 `南空提瓦特小助手.jar` 覆盖到绿色版目录即可更新（保留 data 与配置）。
+          files: 南空提瓦特小助手.jar
+          fail_on_unmatched_files: true

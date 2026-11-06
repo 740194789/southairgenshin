@@ -3,6 +3,11 @@ data/
 dist/
 project.private.config.json
 *.log
+.screenshots/
+.tmp/
+.env
+.env.*
+/config/
 .idea/
 .vscode/
 *.iml
