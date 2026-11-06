@@ -1045,6 +1045,46 @@ namespace SouthAirLauncher
 
         /* ------------------------------ 服务 ------------------------------ */
 
+        /// <summary>
+        /// JWT 密钥：优先使用环境变量 SA_JWT_SECRET；否则在 data/jwt.secret 生成并复用，
+        /// 保证每个安装实例都有独立的随机密钥，也不会把密钥写进仓库。
+        /// </summary>
+        private string ResolveJwtSecret()
+        {
+            string env = Environment.GetEnvironmentVariable("SA_JWT_SECRET");
+            if (!string.IsNullOrEmpty(env) && env.Trim().Length >= 32)
+            {
+                return env.Trim();
+            }
+            string path = Path.Combine(dataDir, "jwt.secret");
+            try
+            {
+                if (File.Exists(path))
+                {
+                    string saved = File.ReadAllText(path).Trim();
+                    if (saved.Length >= 32)
+                    {
+                        return saved;
+                    }
+                }
+                byte[] bytes = new byte[48];
+                using (System.Security.Cryptography.RNGCryptoServiceProvider rng =
+                       new System.Security.Cryptography.RNGCryptoServiceProvider())
+                {
+                    rng.GetBytes(bytes);
+                }
+                string secret = Convert.ToBase64String(bytes);
+                File.WriteAllText(path, secret);
+                AppendLog("已生成本机 JWT 密钥：" + path);
+                return secret;
+            }
+            catch (Exception ex)
+            {
+                AppendLog("生成 JWT 密钥失败：" + ex.Message);
+                return null;
+            }
+        }
+
         private void StartService(bool restarting)
         {
             if (closing)
@@ -1107,6 +1147,13 @@ namespace SouthAirLauncher
                     // Tesseract 5 的 TESSDATA_PREFIX 必须指向 tessdata 目录本身
                     info.EnvironmentVariables["TESSDATA_PREFIX"] =
                         Path.Combine(tesseractDir, "tessdata");
+                }
+
+                // 后端不再内置默认 JWT 密钥：由启动器注入本机随机密钥（或外部 SA_JWT_SECRET）
+                string jwtSecret = ResolveJwtSecret();
+                if (jwtSecret != null)
+                {
+                    info.EnvironmentVariables["SA_JWT_SECRET"] = jwtSecret;
                 }
 
                 AppendLog("启动本地服务：\"" + javaPath + "\" " + info.Arguments);
