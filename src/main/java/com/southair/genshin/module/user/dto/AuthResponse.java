@@ -11,6 +11,8 @@ public class AuthResponse implements Serializable {
 
     private String token;
     private UserVO user;
+    /** 注册 / 重新生成时返回一次明文恢复码；其他场景为 null */
+    private String recoveryCode;
 
     public AuthResponse() {
     }
@@ -34,5 +36,13 @@ public class AuthResponse implements Serializable {
 
     public void setUser(UserVO user) {
         this.user = user;
+    }
+
+    public String getRecoveryCode() {
+        return recoveryCode;
+    }
+
+    public void setRecoveryCode(String recoveryCode) {
+        this.recoveryCode = recoveryCode;
     }
 }

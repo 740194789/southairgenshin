@@ -471,6 +471,7 @@
         $('#auth-nickname-field').hidden = isLogin;
         $('#auth-submit').textContent = isLogin ? '登 录' : '注 册';
         $('#auth-toggle').textContent = isLogin ? '没有账号？立即注册' : '已有账号？返回登录';
+        $('#auth-forgot').hidden = !isLogin;
     }
 
     function resetAuthForm() {
@@ -511,6 +512,9 @@
         $('#auth-toggle').addEventListener('click', function () {
             setAuthMode(authMode === 'login' ? 'register' : 'login');
         });
+        $('#auth-forgot').addEventListener('click', function () {
+            openForgotPassword();
+        });
 
         $('#auth-form').addEventListener('submit', function (event) {
             event.preventDefault();
@@ -536,8 +540,16 @@
             api(isLogin ? '/api/auth/login' : '/api/auth/register', { method: 'POST', body: body })
                 .then(function (data) {
                     saveSession(data);
+                    if (!isLogin && data.recoveryCode) {
+                        // 恢复码只在注册时返回一次，务必让用户先保存
+                        return showRecoveryCode(data.recoveryCode).then(function () {
+                            toast('注册成功');
+                            enterApp();
+                        });
+                    }
                     toast(isLogin ? '欢迎回来' : '注册成功');
                     enterApp();
+                    return null;
                 })
                 .catch(function (err) {
                     toast(err.message || '操作失败', 'error');
@@ -545,6 +557,63 @@
                 .then(function () {
                     submit.disabled = false;
                 });
+        });
+    }
+
+    /** 展示一次性恢复码（注册成功、设置里重新生成时共用） */
+    function showRecoveryCode(code) {
+        return openForm('保存账号恢复码', [
+            { key: 'code', label: '恢复码', readonly: true, full: true }
+        ], { code: code }, {
+            hint: '忘记密码时需要「账号 + 恢复码」。请现在抄写或截图保存，关闭后不再显示；'
+                + '也可以在「设置 · 账号安全」里重新生成。',
+            submitText: '我已保存'
+        });
+    }
+
+    /** 忘记密码：账号 + 恢复码 + 新密码，成功后直接登录 */
+    function openForgotPassword() {
+        return openForm('忘记密码', [
+            { key: 'username', label: '账号', required: true, placeholder: '注册时的登录账号' },
+            { key: 'recoveryCode', label: '恢复码', required: true, placeholder: 'XXXX-XXXX-XXXX-XXXX' },
+            { key: 'newPassword', label: '新密码', type: 'password', required: true, placeholder: '至少 6 位' }
+        ], {}, {
+            hint: '恢复码在注册成功时显示过一次；如果没保存，可以先登录后在「设置 · 账号安全」重新生成。',
+            submitText: '重置并登录'
+        }).then(function (values) {
+            if (!values) {
+                return null;
+            }
+            var username = String(values.username || '').trim();
+            var code = String(values.recoveryCode || '').trim();
+            var password = String(values.newPassword || '');
+            if (username.length < 3) {
+                toast('账号至少 3 位', 'error');
+                return null;
+            }
+            if (!code) {
+                toast('请输入恢复码', 'error');
+                return null;
+            }
+            if (password.length < 6) {
+                toast('密码至少 6 位', 'error');
+                return null;
+            }
+            return api('/api/auth/reset-password', {
+                method: 'POST',
+                body: { username: username, recoveryCode: code, newPassword: password }
+            });
+        }).then(function (data) {
+            if (!data) {
+                return null;
+            }
+            saveSession(data);
+            toast('密码已重置，已自动登录');
+            enterApp();
+            return null;
+        }).catch(function (err) {
+            toast(err.message || '重置失败', 'error');
+            return null;
         });
     }
 
@@ -2890,6 +2959,9 @@
         if (field.placeholder) {
             attrs += ' placeholder="' + esc(field.placeholder) + '"';
         }
+        if (field.readonly) {
+            attrs += ' readonly';
+        }
 
         return '<label class="' + wrapClass + '"><span>' + esc(field.label) + '</span>'
             + '<input' + attrs + required + '/></label>';
@@ -5008,6 +5080,16 @@
             + '<div class="panel-actions">'
             + '<button class="btn btn-primary" id="profile-save" type="button">保存用户名</button>'
             + '</div>'
+            + '</section>'
+
+            + '<section class="panel">'
+            + '<h3>账号安全</h3>'
+            + '<p class="panel-desc">登录账号：' + esc(username) + '。修改密码需要输入当前密码；'
+            + '恢复码用于忘记密码时找回账号，重新生成后旧恢复码立即失效。</p>'
+            + '<div class="panel-actions">'
+            + '<button class="btn btn-primary" id="password-change" type="button">修改登录密码</button>'
+            + '<button class="btn btn-outline" id="recovery-create" type="button">生成恢复码</button>'
+            + '</div>'
             + '</section>';
 
         bindSettings();
@@ -5075,6 +5157,19 @@
             });
         }
 
+        var passwordChangeBtn = $('#password-change');
+        if (passwordChangeBtn) {
+            passwordChangeBtn.addEventListener('click', function () {
+                openChangePassword();
+            });
+        }
+        var recoveryCreateBtn = $('#recovery-create');
+        if (recoveryCreateBtn) {
+            recoveryCreateBtn.addEventListener('click', function () {
+                openRecoveryCodeCreate();
+            });
+        }
+
         el.addEventListener('click', function (event) {
             var btn = event.target.closest('[data-sg]');
             if (!btn) {
@@ -5131,6 +5226,66 @@
                 switchView('settings');
                 return user;
             });
+    }
+
+    /** 设置页：修改登录密码 */
+    function openChangePassword() {
+        return openForm('修改登录密码', [
+            { key: 'currentPassword', label: '当前密码', type: 'password', required: true },
+            { key: 'newPassword', label: '新密码', type: 'password', required: true, placeholder: '至少 6 位' },
+            { key: 'confirmPassword', label: '确认新密码', type: 'password', required: true }
+        ], {}, {
+            hint: '修改后当前登录仍然有效；其他设备上的登录需要重新输入新密码。',
+            submitText: '保存新密码'
+        }).then(function (values) {
+            if (!values) {
+                return null;
+            }
+            var current = String(values.currentPassword || '');
+            var next = String(values.newPassword || '');
+            var confirm = String(values.confirmPassword || '');
+            if (next.length < 6) {
+                toast('密码至少 6 位', 'error');
+                return null;
+            }
+            if (next !== confirm) {
+                toast('两次输入的新密码不一致', 'error');
+                return null;
+            }
+            return api('/api/auth/password', {
+                method: 'PUT',
+                body: { currentPassword: current, newPassword: next }
+            }).then(function () {
+                toast('登录密码已更新');
+                return null;
+            });
+        }).catch(function (err) {
+            toast(err.message || '修改失败', 'error');
+            return null;
+        });
+    }
+
+    /** 设置页：生成 / 重新生成恢复码 */
+    function openRecoveryCodeCreate() {
+        return openForm('生成恢复码', [
+            { key: 'currentPassword', label: '当前密码', type: 'password', required: true }
+        ], {}, {
+            hint: '生成后旧恢复码立即失效，新恢复码只显示这一次，请抄写保存。',
+            submitText: '生成'
+        }).then(function (values) {
+            if (!values) {
+                return null;
+            }
+            return api('/api/auth/recovery-code', {
+                method: 'POST',
+                body: { currentPassword: String(values.currentPassword || '') }
+            }).then(function (data) {
+                return showRecoveryCode(data.code);
+            });
+        }).catch(function (err) {
+            toast(err.message || '生成失败', 'error');
+            return null;
+        });
     }
 
     /* ---------------- 截图识别 ---------------- */

@@ -30,6 +30,11 @@ public class User extends BaseEntity {
     @Column(nullable = false, length = 100)
     private String password;
 
+    /** 忘记密码用的恢复码（只存哈希，明文仅生成时返回一次） */
+    @JsonIgnore
+    @Column(length = 100)
+    private String recoveryCode;
+
     @Column(length = 32)
     private String nickname;
 
@@ -58,6 +63,14 @@ public class User extends BaseEntity {
 
     public void setPassword(String password) {
         this.password = password;
+    }
+
+    public String getRecoveryCode() {
+        return recoveryCode;
+    }
+
+    public void setRecoveryCode(String recoveryCode) {
+        this.recoveryCode = recoveryCode;
     }
 
     public String getNickname() {
