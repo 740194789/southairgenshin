@@ -19,9 +19,9 @@
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  background: #10141f;
+  background: #101018;
   border-radius: 28rpx 28rpx 0 0;
-  border-top: 1rpx solid rgba(211, 188, 142, 0.32);
+  border-top: 1rpx solid rgba(240, 122, 129, 0.32);
   padding-bottom: env(safe-area-inset-bottom);
 }
 
@@ -46,6 +46,20 @@
   color: #8b90a6;
 }
 
+.np-search {
+  padding: 0 28rpx 12rpx;
+}
+
+.np-search-input {
+  height: 68rpx;
+  padding: 0 20rpx;
+  border-radius: 14rpx;
+  background: rgba(9, 11, 20, 0.55);
+  border: 1rpx solid rgba(240, 122, 129, 0.22);
+  color: #ecebe7;
+  font-size: 26rpx;
+}
+
 .np-tabs {
   display: flex;
   padding: 0 28rpx 12rpx;
@@ -63,9 +77,9 @@
 }
 
 .np-tab.active {
-  border-color: rgba(211, 188, 142, 0.34);
-  background: rgba(211, 188, 142, 0.16);
-  color: #f2e2bd;
+  border-color: rgba(240, 122, 129, 0.34);
+  background: rgba(240, 122, 129, 0.16);
+  color: #f6eee2;
   font-weight: 600;
 }
 
@@ -105,12 +119,12 @@
 }
 
 .np-cell.active {
-  border-color: rgba(211, 188, 142, 0.6);
-  background: rgba(211, 188, 142, 0.13);
+  border-color: rgba(240, 122, 129, 0.6);
+  background: rgba(240, 122, 129, 0.13);
 }
 
 .np-cell:active {
-  background: rgba(211, 188, 142, 0.1);
+  background: rgba(240, 122, 129, 0.1);
 }
 
 .np-icon {
@@ -124,9 +138,9 @@
   justify-content: center;
   font-size: 30rpx;
   font-weight: 600;
-  color: #f2e2bd;
-  background: rgba(211, 188, 142, 0.12);
-  border: 1rpx solid rgba(211, 188, 142, 0.24);
+  color: #f6eee2;
+  background: rgba(240, 122, 129, 0.12);
+  border: 1rpx solid rgba(240, 122, 129, 0.24);
 }
 
 .np-icon image {

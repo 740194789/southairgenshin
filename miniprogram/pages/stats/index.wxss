@@ -7,9 +7,9 @@
   border-radius: 24rpx;
   margin-bottom: 24rpx;
   background:
-    radial-gradient(520rpx 260rpx at 8% -20%, rgba(211, 188, 142, 0.22), transparent 62%),
-    #171b2b;
-  border: 1rpx solid rgba(211, 188, 142, 0.32);
+    radial-gradient(520rpx 260rpx at 8% -20%, rgba(240, 122, 129, 0.22), transparent 62%),
+    #15161f;
+  border: 1rpx solid rgba(240, 122, 129, 0.32);
   box-shadow: 0 20rpx 48rpx rgba(0, 0, 0, 0.32);
   overflow: hidden;
 }
@@ -21,7 +21,7 @@
   right: 0;
   top: 0;
   height: 1rpx;
-  background: linear-gradient(90deg, rgba(211, 188, 142, 0.7), transparent 70%);
+  background: linear-gradient(90deg, rgba(240, 122, 129, 0.7), transparent 70%);
 }
 
 .hero-main {
@@ -39,7 +39,7 @@
 .hero-title {
   font-size: 36rpx;
   font-weight: 700;
-  color: #f2e2bd;
+  color: #f6eee2;
   margin: 4rpx 0 8rpx;
 }
 
@@ -49,7 +49,7 @@
 }
 
 .strong {
-  color: #ffd479;
+  color: #ffb3b8;
   font-weight: 600;
 }
 
@@ -59,8 +59,8 @@
   text-align: center;
   padding: 16rpx 20rpx;
   border-radius: 16rpx;
-  border: 1rpx solid rgba(211, 188, 142, 0.32);
-  background: rgba(211, 188, 142, 0.08);
+  border: 1rpx solid rgba(240, 122, 129, 0.32);
+  background: rgba(240, 122, 129, 0.08);
 }
 
 .hero-badge-label {
@@ -71,7 +71,7 @@
 .hero-badge-value {
   font-size: 36rpx;
   font-weight: 700;
-  color: #f2e2bd;
+  color: #f6eee2;
 }
 
 /* ---------- 统计页分组 ---------- */
@@ -82,7 +82,7 @@
   margin: 0 0 24rpx;
   padding: 6rpx;
   border-radius: 999rpx;
-  border: 1rpx solid rgba(211, 188, 142, 0.22);
+  border: 1rpx solid rgba(240, 122, 129, 0.22);
   background: rgba(9, 11, 20, 0.55);
 }
 
@@ -105,8 +105,8 @@
   color: #14161f;
   font-weight: 600;
   border-color: transparent;
-  background: linear-gradient(135deg, #f2e2bd, #d3bc8e);
-  box-shadow: 0 8rpx 20rpx rgba(211, 188, 142, 0.22);
+  background: linear-gradient(135deg, #f6eee2, #f07a81);
+  box-shadow: 0 8rpx 20rpx rgba(240, 122, 129, 0.22);
 }
 
 .inline {
@@ -188,15 +188,15 @@
 .bar-fill {
   height: 100%;
   border-radius: 999rpx;
-  background: linear-gradient(90deg, #9f8b5f, #f2e2bd);
-  box-shadow: 0 0 16rpx rgba(211, 188, 142, 0.28);
+  background: linear-gradient(90deg, #b9303c, #f6eee2);
+  box-shadow: 0 0 16rpx rgba(240, 122, 129, 0.28);
 }
 
 .bar-count {
   width: 70rpx;
   text-align: right;
   font-size: 24rpx;
-  color: #f2e2bd;
+  color: #f6eee2;
   flex-shrink: 0;
 }
 
@@ -217,8 +217,8 @@
   margin-right: 8rpx;
   border-radius: 50%;
   overflow: hidden;
-  background: rgba(211, 188, 142, 0.12);
-  border: 1rpx solid rgba(211, 188, 142, 0.24);
+  background: rgba(240, 122, 129, 0.12);
+  border: 1rpx solid rgba(240, 122, 129, 0.24);
 }
 
 .recent-avatar image {
@@ -245,13 +245,13 @@
 .pull-toggle {
   font-size: 20rpx;
   color: #c8ccdb;
-  border: 1rpx solid rgba(211, 188, 142, 0.4);
+  border: 1rpx solid rgba(240, 122, 129, 0.4);
   border-radius: 999rpx;
   padding: 6rpx 18rpx;
 }
 
 .pull-toggle.active {
-  color: #ffd479;
+  color: #ffb3b8;
   border-color: rgba(255, 212, 121, 0.7);
 }
 
@@ -264,7 +264,7 @@
 .pull-pool {
   padding: 8rpx 24rpx;
   border-radius: 999rpx;
-  border: 1rpx solid rgba(211, 188, 142, 0.28);
+  border: 1rpx solid rgba(240, 122, 129, 0.28);
   font-size: 22rpx;
   color: #8b90a6;
 }
@@ -274,9 +274,9 @@
 }
 
 .pull-pool.active {
-  background: rgba(211, 188, 142, 0.16);
-  border-color: rgba(211, 188, 142, 0.6);
-  color: #d3bc8e;
+  background: rgba(240, 122, 129, 0.16);
+  border-color: rgba(240, 122, 129, 0.6);
+  color: #f07a81;
 }
 
 .pull-summary {
@@ -323,8 +323,8 @@
   margin-right: 6rpx;
   border-radius: 50%;
   overflow: hidden;
-  background: rgba(211, 188, 142, 0.12);
-  border: 1rpx solid rgba(211, 188, 142, 0.24);
+  background: rgba(240, 122, 129, 0.12);
+  border: 1rpx solid rgba(240, 122, 129, 0.24);
 }
 
 .pull-avatar image {
@@ -357,8 +357,8 @@
 .pull-bar {
   height: 100%;
   border-radius: 999rpx;
-  background: linear-gradient(90deg, #9f8b5f, #f2e2bd);
-  box-shadow: 0 0 16rpx rgba(211, 188, 142, 0.26);
+  background: linear-gradient(90deg, #b9303c, #f6eee2);
+  box-shadow: 0 0 16rpx rgba(240, 122, 129, 0.26);
 }
 
 .pull-row.lost .pull-bar {
@@ -370,7 +370,7 @@
   flex-shrink: 0;
   text-align: right;
   font-size: 20rpx;
-  color: #f2e2bd;
+  color: #f6eee2;
 }
 
 /* ---------- 抽卡期望 ---------- */
@@ -386,15 +386,15 @@
 .expect-mode {
   padding: 10rpx 24rpx;
   border-radius: 999rpx;
-  border: 1rpx solid rgba(211, 188, 142, 0.28);
+  border: 1rpx solid rgba(240, 122, 129, 0.28);
   font-size: 22rpx;
   color: #8b90a6;
 }
 
 .expect-mode.is-on {
-  background: rgba(211, 188, 142, 0.16);
-  border-color: rgba(211, 188, 142, 0.6);
-  color: #d3bc8e;
+  background: rgba(240, 122, 129, 0.16);
+  border-color: rgba(240, 122, 129, 0.6);
+  color: #f07a81;
 }
 
 .expect-mode.is-disabled {
@@ -414,8 +414,8 @@
   flex: 1;
   padding: 16rpx 18rpx;
   border-radius: 16rpx;
-  background: #171b2b;
-  border: 1rpx solid rgba(211, 188, 142, 0.12);
+  background: #15161f;
+  border: 1rpx solid rgba(240, 122, 129, 0.12);
 }
 
 .expect-target-label {
@@ -435,7 +435,7 @@
   height: 56rpx;
   border-radius: 50%;
   background: #1e2437;
-  color: #d3bc8e;
+  color: #f07a81;
   font-size: 30rpx;
   line-height: 56rpx;
   text-align: center;
@@ -466,8 +466,8 @@
   margin-top: 20rpx;
   padding: 20rpx;
   border-radius: 16rpx;
-  background: linear-gradient(135deg, rgba(211, 188, 142, 0.14), rgba(211, 188, 142, 0.03));
-  border: 1rpx solid rgba(211, 188, 142, 0.26);
+  background: linear-gradient(135deg, rgba(240, 122, 129, 0.14), rgba(240, 122, 129, 0.03));
+  border: 1rpx solid rgba(240, 122, 129, 0.26);
 }
 
 .expect-kicker {
@@ -480,7 +480,7 @@
   font-size: 52rpx;
   font-weight: 700;
   line-height: 1.1;
-  color: #d3bc8e;
+  color: #f07a81;
 }
 
 .expect-number.is-range {
@@ -512,7 +512,7 @@
 .expect-bar-fill {
   height: 100%;
   border-radius: 999rpx;
-  background: #d3bc8e;
+  background: #f07a81;
 }
 
 .expect-bar-fill.done {
@@ -532,8 +532,8 @@
   flex: 1;
   padding: 16rpx;
   border-radius: 14rpx;
-  background: #171b2b;
-  border: 1rpx solid rgba(211, 188, 142, 0.12);
+  background: #15161f;
+  border: 1rpx solid rgba(240, 122, 129, 0.12);
 }
 
 .expect-part-label {
@@ -566,7 +566,7 @@
   margin-top: 20rpx;
   padding: 20rpx 22rpx;
   border-radius: 16rpx;
-  border: 1rpx dashed rgba(211, 188, 142, 0.4);
+  border: 1rpx dashed rgba(240, 122, 129, 0.4);
   background: rgba(9, 11, 20, 0.45);
 }
 
@@ -581,7 +581,7 @@
   font-size: 26rpx;
   font-weight: 600;
   letter-spacing: 1rpx;
-  color: #d3bc8e;
+  color: #f07a81;
 }
 
 .planner-sub {
@@ -656,7 +656,7 @@
 }
 
 .calendar-row.is-current .calendar-badge {
-  color: #e7c580;
+  color: #f0a1a6;
   border-color: rgba(231, 197, 128, 0.4);
 }
 
@@ -705,7 +705,7 @@
   margin-top: 4rpx;
   font-size: 30rpx;
   font-weight: 600;
-  color: #d3bc8e;
+  color: #f07a81;
 }
 
 /* 定轨目标 */

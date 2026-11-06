@@ -1,5 +1,5 @@
 /* ============================================================
-   SouthAir Genshin 前端逻辑（原生 JS，无构建步骤）
+   南空提瓦特小助手 前端逻辑（原生 JS，无构建步骤）
    核心：抽卡记录 + 原石 / 摩拉 / 抽数换算
    ============================================================ */
 (function () {
@@ -15,7 +15,7 @@
             key: 'genshin',
             switchLabel: '原神',
             fullName: '原神',
-            title: 'SouthAir Genshin · 原神数据记录',
+            title: '南空提瓦特小助手 · 原神数据记录',
             subtitle: '提瓦特数据记录 · Web / Mobile',
             heroSub: 'Wish Planner',
             pools: ['角色活动', '武器活动', '集录祈愿', '常驻'],
@@ -32,7 +32,7 @@
             key: 'starrail',
             switchLabel: '星穹铁道',
             fullName: '崩坏：星穹铁道',
-            title: 'SouthAir Genshin · 崩坏：星穹铁道记录',
+            title: '南空提瓦特小助手 · 崩坏：星穹铁道记录',
             subtitle: '星穹列车数据记录 · Web / Mobile',
             heroSub: 'Warp Planner',
             pools: ['角色活动', '光锥活动', '联动', '常驻'],
@@ -150,7 +150,7 @@
             '雅珂达', '叶洛亚', '布伦妮', '阿罗夏'],
         starrail: ['三月七', '丹恒', '阿兰', '艾丝妲', '黑塔', '希露瓦', '娜塔莎', '佩拉', '桑博',
             '虎克', '玲可', '卢卡', '青雀', '停云', '素裳', '驭空', '桂乃芬', '雪衣', '寒鸦',
-            '貊泽', '加拉赫', '米沙', '大丽花']
+            '貊泽', '加拉赫', '米沙']
     };
 
     function ownedNameOptions(game, category) {
@@ -552,6 +552,7 @@
 
     function switchView(view) {
         state.view = view;
+        document.body.dataset.view = view;
         $$('.nav-btn').forEach(function (btn) {
             btn.classList.toggle('active', btn.dataset.view === view);
         });
@@ -664,9 +665,23 @@
         });
     }
 
-    function resourceTile(glyph, label, value, extra) {
+    /* 桑多涅主题资源图标：瓷器白 / 银灰 / 猩红宝石质感，统一走内联 SVG */
+    var TILE_ICONS = {
+        gem: '<path d="M12 2.8l5.3 3.7 2 6.6L12 21.2 4.7 13.1l2-6.6z"/><path d="M12 2.8v18.4"/><path d="M6.7 6.5h10.6"/>',
+        coin: '<circle cx="12" cy="12" r="7.6"/><circle cx="12" cy="12" r="3.4"/><path d="M12 4.4v2.6M12 17v2.6M4.4 12h2.6M17 12h2.6"/>',
+        fate: '<circle cx="12" cy="12" r="7.8"/><path d="M12 5.8l1.6 3.6 3.9.5-2.9 2.7.8 3.8-3.4-1.9-3.4 1.9.8-3.8-2.9-2.7 3.9-.5z"/>',
+        fateStandard: '<path d="M12 3.2l1.9 5.9 5.9 1.9-5.9 1.9L12 18.8l-1.9-5.9L4.2 11l5.9-1.9z"/><path d="M12 18.8v2.6"/>'
+    };
+
+    function tileGlyph(key) {
+        return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"'
+            + ' stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">'
+            + (TILE_ICONS[key] || '') + '</svg>';
+    }
+
+    function resourceTile(icon, label, value, extra) {
         return '<article class="inventory-tile">'
-            + '<span class="tile-glyph" aria-hidden="true">' + glyph + '</span>'
+            + '<span class="tile-glyph" aria-hidden="true">' + tileGlyph(icon) + '</span>'
             + '<span class="tile-label">' + esc(label) + '</span>'
             + '<strong class="tile-value">' + esc(fmt(value)) + '</strong>'
             + '<span class="tile-note">' + esc(extra) + '</span>'
@@ -1857,10 +1872,10 @@
                 + '</section>'
 
                 + '<div class="inventory">'
-                + resourceTile('✦', g.currency, resource.primogems, '≈ ' + fmt(currencyPulls) + ' 抽')
-                + resourceTile('◉', g.credit, resource.mora, '游戏内通用货币')
-                + resourceTile('✧', g.fateLimited, limited, '限定池 · 1 枚 = 1 抽')
-                + resourceTile('◇', g.fateStandard, standard, '常驻池 · 不计入合计')
+                + resourceTile('gem', g.currency, resource.primogems, '≈ ' + fmt(currencyPulls) + ' 抽')
+                + resourceTile('coin', g.credit, resource.mora, '游戏内通用货币')
+                + resourceTile('fate', g.fateLimited, limited, '限定池 · 1 枚 = 1 抽')
+                + resourceTile('fateStandard', g.fateStandard, standard, '常驻池 · 不计入合计')
                 + '</div>'
 
                 + (state.game === 'genshin'
@@ -2695,6 +2710,9 @@
         mask.innerHTML = '<div class="modal name-picker-modal">'
             + '<header><h3>' + esc(options.title || '选择角色 / 物品') + '</h3>'
             + '<button class="modal-close" type="button" aria-label="关闭">×</button></header>'
+            + '<div class="name-picker-search">'
+            + '<input type="search" class="input name-picker-search-input"'
+            + ' placeholder="搜索角色 / 物品名称" autocomplete="off"/></div>'
             + (groups.length > 1 ? '<div class="name-picker-tabs">' + groups.map(function (group) {
                 return '<button type="button" class="name-picker-tab'
                     + (group.key === active ? ' active' : '') + '" data-key="' + group.key + '">'
@@ -2705,21 +2723,43 @@
 
         var grid = $('.name-picker-grid', mask);
         var tabs = $$('.name-picker-tab', mask);
+        var tabsWrap = $('.name-picker-tabs', mask);
+        var search = $('.name-picker-search-input', mask);
 
         function renderGrid() {
+            var keyword = String(search.value || '').trim().toLowerCase();
+            /* 搜索时隐藏分类页签，结果跨分类合并，避免在错误页签里搜不到 */
+            if (tabsWrap) {
+                tabsWrap.style.display = keyword ? 'none' : '';
+            }
             var group = groups.filter(function (item) {
                 return item.key === active;
             })[0] || groups[0];
-            if (!group) {
-                grid.innerHTML = '<div class="name-picker-empty">暂无可选名称</div>';
-                return;
+            var list = [];
+            if (keyword) {
+                var seen = {};
+                groups.forEach(function (item) {
+                    item.list.forEach(function (name) {
+                        var lower = name.toLowerCase();
+                        if (!seen[lower] && lower.indexOf(keyword) >= 0) {
+                            seen[lower] = true;
+                            list.push(name);
+                        }
+                    });
+                });
+            } else if (group) {
+                /* 原记录名称不在名单时，在当前分组置顶保留，避免改名后无法还原；主角不在此列 */
+                list = group.list.slice();
+                if (currentName && currentName !== PROTAGONISTS[state.game]
+                        && lists.characters.indexOf(currentName) < 0
+                        && lists.weapons.indexOf(currentName) < 0) {
+                    list.unshift(currentName);
+                }
             }
-            /* 原记录名称不在名单时，在当前分组置顶保留，避免改名后无法还原；主角不在此列 */
-            var list = group.list.slice();
-            if (currentName && currentName !== PROTAGONISTS[state.game]
-                    && lists.characters.indexOf(currentName) < 0
-                    && lists.weapons.indexOf(currentName) < 0) {
-                list.unshift(currentName);
+            if (!list.length) {
+                grid.innerHTML = '<div class="name-picker-empty">'
+                    + (keyword ? '没有匹配的名称' : '暂无可选名称') + '</div>';
+                return;
             }
             grid.innerHTML = list.map(function (name) {
                 return '<button type="button" class="name-picker-cell'
@@ -2755,6 +2795,7 @@
             }
         });
 
+        search.addEventListener('input', renderGrid);
         $('.modal-close', mask).addEventListener('click', close);
         mask.addEventListener('click', function (event) {
             if (event.target === mask) {
@@ -2764,6 +2805,7 @@
 
         renderGrid();
         document.body.appendChild(mask);
+        search.focus();
     }
 
     function nameTriggerHtml(key, name) {
@@ -3339,7 +3381,7 @@
     function openLiveCapture(options) {
         var opts = options || {};
         if (!liveCaptureSupported()) {
-            return Promise.reject(new Error('识图需要在 SouthAir 启动器内运行，并保持原神窗口化或无边框模式'));
+            return Promise.reject(new Error('识图需要在南空提瓦特小助手内运行，并保持原神窗口化或无边框模式'));
         }
         return new Promise(function (resolve) {
             var mask = document.createElement('div');
@@ -3711,7 +3753,7 @@
                 ? Promise.resolve()
                 : downloadFile((isWish ? '/api/wishes/template' : '/api/resources/template')
                     + '?format=' + choice,
-                'southair-' + (isWish ? 'wishes' : 'resources') + '-template.' + choice,
+                '南空提瓦特小助手-' + (isWish ? 'wishes' : 'resources') + '-template.' + choice,
                 '模板已下载，填写后再导入', game);
             return work.then(function () {
                 var input = document.getElementById(fileInputId);
@@ -3740,7 +3782,7 @@
             }
             return downloadFile((isWish ? '/api/wishes/template' : '/api/resources/template')
                 + '?format=' + choice,
-            'southair-' + (isWish ? 'wishes' : 'resources') + '-template.' + choice,
+            '南空提瓦特小助手-' + (isWish ? 'wishes' : 'resources') + '-template.' + choice,
             '模板已下载', game);
         });
     }
@@ -3758,13 +3800,13 @@
         csvBtn.addEventListener('click', function () {
             guard(function () {
                 return downloadFile('/api/resources/export?format=csv',
-                    'southair-resources.csv', '资源已导出（CSV）');
+                    '南空提瓦特小助手-资源.csv', '资源已导出（CSV）');
             });
         });
         jsonBtn.addEventListener('click', function () {
             guard(function () {
                 return downloadFile('/api/resources/export?format=json',
-                    'southair-resources.json', '资源已导出（JSON）');
+                    '南空提瓦特小助手-资源.json', '资源已导出（JSON）');
             });
         });
         if (templateBtn) {
@@ -3952,7 +3994,7 @@
         reader.onload = function () {
             var data = safeParse(String(reader.result));
             if (!data || typeof data !== 'object' || !data.games) {
-                toast('这不是 SouthAir Genshin 的全量备份文件', 'error');
+                toast('这不是南空提瓦特小助手的全量备份文件', 'error');
                 return;
             }
             guard(function () {
@@ -4925,7 +4967,7 @@
                     return res.json();
                 }).then(function (data) {
                     data.owned = ownedSnapshot();
-                    downloadJsonObject(data, 'southair-all-backup.json');
+                    downloadJsonObject(data, '南空提瓦特小助手-全量备份.json');
                     toast('全部数据已导出（含收藏补充与识图）');
                     return data;
                 });
@@ -4973,7 +5015,7 @@
             if (action === 'uigf-export') {
                 guard(function () {
                     return downloadFile('/api/wishes/export-uigf',
-                        'southair-' + game + (game === 'starrail' ? '-srgf.json' : '-uigf.json'),
+                        '南空提瓦特小助手-' + game + (game === 'starrail' ? '-srgf.json' : '-uigf.json'),
                         (game === 'starrail' ? 'SRGF' : 'UIGF') + ' 已导出', game);
                 });
             } else if (action === 'uigf-import') {
@@ -5158,7 +5200,7 @@
     function openOcrDialog() {
         var g = gameConfig();
         if (!liveCaptureSupported()) {
-            toast('截图识别需要在 SouthAir 启动器内运行，并保持原神窗口化或无边框模式', 'error');
+            toast('截图识别需要在南空提瓦特小助手内运行，并保持原神窗口化或无边框模式', 'error');
             return Promise.resolve(false);
         }
         var selected = localStorage.getItem(OCR_ENGINE_KEY) || '';

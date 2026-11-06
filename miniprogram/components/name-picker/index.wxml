@@ -5,7 +5,13 @@
       <view class="np-close" bindtap="close">×</view>
     </view>
 
-    <view wx:if="{{showTabs && tabs.length > 1}}" class="np-tabs">
+    <view class="np-search">
+      <input class="np-search-input" value="{{keyword}}" placeholder="搜索角色 / 物品名称"
+             placeholder-style="color:#6d7288" confirm-type="search"
+             bindinput="onSearch" bindconfirm="noop"/>
+    </view>
+
+    <view wx:if="{{showTabs && tabs.length > 1 && !searching}}" class="np-tabs">
       <view wx:for="{{tabs}}" wx:key="key" class="np-tab {{activeTab === item.key ? 'active' : ''}}"
             data-key="{{item.key}}" bindtap="switchTab">
         {{item.label}}<text class="np-count">{{item.count}}</text>
@@ -25,7 +31,7 @@
             <view class="np-name">{{item.name}}</view>
           </view>
         </view>
-        <view wx:else class="np-empty">暂无可选名称</view>
+        <view wx:else class="np-empty">{{keyword ? '没有匹配的名称' : '暂无可选名称'}}</view>
       </view>
     </scroll-view>
   </view>

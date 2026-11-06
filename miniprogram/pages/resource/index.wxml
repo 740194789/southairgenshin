@@ -1,8 +1,10 @@
 <view class="page">
+  <image class="sandrone-bg" src="/assets/sandrone/resource.jpg" mode="aspectFill"/>
+  <view class="sandrone-veil"></view>
   <view class="topbar" style="padding-top: {{statusBarHeight + 36}}px">
     <view class="brand">
-      <view class="brand-mark">SA</view>
-      <view class="brand-name">SouthAir Genshin</view>
+      <image class="brand-mark" src="/assets/sandrone/portrait.png" mode="aspectFill"/>
+      <view class="brand-name">南空提瓦特小助手</view>
     </view>
     <game-switch game="{{game}}" bind:change="onSwitchGame" />
   </view>

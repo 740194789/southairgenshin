@@ -1,5 +1,5 @@
 /* ============================================================
-   SouthAir Genshin · 原神数据记录
+   南空提瓦特小助手 · 原神数据记录
    Web / 移动端统一响应式样式
    ============================================================ */
 
@@ -2992,6 +2992,15 @@ body.game-starrail {
     max-width: 640px;
 }
 
+.name-picker-search {
+    padding: 12px 20px 4px;
+}
+
+.name-picker-search-input {
+    width: 100%;
+    box-sizing: border-box;
+}
+
 .name-picker-tabs {
     display: flex;
     gap: 6px;
@@ -4464,3 +4473,321 @@ body {
         scroll-behavior: auto !important;
     }
 }
+
+/* ============================================================
+   桑多涅主题重制（Sandrone / 愚人众「木偶」）
+   背景：玩家二创意象立绘；配色：瓷白 / 银灰 / 猩红宝石
+   ============================================================ */
+
+:root {
+    --sand-ink: #05060a;
+    --sand-porcelain: #f6eee2;
+    --sand-silver: #c9ced9;
+    --sand-crimson: #b9303c;
+    --sand-crimson-2: #f07a81;
+    --gold: #d9c9b6;
+    --gold-2: #f8f0e5;
+    --line: rgba(230, 219, 205, 0.16);
+    --line-strong: rgba(230, 219, 205, 0.44);
+    --card: #15161f;
+    --card-soft: rgba(20, 21, 30, 0.78);
+}
+
+/* 全站背景：阳光版桑多涅插画；每个视图一张独立背景 + 统一遮罩 */
+body {
+    --sand-photo: url("/img/sandrone/dashboard.jpg");
+    background:
+        radial-gradient(120% 86% at 50% 20%, rgba(38, 28, 26, 0.14) 0%, rgba(38, 28, 26, 0.60) 100%),
+        linear-gradient(180deg, rgba(40, 30, 28, 0.62) 0%, rgba(38, 28, 26, 0.76) 46%, rgba(28, 20, 19, 0.88) 100%),
+        radial-gradient(940px 560px at 84% 4%, rgba(185, 48, 60, 0.16), transparent 64%),
+        var(--sand-photo) center / cover no-repeat fixed;
+    background-attachment: fixed;
+    background-color: var(--sand-ink);
+}
+
+body[data-view="stats"] {
+    --sand-photo: url("/img/sandrone/stats.jpg");
+}
+
+body[data-view="wishes"] {
+    --sand-photo: url("/img/sandrone/wishes.jpg");
+}
+
+body[data-view="collection"] {
+    --sand-photo: url("/img/sandrone/collection.jpg");
+}
+
+body[data-view="settings"] {
+    --sand-photo: url("/img/sandrone/settings.jpg");
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(201, 206, 217, 0.24);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(240, 122, 129, 0.42);
+}
+
+/* ---------- 品牌头像：桑多涅圆形徽记 ---------- */
+
+.brand-mark {
+    padding: 0;
+    overflow: hidden;
+    border-radius: 50%;
+    background: linear-gradient(150deg, var(--sand-porcelain), var(--sand-silver));
+    box-shadow: 0 0 0 1px rgba(248, 240, 229, 0.5),
+        0 0 0 4px rgba(185, 48, 60, 0.22),
+        0 10px 22px rgba(0, 0, 0, 0.45);
+}
+
+.brand-mark img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
+}
+
+.brand-sm .brand-mark {
+    border-radius: 50%;
+}
+
+/* ---------- 按钮 / 输入 ---------- */
+
+.btn-primary {
+    background: linear-gradient(135deg, var(--sand-crimson-2), var(--sand-crimson));
+    color: #fff7f3;
+    box-shadow: 0 8px 22px rgba(185, 48, 60, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+
+.btn-primary:hover {
+    filter: brightness(1.06);
+    box-shadow: 0 10px 26px rgba(185, 48, 60, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.34);
+}
+
+.btn-text:hover {
+    color: var(--sand-crimson-2);
+}
+
+.btn-outline {
+    color: var(--gold-2);
+    border-color: var(--line-strong);
+}
+
+.btn-outline:hover {
+    background: rgba(185, 48, 60, 0.12);
+    box-shadow: inset 0 0 0 1px rgba(185, 48, 60, 0.22);
+}
+
+.input:focus,
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+    border-color: rgba(240, 122, 129, 0.55);
+    box-shadow: 0 0 0 3px rgba(185, 48, 60, 0.16);
+}
+
+.btn:focus-visible,
+.nav-btn:focus-visible,
+.game-btn:focus-visible,
+.tab-btn:focus-visible,
+.input:focus-visible,
+.field input:focus-visible,
+.field select:focus-visible,
+.field textarea:focus-visible {
+    outline: 2px solid rgba(240, 122, 129, 0.6);
+    outline-offset: 2px;
+}
+
+/* ---------- 顶栏 / 导航图标 ---------- */
+
+.topbar {
+    background: rgba(7, 8, 13, 0.80);
+}
+
+.game-btn.active {
+    background: linear-gradient(135deg, var(--sand-crimson-2), var(--sand-crimson));
+    color: #fff7f3;
+    box-shadow: 0 4px 14px rgba(185, 48, 60, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.32);
+}
+
+.nav-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.nav-icon {
+    display: grid;
+    place-items: center;
+    width: 15px;
+    height: 15px;
+    flex: 0 0 15px;
+    opacity: 0.7;
+    transition: opacity 0.2s ease, color 0.2s ease;
+}
+
+.nav-icon svg {
+    width: 15px;
+    height: 15px;
+}
+
+.nav-btn:hover .nav-icon {
+    opacity: 0.95;
+}
+
+.nav-btn.active {
+    color: var(--gold-2);
+    background: linear-gradient(180deg, rgba(185, 48, 60, 0.18), rgba(185, 48, 60, 0.06));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.nav-btn.active .nav-icon {
+    opacity: 1;
+    color: var(--sand-crimson-2);
+}
+
+.nav-btn::after {
+    background: linear-gradient(90deg, transparent, var(--sand-crimson-2), transparent);
+}
+
+/* ---------- 移动端底栏图标 ---------- */
+
+.tab-icon {
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+}
+
+.tab-icon svg {
+    width: 20px;
+    height: 20px;
+}
+
+.tabbar {
+    background: rgba(8, 8, 13, 0.94);
+}
+
+.tab-btn {
+    transition: color 0.2s ease, background 0.2s ease;
+}
+
+.tab-btn.active {
+    color: var(--sand-crimson-2);
+    background: rgba(185, 48, 60, 0.13);
+}
+
+.tab-btn.active .tab-icon svg {
+    filter: drop-shadow(0 0 8px rgba(240, 122, 129, 0.5));
+}
+
+/* ---------- 卡片 / 面板 ---------- */
+
+.auth-card {
+    background: linear-gradient(165deg, rgba(28, 27, 36, 0.95), rgba(10, 10, 16, 0.97));
+}
+
+.auth-glow {
+    background: radial-gradient(circle at 50% 32%, rgba(185, 48, 60, 0.22), transparent 56%);
+}
+
+.toolbar {
+    background: linear-gradient(160deg, rgba(31, 29, 39, 0.86), rgba(10, 10, 16, 0.90));
+}
+
+.panel {
+    background: linear-gradient(165deg, rgba(30, 28, 38, 0.82), rgba(10, 10, 16, 0.93));
+    backdrop-filter: blur(6px);
+}
+
+.panel h3::before {
+    background: linear-gradient(180deg, var(--sand-porcelain), var(--sand-crimson));
+}
+
+.hero {
+    background:
+        radial-gradient(600px 240px at 100% 0%, rgba(185, 48, 60, 0.22), transparent 70%),
+        linear-gradient(150deg, rgba(33, 30, 41, 0.92), rgba(11, 11, 18, 0.94));
+}
+
+.hero::after {
+    background: linear-gradient(90deg, rgba(240, 122, 129, 0.6), transparent 62%);
+}
+
+.stat-card {
+    background:
+        radial-gradient(320px 130px at 100% -30%, rgba(185, 48, 60, 0.18), transparent 70%),
+        linear-gradient(160deg, rgba(31, 30, 41, 0.93), rgba(11, 11, 18, 0.95));
+}
+
+.stat-card.tone-gold {
+    background:
+        radial-gradient(320px 130px at 100% -30%, rgba(240, 122, 129, 0.22), transparent 70%),
+        linear-gradient(160deg, rgba(38, 30, 38, 0.94), rgba(12, 11, 18, 0.95));
+    border-color: rgba(240, 122, 129, 0.26);
+}
+
+.stat-card.tone-purple {
+    background:
+        radial-gradient(320px 130px at 100% -30%, rgba(170, 160, 200, 0.20), transparent 70%),
+        linear-gradient(160deg, rgba(32, 31, 45, 0.94), rgba(11, 11, 18, 0.95));
+    border-color: rgba(201, 206, 217, 0.24);
+}
+
+.stat-card.tone-purple .stat-value {
+    color: #ded9ea;
+}
+
+.stat-card::before {
+    background: linear-gradient(90deg, var(--sand-crimson-2), var(--gold), transparent);
+}
+
+.stat-card.tone-purple::before {
+    background: linear-gradient(90deg, #cfc9dd, rgba(207, 201, 221, 0.2), transparent);
+}
+
+.fortune {
+    background:
+        radial-gradient(760px 320px at 92% -22%, rgba(185, 48, 60, 0.22), transparent 68%),
+        radial-gradient(520px 260px at -8% 122%, rgba(150, 165, 200, 0.14), transparent 70%),
+        linear-gradient(155deg, #23212c, #0d0d15 72%);
+}
+
+.inventory-tile {
+    background: linear-gradient(160deg, rgba(31, 30, 40, 0.94), rgba(11, 11, 17, 0.95));
+    border-color: rgba(230, 219, 205, 0.10);
+}
+
+.inventory-tile::after {
+    background: linear-gradient(180deg, transparent, var(--sand-crimson-2), transparent);
+}
+
+.tile-glyph svg {
+    width: 16px;
+    height: 16px;
+}
+
+.inventory-tile:hover .tile-glyph {
+    color: var(--sand-crimson-2);
+    border-color: rgba(240, 122, 129, 0.55);
+    box-shadow: 0 0 18px rgba(185, 48, 60, 0.28);
+}
+
+.compose .seg-currency {
+    box-shadow: 0 0 14px rgba(240, 122, 129, 0.30);
+}
+
+.modal {
+    background: linear-gradient(165deg, #272530 0%, #14141c 62%, #0b0b11 100%);
+}
+
+.modal-mask {
+    background: rgba(3, 4, 8, 0.78);
+}
+
+.page-head > div:first-child::before {
+    background: linear-gradient(180deg, var(--sand-crimson-2), rgba(185, 48, 60, 0));
+}
+

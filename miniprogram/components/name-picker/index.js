@@ -27,7 +27,10 @@ Component({
   data: {
     tabs: [],
     activeTab: '',
-    cells: []
+    cells: [],
+    allCells: {},
+    keyword: '',
+    searching: false
   },
 
   observers: {
@@ -35,6 +38,10 @@ Component({
       function (visible, game, current, names, showTabs, excludeProtagonist) {
         if (!visible) {
           return;
+        }
+        // 每次打开重置搜索词，避免上次的过滤结果残留
+        if (this.data.keyword) {
+          this.setData({ keyword: '' });
         }
         this.build(game, current, names, showTabs, excludeProtagonist);
       }
@@ -53,32 +60,77 @@ Component({
 
       var tabs;
       var active;
+      var lists = {};
       if (showTabs) {
         tabs = [
           { key: 'characters', label: g.itemTypes[0], count: characters.length },
           { key: 'weapons', label: g.itemTypes[1], count: weapons.length }
         ];
         active = forcedTab || (current && weapons.indexOf(current) >= 0 ? 'weapons' : 'characters');
+        lists.characters = characters;
+        lists.weapons = weapons;
       } else {
         tabs = [{ key: 'custom', label: '可选', count: (names || []).length }];
         active = 'custom';
+        lists.custom = (names || []).slice();
       }
 
-      var list = active === 'weapons' ? weapons : (active === 'custom' ? (names || []).slice() : characters);
+      var list = lists[active] || [];
       var skipCurrent = excludeProtagonist && current === protagonist;
       if (current && !skipCurrent && list.indexOf(current) < 0) {
         list = [current].concat(list);
+        lists[active] = list;
       }
 
-      var cells = list.map(function (name) {
-        return {
-          name: name,
-          initial: (name || '?').charAt(0),
-          icon: avatarMap[name] || weaponMap[name] || ''
-        };
+      var allCells = {};
+      Object.keys(lists).forEach(function (key) {
+        allCells[key] = lists[key].map(function (name) {
+          return {
+            name: name,
+            initial: (name || '?').charAt(0),
+            icon: avatarMap[name] || weaponMap[name] || ''
+          };
+        });
       });
 
-      this.setData({ tabs: tabs, activeTab: active, cells: cells });
+      var keyword = String(this.data.keyword || '').trim();
+      this.setData({
+        tabs: tabs,
+        activeTab: active,
+        allCells: allCells,
+        searching: keyword.length > 0,
+        cells: this.filterCells(allCells, active, keyword)
+      });
+    },
+
+    /** 有关键词时跨分类合并结果，否则只显示当前分类 */
+    filterCells: function (allCells, active, keyword) {
+      var text = String(keyword || '').trim().toLowerCase();
+      var cells = allCells || {};
+      if (!text) {
+        return cells[active] || [];
+      }
+      var seen = {};
+      var result = [];
+      Object.keys(cells).forEach(function (key) {
+        cells[key].forEach(function (cell) {
+          var lower = String(cell.name || '').toLowerCase();
+          if (!seen[lower] && lower.indexOf(text) >= 0) {
+            seen[lower] = true;
+            result.push(cell);
+          }
+        });
+      });
+      return result;
+    },
+
+    onSearch: function (event) {
+      var keyword = event.detail.value || '';
+      this.setData({
+        keyword: keyword,
+        searching: String(keyword).trim().length > 0,
+        cells: this.filterCells(this.data.allCells, this.data.activeTab, keyword)
+      });
     },
 
     switchTab: function (event) {

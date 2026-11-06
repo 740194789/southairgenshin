@@ -2,7 +2,7 @@
   display: flex;
   padding: 4rpx;
   background: rgba(23, 27, 43, 0.9);
-  border: 1rpx solid rgba(211, 188, 142, 0.32);
+  border: 1rpx solid rgba(240, 122, 129, 0.32);
   border-radius: 999rpx;
 }
 
@@ -14,7 +14,8 @@
 }
 
 .game-btn.active {
-  background: linear-gradient(135deg, #f2e2bd, #d3bc8e);
-  color: #1b1a16;
+  background: linear-gradient(135deg, #f07a81, #b9303c);
+  color: #fff7f3;
   font-weight: 600;
+  box-shadow: 0 4rpx 14rpx rgba(185, 48, 60, 0.28);
 }
