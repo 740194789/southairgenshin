@@ -4497,12 +4497,18 @@ body {
 body {
     --sand-photo: url("/img/sandrone/dashboard.jpg");
     background:
-        radial-gradient(120% 86% at 50% 20%, rgba(38, 28, 26, 0.14) 0%, rgba(38, 28, 26, 0.60) 100%),
-        linear-gradient(180deg, rgba(40, 30, 28, 0.62) 0%, rgba(38, 28, 26, 0.76) 46%, rgba(28, 20, 19, 0.88) 100%),
-        radial-gradient(940px 560px at 84% 4%, rgba(185, 48, 60, 0.16), transparent 64%),
-        var(--sand-photo) center / cover no-repeat fixed;
+        radial-gradient(120% 86% at 50% 20%, rgba(38, 28, 26, 0.08) 0%, rgba(38, 28, 26, 0.45) 100%),
+        linear-gradient(180deg, rgba(40, 30, 28, 0.38) 0%, rgba(38, 28, 26, 0.52) 46%, rgba(28, 20, 19, 0.72) 100%),
+        radial-gradient(940px 560px at 84% 4%, rgba(185, 48, 60, 0.14), transparent 64%),
+        var(--sand-photo) right center / cover no-repeat fixed;
     background-attachment: fixed;
     background-color: var(--sand-ink);
+}
+
+/* 小窗口下 cover 会裁掉左右两侧：桑多涅在画面右侧，所以锚定右边，保证整个人都在窗口内；
+   收藏页是镜像图（人物在左侧），改为锚定左边 */
+body[data-view="collection"] {
+    background-position: left center;
 }
 
 body[data-view="stats"] {

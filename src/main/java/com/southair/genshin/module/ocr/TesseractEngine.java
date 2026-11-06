@@ -145,14 +145,25 @@ public class TesseractEngine {
      * 截图已由调用方裁剪、放大并二值化成深色字 / 浅色底。
      */
     public String recognizeLine(byte[] image, String ext, String lang) {
-        return recognizeSingleLine(image, ext, false, lang);
+        return recognizeSingleLine(image, ext, false, lang, 7);
+    }
+
+    /**
+     * 多行文字识别（用于命之座右侧的命座名列表）：按整块文本模式识别。
+     */
+    public String recognizeBlock(byte[] image, String ext, String lang) {
+        return recognizeSingleLine(image, ext, false, lang, 6);
     }
 
     private String recognizeSingleLine(byte[] image, String ext, boolean digitsOnly) {
-        return recognizeSingleLine(image, ext, digitsOnly, "eng");
+        return recognizeSingleLine(image, ext, digitsOnly, "eng", 7);
     }
 
     private String recognizeSingleLine(byte[] image, String ext, boolean digitsOnly, String lang) {
+        return recognizeSingleLine(image, ext, digitsOnly, lang, 7);
+    }
+
+    private String recognizeSingleLine(byte[] image, String ext, boolean digitsOnly, String lang, int psm) {
         if (!isAvailable()) {
             return "";
         }
@@ -168,7 +179,7 @@ public class TesseractEngine {
 
             List<String> args = new ArrayList<>(Arrays.asList(
                     command(), input.toString(), outputBase.toString(),
-                    "-l", language, "--psm", "7",
+                    "-l", language, "--psm", String.valueOf(psm),
                     "-c", "tessedit_create_txt=1"));
             if (digitsOnly) {
                 args.add("-c");

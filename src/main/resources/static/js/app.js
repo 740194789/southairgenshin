@@ -4318,6 +4318,52 @@
         return null;
     }
 
+    /** 命之座名称 -> 角色：识图没读到角色名时，用右侧命座名反查（每个角色的 6 个命座名唯一） */
+    function constellationCharacter(text, labelText) {
+        var genshin = (window.SG_CONSTELLATIONS || {}).genshin || {};
+        var labels = normalizeOcrLine(labelText);
+        var page = normalizeOcrLine(text);
+        if (!labels && !page) {
+            return null;
+        }
+        function matched(nodeName) {
+            if (labels && labels.indexOf(nodeName) >= 0) {
+                return true;
+            }
+            if (page && page.indexOf(nodeName) >= 0) {
+                return true;
+            }
+            // 小字 OCR 容易错一个字，在命座名列里做 1 个字的容错匹配
+            if (!labels) {
+                return false;
+            }
+            for (var at = 0; at + nodeName.length <= labels.length; at += 1) {
+                if (editDistance(labels.substr(at, nodeName.length), nodeName) <= 1) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        var counts = {};
+        Object.keys(genshin).forEach(function (nodeName) {
+            if (nodeName.indexOf('·') >= 0) {
+                return;
+            }
+            if (matched(nodeName)) {
+                var who = genshin[nodeName];
+                counts[who] = (counts[who] || 0) + 1;
+            }
+        });
+        var best = null;
+        Object.keys(counts).forEach(function (who) {
+            if (!best || counts[who] > counts[best]) {
+                best = who;
+            }
+        });
+        // 至少命中两个命座名才采信，避免把描述文字里的词当成命座
+        return best && counts[best] >= 2 ? best : null;
+    }
+
     function normalizeOcrLine(text) {
         return String(text || '').replace(/\s+/g, '')
             .replace(/[·•・\-–—_:：,，.。!！?？"'“”‘’()（）\[\]【】<>《》/\\|+*#%&@~^$]/g, '');
@@ -4425,21 +4471,39 @@
     }
 
     /** 识图结果先做成候选，确认后才写入本机收藏记录 */
-    function openCollectionOcrForm(text, constellation, characterName) {
+    function openCollectionOcrForm(text, constellation, characterName, weaponName, weaponRank,
+                                   constellationText) {
         var g = gameConfig();
         var defs = collectionDefs(g);
         var lists = nameLists('genshin');
         var header = String(characterName || '').trim();
+        var weaponHeader = String(weaponName || '').trim();
         // 左上角标题单独识别后再匹配；命中不够可信时仍回退到整页文本
         function headerMatch(names) {
             var match = header ? matchOcrName(header, names) : null;
             return match && match.score >= 0.8 ? match : null;
         }
-        var charMatch = headerMatch(lists.characters) || matchOcrName(text, lists.characters);
+        var hasConstellation = constellation !== null && constellation !== undefined
+            && isFinite(Number(constellation));
+        // 标题没匹配上时，用右侧的命座名反查角色（例如「雷厉 / 苛捐 / 登楼 …」→ 刻晴）
+        var constellationChar = hasConstellation
+            ? constellationCharacter(text, constellationText) : null;
+        var charMatch = headerMatch(lists.characters)
+            || (constellationChar ? { name: constellationChar, score: 1 } : null)
+            || matchOcrName(text, lists.characters);
         var weaponMatch = headerMatch(lists.weapons) || matchOcrName(text, lists.weapons);
+        var hasWeapon = !hasConstellation && weaponHeader
+            && lists.weapons.indexOf(weaponHeader) >= 0;
         var kind = 'character';
         var best = null;
-        if (charMatch && (!weaponMatch || charMatch.score >= weaponMatch.score)) {
+        if (hasConstellation) {
+            // 命之座界面必然是角色：标题识别不稳时也不能回退成武器（例如把「水元素 / 芙宁娜」错读成武器名）
+            best = charMatch && charMatch.score >= 0.72 ? charMatch : null;
+        } else if (hasWeapon) {
+            // 武器详情页由后端单独识别，名称直接采用，不再和角色名单做模糊匹配
+            kind = 'weapon';
+            best = { name: weaponHeader, score: 1.1 };
+        } else if (charMatch && (!weaponMatch || charMatch.score >= weaponMatch.score)) {
             best = charMatch;
         } else if (weaponMatch) {
             best = weaponMatch;
@@ -4456,6 +4520,11 @@
             : 'characters5';
         var name = best ? best.name : '';
         var scannedRank = parseOcrRank(text, kind);
+        /* 武器详情页的精炼等级由后端单独读取 */
+        if (kind === 'weapon' && weaponRank !== null && weaponRank !== undefined
+            && isFinite(Number(weaponRank))) {
+            scannedRank = Math.max(1, Math.min(5, Math.floor(Number(weaponRank))));
+        }
         /* 命之座界面没有命座数字文字，用后端数出的点亮节点数兜底 */
         if (scannedRank === null && kind === 'character'
             && constellation !== null && constellation !== undefined
@@ -4472,7 +4541,7 @@
         }
         var rankLabel = section === 'weapons5' ? '精炼等级' : '命座数';
         var hint = best
-            ? '识别到「' + best.name + '」' + (header ? '（左上角）' : '') + '，' + rankLabel
+            ? '识别到「' + best.name + '」' + ((header || weaponHeader) ? '（左上角）' : '') + '，' + rankLabel
                 + (scannedRank === null ? '未读到，请手动确认' : '为 ' + rank)
             : (header ? '左上角读到「' + header + '」但未匹配到收藏，请手动选择' : '没有识别到角色 / 武器名称，请手动选择');
 
@@ -4583,7 +4652,8 @@
             if (!raw) {
                 return null;
             }
-            return openCollectionOcrForm(raw.text || '', raw.constellation, raw.characterName);
+            return openCollectionOcrForm(raw.text || '', raw.constellation, raw.characterName,
+                raw.weaponName, raw.weaponRank, raw.constellationText);
         });
     }
 

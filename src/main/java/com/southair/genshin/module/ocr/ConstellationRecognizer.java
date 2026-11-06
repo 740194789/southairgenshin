@@ -10,9 +10,10 @@ import java.util.List;
 /**
  * 识别「命之座」界面的已激活命座数。
  *
- * <p>命之座界面右侧有 6 个命座节点，沿竖排（略有弧线）排列：已激活为元素色发光圆环 + 亮色图案，
- * 未激活为灰白圆环 + 中央白色锁。做法是先在右列找 6 个等间距的圆盘，再用圆盘内「成片高饱和亮像素」
- * 的占比判断是否点亮——已激活节点有元素色外发光，未激活只有灰白，饱和度很低。</p>
+ * <p>命之座界面右侧有 6 个命座节点，沿竖排（略有弧线）排列：已激活的节点是元素色发光图案，
+ * 未激活的节点中央有白色锁。节点圆盘本身是半透明的，背景的星云 / 元素色会透出来，
+ * 按「彩色像素占比」判断会被背景严重干扰（实测零命角色会被识别成 4 命），
+ * 因此改成数「中央白色锁」：找不到锁的节点才算已激活。</p>
  */
 @Component
 public class ConstellationRecognizer {
@@ -23,15 +24,20 @@ public class ConstellationRecognizer {
     /** 避开顶部货币栏与底部 UID */
     private static final double ROI_TOP = 0.08;
     private static final double ROI_BOTTOM = 0.92;
-    /** 节点列的标准横向位置，找不到圆心时兜底 */
-    private static final double EXPECTED_COLUMN_X = 0.805;
 
     private static final int NODE_COUNT = 6;
-    /** 圆盘内有彩色亮像素的占比达到该值视为已激活 */
-    private static final double LIT_RATIO = 0.055;
-    /** 饱和度阈值：未激活的灰白环饱和度通常低于 0.1，元素色圆环明显更高 */
-    private static final float COLOR_SATURATION = 0.20f;
-    private static final int COLOR_LUMINANCE = 75;
+
+    /** 锁是纯白、低饱和的实心图形；元素色图案哪怕再亮也带明显饱和度 */
+    private static final int LOCK_LUMINANCE = 190;
+    private static final float LOCK_SATURATION = 0.15f;
+    /** 锁的边长范围（相对截图宽度），同时用来排除右侧中文标签的细笔画 */
+    private static final double LOCK_MIN_RATIO = 0.010;
+    private static final double LOCK_MAX_RATIO = 0.050;
+    /** 锁是竖长形（锁体 + 锁梁），宽高比落在该区间 */
+    private static final double LOCK_MIN_ASPECT = 1.05;
+    private static final double LOCK_MAX_ASPECT = 2.2;
+    /** 连通块填充率：锁体几乎填满外接矩形，文字笔画远低于该值 */
+    private static final double LOCK_MIN_FILL = 0.45;
 
     /**
      * @return 已激活命座数（0-6）；不是命之座界面、或识别不成 6 个等间距节点时返回 null
@@ -55,66 +61,135 @@ public class ConstellationRecognizer {
             return null;
         }
         int pitch = window[NODE_COUNT] / (NODE_COUNT - 1);
-        int radius = Math.max(7, (int) Math.round(pitch * 0.30));
-        // 不同分辨率 / 界面缩放下节点列会整体左右平移，按实际亮像素估计列位置比固定比例更稳
-        int expectedX = estimateColumnX(image, window, radius, xFrom, xTo);
-        if (expectedX <= 0) {
-            expectedX = (int) Math.round(width * EXPECTED_COLUMN_X);
-        }
+        List<Box> locks = findLocks(image, xFrom, xTo, Math.max(0, window[0] - pitch),
+                Math.min(height, window[NODE_COUNT - 1] + pitch), width);
 
-        int lit = 0;
+        int locked = 0;
         for (int i = 0; i < NODE_COUNT; i++) {
-            int centerY = window[i];
-            int centerX = brightCentroidX(image, centerY, radius, xFrom, xTo, expectedX);
-            if (centerX <= 0) {
-                centerX = expectedX;
-            }
-            if (isLit(image, centerX, centerY, radius)) {
-                lit++;
+            if (findLockNear(locks, window[i], pitch)) {
+                locked++;
             }
         }
-        return lit;
+        return NODE_COUNT - locked;
+    }
+
+    /** 每个节点行是否找到白色锁；没有锁说明该命座已激活 */
+    private boolean findLockNear(List<Box> locks, int centerY, int pitch) {
+        for (Box lock : locks) {
+            if (Math.abs(lock.centerY() - centerY) <= pitch * 0.45) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
-     * 用 6 个已知节点行估计整列圆心 X：把每个节点行带内的亮像素按列累加，
-     * 再取「宽度约 2r 的滑动窗口和」最大的列——圆盘（含内部图案）比右侧细笔画的中文标签亮得多，
-     * 因此不会被标签拉偏。
+     * 在节点区域内找白色锁的连通块。
+     *
+     * <p>未激活节点中央是纯白锁（锁体 + 锁梁），比右侧白色中文标签的细笔画更「实」：
+     * 按亮度 + 低饱和取白色像素，再按尺寸、宽高比和填充率筛掉文字与图标碎片。</p>
      */
-    private int estimateColumnX(BufferedImage image, int[] window, int radius,
-                                int xFrom, int xTo) {
-        int[] profile = new int[xTo - xFrom];
-        int bandRadius = Math.max(4, (int) Math.round(radius * 1.2));
-        for (int i = 0; i < NODE_COUNT; i++) {
-            int centerY = window[i];
-            int top = Math.max(0, centerY - bandRadius);
-            int bottom = Math.min(image.getHeight() - 1, centerY + bandRadius);
-            for (int y = top; y <= bottom; y++) {
-                for (int x = xFrom; x < xTo; x++) {
-                    if (luminance(image, x, y) >= 115) {
-                        profile[x - xFrom]++;
+    private List<Box> findLocks(BufferedImage image, int xFrom, int xTo, int yFrom, int yTo,
+                                int imageWidth) {
+        List<Box> locks = new ArrayList<>();
+        int rw = xTo - xFrom;
+        int rh = yTo - yFrom;
+        if (rw < 10 || rh < 10) {
+            return locks;
+        }
+        boolean[] mask = new boolean[rw * rh];
+        for (int y = 0; y < rh; y++) {
+            for (int x = 0; x < rw; x++) {
+                int rgb = image.getRGB(xFrom + x, yFrom + y);
+                int r = (rgb >> 16) & 0xFF;
+                int g = (rgb >> 8) & 0xFF;
+                int b = rgb & 0xFF;
+                int lum = (int) (r * 0.299 + g * 0.587 + b * 0.114);
+                mask[y * rw + x] = lum >= LOCK_LUMINANCE
+                        && Color.RGBtoHSB(r, g, b, null)[1] <= LOCK_SATURATION;
+            }
+        }
+
+        int minWidth = Math.max(8, (int) Math.round(imageWidth * LOCK_MIN_RATIO));
+        int maxWidth = Math.max(minWidth + 1, (int) Math.round(imageWidth * LOCK_MAX_RATIO));
+
+        boolean[] visited = new boolean[mask.length];
+        int[] stack = new int[mask.length];
+        for (int start = 0; start < mask.length; start++) {
+            if (!mask[start] || visited[start]) {
+                continue;
+            }
+            Box box = floodFill(mask, visited, stack, start, rw, rh);
+            if (box == null) {
+                continue;
+            }
+            int w = box.right - box.left;
+            int h = box.bottom - box.top;
+            double aspect = h / (double) Math.max(1, w);
+            double fill = box.count / (double) Math.max(1, w * h);
+            if (w < minWidth || w > maxWidth || h < minWidth || h > maxWidth
+                    || aspect < LOCK_MIN_ASPECT || aspect > LOCK_MAX_ASPECT
+                    || fill < LOCK_MIN_FILL) {
+                continue;
+            }
+            box.left += xFrom;
+            box.right += xFrom;
+            box.top += yFrom;
+            box.bottom += yFrom;
+            locks.add(box);
+        }
+        return locks;
+    }
+
+    /** 八邻域泛洪，返回该白色连通块的外接矩形与像素数 */
+    private Box floodFill(boolean[] mask, boolean[] visited, int[] stack, int start, int rw, int rh) {
+        int size = 0;
+        stack[size++] = start;
+        visited[start] = true;
+        Box box = new Box();
+        box.left = Integer.MAX_VALUE;
+        box.top = Integer.MAX_VALUE;
+        while (size > 0) {
+            int idx = stack[--size];
+            int x = idx % rw;
+            int y = idx / rw;
+            box.left = Math.min(box.left, x);
+            box.right = Math.max(box.right, x + 1);
+            box.top = Math.min(box.top, y);
+            box.bottom = Math.max(box.bottom, y + 1);
+            box.count++;
+            for (int dy = -1; dy <= 1; dy++) {
+                for (int dx = -1; dx <= 1; dx++) {
+                    if (dx == 0 && dy == 0) {
+                        continue;
+                    }
+                    int nx = x + dx;
+                    int ny = y + dy;
+                    if (nx < 0 || ny < 0 || nx >= rw || ny >= rh) {
+                        continue;
+                    }
+                    int next = ny * rw + nx;
+                    if (mask[next] && !visited[next]) {
+                        visited[next] = true;
+                        stack[size++] = next;
                     }
                 }
             }
         }
-        int win = Math.max(4, radius * 2);
-        long sum = 0;
-        for (int i = 0; i < profile.length && i < win; i++) {
-            sum += profile[i];
+        return box.count == 0 ? null : box;
+    }
+
+    /** 白色锁连通块的像素范围 */
+    private static class Box {
+        private int left;
+        private int top;
+        private int right;
+        private int bottom;
+        private int count;
+
+        private int centerY() {
+            return (top + bottom) / 2;
         }
-        long best = sum;
-        int bestStart = 0;
-        for (int i = win; i < profile.length; i++) {
-            sum += profile[i] - profile[i - win];
-            if (sum > best) {
-                best = sum;
-                bestStart = i - win + 1;
-            }
-        }
-        if (best <= 0) {
-            return -1;
-        }
-        return xFrom + bestStart + win / 2;
     }
 
     /**
@@ -283,62 +358,6 @@ public class ConstellationRecognizer {
             }
         }
         return false;
-    }
-
-    /**
-     * 行段内亮像素的 x 质心；只在预期节点列附近的窄条内取样，避免右侧中文标签把圆心拉偏。
-     * 未激活节点也有灰白圆环与白色锁，因此用亮度而不是饱和度。
-     */
-    private int brightCentroidX(BufferedImage image, int centerY, int radius,
-                                int xFrom, int xTo, int expectedX) {
-        int margin = Math.max(radius + 6, (int) Math.round(image.getWidth() * 0.035));
-        int left = Math.max(xFrom, expectedX - margin);
-        int right = Math.min(xTo, expectedX + margin);
-        int top = Math.max(0, centerY - radius);
-        int bottom = Math.min(image.getHeight() - 1, centerY + radius);
-        long sum = 0;
-        int count = 0;
-        for (int y = top; y <= bottom; y++) {
-            for (int x = left; x < right; x++) {
-                if (luminance(image, x, y) >= 115) {
-                    sum += x;
-                    count++;
-                }
-            }
-        }
-        if (count < 8) {
-            return -1;
-        }
-        return (int) (sum / count);
-    }
-
-    /** 圆盘内出现成片的高饱和亮像素 = 已激活（元素色发光）；未激活只有灰白环，饱和度很低 */
-    private boolean isLit(BufferedImage image, int cx, int cy, int radius) {
-        int scan = (int) Math.round(radius * 1.15);
-        int total = 0;
-        int colored = 0;
-        for (int dy = -scan; dy <= scan; dy++) {
-            for (int dx = -scan; dx <= scan; dx++) {
-                if (dx * dx + dy * dy > scan * scan) {
-                    continue;
-                }
-                int x = cx + dx;
-                int y = cy + dy;
-                if (x < 0 || y < 0 || x >= image.getWidth() || y >= image.getHeight()) {
-                    continue;
-                }
-                int rgb = image.getRGB(x, y);
-                int r = (rgb >> 16) & 0xFF;
-                int g = (rgb >> 8) & 0xFF;
-                int b = rgb & 0xFF;
-                int lum = (int) (r * 0.299 + g * 0.587 + b * 0.114);
-                total++;
-                if (lum >= COLOR_LUMINANCE && Color.RGBtoHSB(r, g, b, null)[1] >= COLOR_SATURATION) {
-                    colored++;
-                }
-            }
-        }
-        return total > 0 && (double) colored / total >= LIT_RATIO;
     }
 
     private static int center(int[] band) {

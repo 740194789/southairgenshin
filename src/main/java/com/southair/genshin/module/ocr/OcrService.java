@@ -42,17 +42,14 @@ public class OcrService {
     private final OcrResourceParser resourceParser;
     private final ItemIconMatcher itemIconMatcher;
     private final ConstellationRecognizer constellationRecognizer;
-    private final BottomBarRecognizer bottomBarRecognizer;
 
     public OcrService(TesseractEngine tesseractEngine, OcrTextParser parser, OcrResourceParser resourceParser,
-                      ItemIconMatcher itemIconMatcher, ConstellationRecognizer constellationRecognizer,
-                      BottomBarRecognizer bottomBarRecognizer) {
+                      ItemIconMatcher itemIconMatcher, ConstellationRecognizer constellationRecognizer) {
         this.tesseractEngine = tesseractEngine;
         this.parser = parser;
         this.resourceParser = resourceParser;
         this.itemIconMatcher = itemIconMatcher;
         this.constellationRecognizer = constellationRecognizer;
-        this.bottomBarRecognizer = bottomBarRecognizer;
     }
 
     public OcrEngineStatus status() {
@@ -83,30 +80,15 @@ public class OcrService {
         }
         TesseractEngine.OcrOutput output = tesseractEngine.recognizeWithTsv(
                 bytes, resolveExtension(file));
-        OcrResourceResult result = resourceParser.parse(output.getText(), output.getTsv());
-        refineBottomNumbers(bytes, output.getTsv(), result);
-        fillResourceBar(bytes, result);
+        BufferedImage image = readImage(bytes);
+        int imageWidth = image == null ? 0 : image.getWidth();
+        int imageHeight = image == null ? 0 : image.getHeight();
+        OcrResourceResult result = resourceParser.parse(output.getText(), output.getTsv(),
+                imageWidth, imageHeight);
+        refineBottomNumbers(image, output.getTsv(), result);
         fillGridItems(bytes, output.getText(), result);
         result.setEngine(ENGINE_TESSERACT);
         return result;
-    }
-
-    /**
-     * 底栏的原石 / 摩拉：先按图标定位，再读图标右侧的数字。
-     *
-     * <p>整页 OCR 未必能读出这两个数字（图标旁没有文字标签），因此这里的结果视为最终值，
-     * 覆盖前面按文本 / 数字位置得到的候选值。</p>
-     */
-    private void fillResourceBar(byte[] bytes, OcrResourceResult result) {
-        BufferedImage image = readImage(bytes);
-        if (image == null) {
-            return;
-        }
-        Map<String, Long> values = bottomBarRecognizer.recognize(image);
-        for (Map.Entry<String, Long> entry : values.entrySet()) {
-            result.getValues().put(entry.getKey(), entry.getValue());
-            result.getMissing().remove(entry.getKey());
-        }
     }
 
     /**
@@ -114,23 +96,17 @@ public class OcrService {
      * 按整页 TSV 给出的数字位置重新裁剪、放大并加数字白名单识别一次；
      * 只有位数不变时才替换，避免误用别处的数字。
      */
-    private void refineBottomNumbers(byte[] bytes, String tsv, OcrResourceResult result) {
+    private void refineBottomNumbers(BufferedImage image, String tsv, OcrResourceResult result) {
+        if (image == null) {
+            return;
+        }
         Long primogems = result.getValues().get("primogems");
         Long mora = result.getValues().get("mora");
         if (primogems == null && mora == null) {
             return;
         }
-        int[][] boxes = resourceParser.bottomNumberBoxes(tsv);
+        int[][] boxes = resourceParser.bottomNumberBoxes(tsv, image.getWidth(), image.getHeight());
         if (boxes == null) {
-            return;
-        }
-        BufferedImage image;
-        try {
-            image = ImageIO.read(new ByteArrayInputStream(bytes));
-        } catch (IOException e) {
-            return;
-        }
-        if (image == null) {
             return;
         }
         String[] keys = {"primogems", "mora"};
@@ -188,8 +164,15 @@ public class OcrService {
         result.setTsv(output.getTsv());
         if ("page".equalsIgnoreCase(mode)) {
             BufferedImage image = readImage(bytes);
-            result.setConstellation(readConstellation(image));
-            result.setCharacterName(readCharacterName(image));
+            String pageText = output.getText();
+            String header = image == null ? null : readHeaderText(image);
+            result.setCharacterName(readCharacterName(header));
+            result.setWeaponName(readWeaponName(image, header, pageText));
+            result.setWeaponRank(readWeaponRank(image, pageText));
+            result.setConstellation(readConstellation(image, pageText));
+            if (result.getConstellation() != null) {
+                result.setConstellationText(readConstellationText(image));
+            }
         }
         return result;
     }
@@ -202,11 +185,56 @@ public class OcrService {
         }
     }
 
+    /** 命之座右侧的命座名列表（角色名读不到时用它反查角色） */
+    private static final double NODE_LABEL_LEFT = 0.795;
+    private static final double NODE_LABEL_RIGHT = 0.990;
+    private static final double NODE_LABEL_TOP = 0.080;
+    private static final double NODE_LABEL_BOTTOM = 0.920;
+
     /**
-     * 命之座界面没有「命座 N」这样的文字，改成数右侧 6 个节点的点亮个数。
-     * 只有普通整页识别（收藏识图）才尝试，出金历史不会走这里。
+     * 识别命之座界面右侧的 6 个命座名。
+     *
+     * <p>整页 OCR 基本读不到这些小字，单独裁剪右列后按多行模式识别；
+     * 前端会用「命座名 → 角色」表做容错匹配（允许 1 个字的识别误差）。</p>
      */
-    private Integer readConstellation(BufferedImage image) {
+    private String readConstellationText(BufferedImage image) {
+        if (image == null) {
+            return null;
+        }
+        int width = image.getWidth();
+        int height = image.getHeight();
+        int left = (int) Math.round(width * NODE_LABEL_LEFT);
+        int right = (int) Math.round(width * NODE_LABEL_RIGHT);
+        int top = (int) Math.round(height * NODE_LABEL_TOP);
+        int bottom = (int) Math.round(height * NODE_LABEL_BOTTOM);
+        if (right - left < 20 || bottom - top < 40) {
+            return null;
+        }
+        BufferedImage crop = image.getSubimage(left, top, right - left, bottom - top);
+        // 面板上的小字是白字 + 发光描边，先转成「白底黑字」再识别，命中率高很多
+        byte[] png = toPng(binarizeHeader(upscale(crop, 3)));
+        if (png == null) {
+            return null;
+        }
+        String text = tesseractEngine.recognizeBlock(png, ".png", tesseractEngine.getChineseLanguage());
+        return StringUtils.hasText(text) ? text : null;
+    }
+
+    /**
+     * 命之座界面没有「命座 N」这样的文字，改成数右侧 6 个节点的白色锁。
+     * 只有普通整页识别（收藏识图）才尝试，出金历史不会走这里。
+     *
+     * <p>先用整页文字确认当前是角色面板：背包 / 其它界面的网格行也可能被当成 6 个节点，
+     * 但不会出现「命之座 / 天赋 / 圣遗物」这些菜单文字，据此可以避免在背包截图上误数出满命。</p>
+     */
+    private Integer readConstellation(BufferedImage image, String text) {
+        String compact = text == null ? "" : text.replaceAll("\\s+", "");
+        boolean detailPage = (compact.contains("命") && compact.contains("座"))
+                || compact.contains("天赋")
+                || compact.contains("圣遗物");
+        if (!detailPage) {
+            return null;
+        }
         try {
             return constellationRecognizer.recognize(image);
         } catch (RuntimeException e) {
@@ -215,20 +243,39 @@ public class OcrService {
     }
 
     /** 左上角名称区域（元素 / 角色名，武器详情页则是武器名）占整图的比例；
-     *  左边界跳过最左侧的元素图标，右边界避开顶部角色头像栏 */
-    private static final double HEADER_LEFT = 0.070;
-    private static final double HEADER_RIGHT = 0.22;
-    private static final double HEADER_TOP = 0.012;
-    private static final double HEADER_BOTTOM = 0.085;
+     *  左边界跳过最左侧的元素图标，右边界避开右侧队伍头像栏与 Q 键；
+     *  上下边界覆盖「带窗口标题栏」和「只截游戏画面」两种截图（标题文字在 0.05–0.10 高度之间） */
+    private static final double HEADER_LEFT = 0.075;
+    private static final double HEADER_RIGHT = 0.235;
+    private static final double HEADER_TOP = 0.040;
+    private static final double HEADER_BOTTOM = 0.110;
     /** 左上角标题的白字阈值：高于该亮度视为文字 */
     private static final int HEADER_WHITE_THRESHOLD = 150;
 
+    /** 武器详情页右侧面板的标题区（武器名大字号），左上角标题读不到时用它兜底 */
+    private static final double PANEL_LEFT = 0.700;
+    private static final double PANEL_RIGHT = 0.985;
+    private static final double PANEL_TOP = 0.145;
+    private static final double PANEL_BOTTOM = 0.200;
+    /** 精炼等级那一行（「精炼N阶」），整页 OCR 常和左侧菜单文字粘连，单独裁剪识别 */
+    private static final double REFINE_LEFT = 0.700;
+    private static final double REFINE_RIGHT = 0.900;
+    private static final double REFINE_TOP = 0.448;
+    private static final double REFINE_BOTTOM = 0.484;
+    /** 武器类型前缀：武器详情页左上角是「法器 / 四风原典」这种格式 */
+    private static final String[] WEAPON_TYPES = {"单手剑", "双手剑", "长柄武器", "法器", "弓"};
+    /** 精炼等级：面板上写作「精炼1阶」 */
+    private static final Pattern REFINEMENT = Pattern.compile("精炼[^0-9一二三四五]{0,8}([0-9一二三四五])");
+
     /**
-     * 命之座 / 武器详情页左上角的小字整页识别经常漏掉，单独裁剪、放大并二值化后再做单行识别。
+     * 识别左上角标题（元素 / 角色名，或武器类型 / 武器名）。
      *
-     * @return 清理后的名称（如「甘雨」）；识别不到返回 null
+     * <p>直接放大识别优先；武器页的白字在橙色面板上对比度较低，直接识别可能只吐出噪声，
+     * 此时再二值化成「浅底深字」重试一次。</p>
+     *
+     * @return 原始标题文本；两种方式都读不出中文时返回 null
      */
-    private String readCharacterName(BufferedImage image) {
+    private String readHeaderText(BufferedImage image) {
         if (image == null) {
             return null;
         }
@@ -244,17 +291,136 @@ public class OcrService {
         BufferedImage crop = image.getSubimage(left, top, right - left, bottom - top);
         BufferedImage enlarged = upscale(crop, 4);
         String lang = tesseractEngine.getChineseLanguage();
-        // 游戏内标题是深色半透明底上的白字，直接放大识别效果最好
-        String text = tesseractEngine.recognizeLine(toPng(enlarged), ".png", lang);
-        String name = extractHeaderName(text);
-        if (name == null) {
-            // 背景较亮或压缩较重时白字对比度不足，再二值化成「浅底深字」重试
-            byte[] png = toPng(binarizeHeader(enlarged));
-            if (png != null) {
-                name = extractHeaderName(tesseractEngine.recognizeLine(png, ".png", lang));
+        String raw = tesseractEngine.recognizeLine(toPng(enlarged), ".png", lang);
+        if (extractHeaderName(raw) != null) {
+            return raw;
+        }
+        byte[] png = toPng(binarizeHeader(enlarged));
+        if (png == null) {
+            return raw;
+        }
+        String binary = tesseractEngine.recognizeLine(png, ".png", lang);
+        return extractHeaderName(binary) != null ? binary : raw;
+    }
+
+    /**
+     * 角色名：标题必须是「X元素 / 名字」格式；武器页标题里没有「元素」，不会被当成角色。
+     *
+     * @return 清理后的角色名；不是角色详情页时返回 null
+     */
+    private String readCharacterName(String header) {
+        if (header == null) {
+            return null;
+        }
+        String compact = header.replaceAll("\\s+", "");
+        return compact.contains("元素") ? extractHeaderName(header) : null;
+    }
+
+    /**
+     * 武器名：左上角标题含武器类型前缀，或整页文字是武器详情（有「精炼」与基础攻击力）。
+     * 标题读不出时用右侧面板的大标题兜底。
+     */
+    private String readWeaponName(BufferedImage image, String header, String pageText) {
+        String compactHeader = header == null ? "" : header.replaceAll("\\s+", "");
+        boolean typeHeader = false;
+        for (String type : WEAPON_TYPES) {
+            if (compactHeader.contains(type)) {
+                typeHeader = true;
+                break;
             }
         }
-        return name;
+        String compactPage = pageText == null ? "" : pageText.replaceAll("\\s+", "");
+        boolean detailPage = compactPage.contains("精炼")
+                && (compactPage.contains("Lv.") || compactPage.contains("基础攻击力"));
+        if (!typeHeader && !detailPage) {
+            return null;
+        }
+        String name = extractHeaderName(header);
+        if (name != null && isWeaponType(name)) {
+            name = null;
+        }
+        return name != null ? name : readPanelName(image);
+    }
+
+    /** 标题只剩「法器」「弓」这类类型词时不算武器名 */
+    private boolean isWeaponType(String name) {
+        for (String type : WEAPON_TYPES) {
+            if (type.equals(name)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 右侧面板大标题：裁剪后放大，取中文并限制长度 */
+    private String readPanelName(BufferedImage image) {
+        if (image == null) {
+            return null;
+        }
+        int width = image.getWidth();
+        int height = image.getHeight();
+        int left = (int) Math.round(width * PANEL_LEFT);
+        int right = (int) Math.round(width * PANEL_RIGHT);
+        int top = (int) Math.round(height * PANEL_TOP);
+        int bottom = (int) Math.round(height * PANEL_BOTTOM);
+        if (right - left < 20 || bottom - top < 10) {
+            return null;
+        }
+        BufferedImage crop = image.getSubimage(left, top, right - left, bottom - top);
+        String text = tesseractEngine.recognizeLine(toPng(upscale(crop, 4)), ".png",
+                tesseractEngine.getChineseLanguage());
+        String name = text == null ? "" : text.replaceAll("[^\\u4e00-\\u9fa5]", "");
+        if (name.length() > 6) {
+            name = name.substring(name.length() - 6);
+        }
+        return name.isEmpty() ? null : name;
+    }
+
+    /** 精炼等级（1-5）：先看整页文字，读不到再单独裁剪右侧面板的「精炼N阶」 */
+    private Integer readWeaponRank(BufferedImage image, String pageText) {
+        Integer value = parseRefinement(pageText);
+        if (value != null) {
+            return value;
+        }
+        if (image == null) {
+            return null;
+        }
+        int width = image.getWidth();
+        int height = image.getHeight();
+        int left = (int) Math.round(width * REFINE_LEFT);
+        int right = (int) Math.round(width * REFINE_RIGHT);
+        int top = (int) Math.round(height * REFINE_TOP);
+        int bottom = (int) Math.round(height * REFINE_BOTTOM);
+        if (right - left < 20 || bottom - top < 8) {
+            return null;
+        }
+        BufferedImage crop = image.getSubimage(left, top, right - left, bottom - top);
+        String text = tesseractEngine.recognizeLine(toPng(upscale(crop, 6)), ".png",
+                tesseractEngine.getChineseLanguage());
+        return parseRefinement(text);
+    }
+
+    private Integer parseRefinement(String pageText) {
+        if (pageText == null) {
+            return null;
+        }
+        Matcher matcher = REFINEMENT.matcher(pageText.replaceAll("\\s+", ""));
+        if (!matcher.find()) {
+            return null;
+        }
+        String digit = matcher.group(1);
+        int value;
+        int index = "一二三四五".indexOf(digit);
+        if (index >= 0) {
+            value = index + 1;
+        } else {
+            try {
+                value = Integer.parseInt(digit);
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
+        return value >= 1 && value <= 5 ? value : null;
     }
 
     /** 标题是深色半透明底上的白字；转成「浅底 + 深色字」更适合 tesseract 单行识别 */
@@ -290,7 +456,8 @@ public class OcrService {
         if (!compact.contains("/") && compact.replaceAll("[^\\u4e00-\\u9fa5]", "").length() < 2) {
             return null;
         }
-        compact = compact.replaceAll("(冰|火|水|雷|风|草|岩)元素", "");
+        // 元素前缀可能被读错（岩 → 考），按「最多 3 个汉字 + 元素」整段去掉，比固定七种元素更稳
+        compact = compact.replaceAll("[\\u4e00-\\u9fa5]{0,3}元素", "");
         compact = compact.replaceAll("元素", "");
         int slash = compact.lastIndexOf('/');
         if (slash >= 0) {

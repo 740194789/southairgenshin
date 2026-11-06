@@ -14,8 +14,12 @@ public class OcrRawResult implements Serializable {
     private String tsv;
     /** 命之座界面里识别出的已激活命座数；不是该界面时为 null */
     private Integer constellation;
-    /** 左上角识别出的角色 / 武器名称；读不到时为 null */
+    /** 左上角识别出的角色名称；不是角色详情页时为 null */
     private String characterName;
+    /** 武器详情页识别出的武器名称；不是武器详情页时为 null */
+    private String weaponName;
+    /** 武器详情页识别出的精炼等级（1-5）；读不到时为 null */
+    private Integer weaponRank;
 
     public String getCharacterName() {
         return characterName;
@@ -23,6 +27,33 @@ public class OcrRawResult implements Serializable {
 
     public void setCharacterName(String characterName) {
         this.characterName = characterName;
+    }
+
+    public String getWeaponName() {
+        return weaponName;
+    }
+
+    public void setWeaponName(String weaponName) {
+        this.weaponName = weaponName;
+    }
+
+    public Integer getWeaponRank() {
+        return weaponRank;
+    }
+
+    public void setWeaponRank(Integer weaponRank) {
+        this.weaponRank = weaponRank;
+    }
+
+    /** 命之座界面右侧的命座名 OCR 文本；角色名没读到时前端用它反查角色 */
+    private String constellationText;
+
+    public String getConstellationText() {
+        return constellationText;
+    }
+
+    public void setConstellationText(String constellationText) {
+        this.constellationText = constellationText;
     }
 
     public Integer getConstellation() {

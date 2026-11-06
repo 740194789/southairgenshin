@@ -35,14 +35,16 @@ public class OcrResourceParser {
     /** 数字（允许千分位与「万」缩写） */
     private static final Pattern NUMBER = Pattern.compile("(\\d{1,3}(?:,\\d{3})+|\\d+)(?:\\.\\d+)?\\s*(万|[wW])?");
 
-    /** 底栏候选：纯数字或带千分位，排除时间 / 分数等 */
-    private static final Pattern PLAIN_NUMBER = Pattern.compile("\\d{1,3}(?:,\\d{3})+|\\d{1,9}");
+    /** 底栏候选里要排除的噪声：时间（:）、分辨率 / 分数（/、x、×）、版本号（.）、百分比 */
+    private static final Pattern NUMBER_NOISE = Pattern.compile("[:/xX\\u00d7.%]");
+    /** 含拉丁字母的 token（如 Lv、DPI、INF）不是资源数字 */
+    private static final Pattern ASCII_LETTER = Pattern.compile("[A-Za-z]");
 
     /** 背包网格里数量在名称上方，窗口不宜过大，避免命中相邻格子 */
     private static final int ABOVE_LIMIT = 140;
     private static final int BELOW_LIMIT = 100;
 
-    public OcrResourceResult parse(String text, String tsv) {
+    public OcrResourceResult parse(String text, String tsv, int imageWidth, int imageHeight) {
         OcrResourceResult result = new OcrResourceResult();
         result.setText(text == null ? "" : text);
         Map<String, Long> values = new LinkedHashMap<>();
@@ -56,7 +58,7 @@ public class OcrResourceParser {
         }
         // 背包底栏只有原石 / 摩拉图标和数字，没有文字标签；按最靠下的两个数字兜底
         if (!values.containsKey("primogems") || !values.containsKey("mora")) {
-            fillBottomBar(lines, values);
+            fillBottomBar(lines, values, imageWidth, imageHeight);
         }
 
         result.setValues(values);
@@ -177,8 +179,9 @@ public class OcrResourceParser {
      * 原神背包底栏固定为「原石 数量」「摩拉 数量」，但 OCR 通常只能读到数字。
      * 取整张图中最靠下的两个纯数字，按 x 坐标从左到右映射为原石、摩拉。
      */
-    private void fillBottomBar(List<Line> lines, Map<String, Long> values) {
-        List<Word> bottom = findBottomNumbers(lines);
+    private void fillBottomBar(List<Line> lines, Map<String, Long> values, int imageWidth,
+                               int imageHeight) {
+        List<Word> bottom = findBottomNumbers(lines, imageWidth, imageHeight);
         if (bottom.size() < 2) {
             return;
         }
@@ -197,8 +200,8 @@ public class OcrResourceParser {
      *
      * @return 两个 {left, top, width, height}；识别不到底栏时返回 null
      */
-    public int[][] bottomNumberBoxes(String tsv) {
-        List<Word> bottom = findBottomNumbers(parseLines(tsv));
+    public int[][] bottomNumberBoxes(String tsv, int imageWidth, int imageHeight) {
+        List<Word> bottom = findBottomNumbers(parseLines(tsv), imageWidth, imageHeight);
         if (bottom.size() < 2) {
             return null;
         }
@@ -210,35 +213,71 @@ public class OcrResourceParser {
         return boxes;
     }
 
-    private List<Word> findBottomNumbers(List<Line> lines) {
+    private List<Word> findBottomNumbers(List<Line> lines, int imageWidth, int imageHeight) {
         List<Word> candidates = new ArrayList<>();
-        int maxBottom = 0;
+        int maxRight = 0;
         for (Line line : lines) {
             for (Word word : line.words) {
-                maxBottom = Math.max(maxBottom, word.bottom());
+                maxRight = Math.max(maxRight, word.right());
                 String text = word.text == null ? "" : word.text.trim();
-                if (!PLAIN_NUMBER.matcher(text).matches()) {
+                // 允许数字前后带少量装饰（图标被并进同一个 token 时也能认出来），
+                // 但时间、分辨率、版本号、英文标签一律排除
+                if (!isBottomNumberToken(text) || numberValue(text) == null) {
                     continue;
                 }
-                if (numberValue(text) != null) {
-                    candidates.add(word);
-                }
+                candidates.add(word);
             }
         }
-        if (candidates.size() < 2 || maxBottom <= 0) {
+        int width = imageWidth > 0 ? imageWidth : maxRight;
+        if (width <= 0 || candidates.size() < 2) {
             return new ArrayList<>();
         }
-        // 最靠下的两个数字；同一底栏里的图标数字 top 相同，再按 x 排序
-        candidates.sort((a, b) -> Integer.compare(b.top, a.top));
-        Word first = candidates.get(0);
-        Word second = candidates.get(1);
-        // 底栏要求：两个数字在同一行，且位于画面最底部，避免把角色详情等界面的数字误当资源
-        if (Math.abs(first.top - second.top) > 12 || Math.min(first.top, second.top) < maxBottom * 0.85) {
+        // 原石 / 摩拉固定在左下角；右下角的 UID 不能参与配对，
+        // 否则 UID 比底栏更低时会把「摩拉 + UID」当成「原石 + 摩拉」
+        List<Word> leftHalf = new ArrayList<>();
+        for (Word word : candidates) {
+            if (word.left <= width * 0.5) {
+                leftHalf.add(word);
+            }
+        }
+        if (leftHalf.size() < 2) {
             return new ArrayList<>();
         }
-        List<Word> bottom = new ArrayList<>(candidates.subList(0, 2));
-        bottom.sort((a, b) -> Integer.compare(a.left, b.left));
-        return bottom;
+        // 按 top 聚成行：同一行的图标数字 top 基本一致
+        leftHalf.sort((a, b) -> a.top == b.top ? Integer.compare(a.left, b.left)
+                : Integer.compare(a.top, b.top));
+        int tolerance = Math.max(8, (int) Math.round((imageHeight > 0 ? imageHeight : 1000) * 0.012));
+        List<List<Word>> rows = new ArrayList<>();
+        for (Word word : leftHalf) {
+            List<Word> row = rows.isEmpty() ? null : rows.get(rows.size() - 1);
+            if (row == null || Math.abs(word.top - row.get(0).top) > tolerance) {
+                row = new ArrayList<>();
+                rows.add(row);
+            }
+            row.add(word);
+        }
+        // 底栏在画面最底部（约占高度 93%），而日志 / 帮助文字可能更靠上，因此行必须足够低；
+        // 同一行的两个资源数字中间隔着图标与间距，过近的（如「1」「5」）是普通文本，不是资源
+        List<Word> bottom = null;
+        for (int i = rows.size() - 1; i >= 0 && bottom == null; i--) {
+            List<Word> row = rows.get(i);
+            if (row.size() < 2) {
+                continue;
+            }
+            if (imageHeight > 0 && row.get(0).top < imageHeight * 0.88) {
+                continue;
+            }
+            row.sort((a, b) -> Integer.compare(a.left, b.left));
+            Word first = row.get(0);
+            Word second = row.get(1);
+            if (second.left - first.right() < width * 0.02) {
+                continue;
+            }
+            bottom = new ArrayList<>();
+            bottom.add(first);
+            bottom.add(second);
+        }
+        return bottom == null ? new ArrayList<>() : bottom;
     }
 
     private String matchedLabel(String text, String[] labels) {
@@ -248,6 +287,18 @@ public class OcrResourceParser {
             }
         }
         return null;
+    }
+
+    /** 底栏数字 token：含数字，且不是时间 / 分辨率 / 版本号 / 英文标签 */
+    private static boolean isBottomNumberToken(String text) {
+        if (text == null || text.isEmpty()) {
+            return false;
+        }
+        if (NUMBER_NOISE.matcher(text).find() || ASCII_LETTER.matcher(text).find()) {
+            return false;
+        }
+        String digits = text.replaceAll("[^0-9]", "");
+        return !digits.isEmpty() && digits.length() <= 9;
     }
 
     private static Long numberValue(String raw) {
