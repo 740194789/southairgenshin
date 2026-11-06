@@ -42,14 +42,17 @@ public class OcrService {
     private final OcrResourceParser resourceParser;
     private final ItemIconMatcher itemIconMatcher;
     private final ConstellationRecognizer constellationRecognizer;
+    private final BottomBarRecognizer bottomBarRecognizer;
 
     public OcrService(TesseractEngine tesseractEngine, OcrTextParser parser, OcrResourceParser resourceParser,
-                      ItemIconMatcher itemIconMatcher, ConstellationRecognizer constellationRecognizer) {
+                      ItemIconMatcher itemIconMatcher, ConstellationRecognizer constellationRecognizer,
+                      BottomBarRecognizer bottomBarRecognizer) {
         this.tesseractEngine = tesseractEngine;
         this.parser = parser;
         this.resourceParser = resourceParser;
         this.itemIconMatcher = itemIconMatcher;
         this.constellationRecognizer = constellationRecognizer;
+        this.bottomBarRecognizer = bottomBarRecognizer;
     }
 
     public OcrEngineStatus status() {
@@ -82,9 +85,28 @@ public class OcrService {
                 bytes, resolveExtension(file));
         OcrResourceResult result = resourceParser.parse(output.getText(), output.getTsv());
         refineBottomNumbers(bytes, output.getTsv(), result);
+        fillResourceBar(bytes, result);
         fillGridItems(bytes, output.getText(), result);
         result.setEngine(ENGINE_TESSERACT);
         return result;
+    }
+
+    /**
+     * 底栏的原石 / 摩拉：先按图标定位，再读图标右侧的数字。
+     *
+     * <p>整页 OCR 未必能读出这两个数字（图标旁没有文字标签），因此这里的结果视为最终值，
+     * 覆盖前面按文本 / 数字位置得到的候选值。</p>
+     */
+    private void fillResourceBar(byte[] bytes, OcrResourceResult result) {
+        BufferedImage image = readImage(bytes);
+        if (image == null) {
+            return;
+        }
+        Map<String, Long> values = bottomBarRecognizer.recognize(image);
+        for (Map.Entry<String, Long> entry : values.entrySet()) {
+            result.getValues().put(entry.getKey(), entry.getValue());
+            result.getMissing().remove(entry.getKey());
+        }
     }
 
     /**
