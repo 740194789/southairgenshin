@@ -653,13 +653,14 @@ public class OcrService {
 
     /**
      * 背包格子里的物品没有文字名称，只有图标和数量。
-     * 先按图案（颜色分布）定位纠缠之缘 / 相遇之缘或三本经验书，再读取命中格子里的数量，
+     * 先按图案（颜色分布）定位纠缠之缘 / 相遇之缘、三本经验书或祝圣油膏 / 祝圣精华，再读取命中格子里的数量，
      * 因此不依赖背包排序，物品在任意位置都能识别。
      */
     private void fillGridItems(byte[] bytes, String text, OcrResourceResult result) {
         String compact = text == null ? "" : text.replaceAll("\\s+", "");
         boolean fates = compact.contains("贵重道具");
         boolean books = compact.contains("养成道具");
+        boolean artifacts = compact.contains("圣遗物");
         BufferedImage image;
         try {
             image = ImageIO.read(new ByteArrayInputStream(bytes));
@@ -670,15 +671,19 @@ public class OcrService {
             return;
         }
         String[] keys;
-        if (fates && !books) {
+        if (fates && !books && !artifacts) {
             keys = new String[]{ItemIconMatcher.INTERTWINED_FATES, ItemIconMatcher.ACQUAINTED_FATES};
-        } else if (books && !fates) {
+        } else if (books && !fates && !artifacts) {
             keys = new String[]{ItemIconMatcher.HERO_WIT, ItemIconMatcher.ADVENTURER_EXP,
                     ItemIconMatcher.WANDERER_ADVICE};
+        } else if (artifacts && !fates && !books) {
+            // 圣遗物页底部会混着祝圣油膏 / 祝圣精华，按图标识别数量
+            keys = new String[]{ItemIconMatcher.SANCTIFYING_UNCTION, ItemIconMatcher.SANCTIFYING_ESSENCE};
         } else {
-            // 标题没识别出来（低分辨率、界面缩放不同）时两类都试，避免整页漏识别
+            // 标题没识别出来（低分辨率、界面缩放不同）时全部都试，避免整页漏识别
             keys = new String[]{ItemIconMatcher.INTERTWINED_FATES, ItemIconMatcher.ACQUAINTED_FATES,
-                    ItemIconMatcher.HERO_WIT, ItemIconMatcher.ADVENTURER_EXP, ItemIconMatcher.WANDERER_ADVICE};
+                    ItemIconMatcher.HERO_WIT, ItemIconMatcher.ADVENTURER_EXP, ItemIconMatcher.WANDERER_ADVICE,
+                    ItemIconMatcher.SANCTIFYING_UNCTION, ItemIconMatcher.SANCTIFYING_ESSENCE};
         }
         Map<String, ItemIconMatcher.Match> matches = itemIconMatcher.locate(image, Arrays.asList(keys));
         for (String key : keys) {

@@ -32,9 +32,12 @@ public class ItemIconMatcher {
     public static final String HERO_WIT = "heroWit";
     public static final String ADVENTURER_EXP = "adventurerExp";
     public static final String WANDERER_ADVICE = "wandererAdvice";
+    public static final String SANCTIFYING_UNCTION = "sanctifyingUnction";
+    public static final String SANCTIFYING_ESSENCE = "sanctifyingEssence";
 
     private static final String[] TEMPLATES = {
-            INTERTWINED_FATES, ACQUAINTED_FATES, HERO_WIT, ADVENTURER_EXP, WANDERER_ADVICE
+            INTERTWINED_FATES, ACQUAINTED_FATES, HERO_WIT, ADVENTURER_EXP, WANDERER_ADVICE,
+            SANCTIFYING_UNCTION, SANCTIFYING_ESSENCE
     };
 
     /** 匹配时统一缩放到该图标边长，减小分辨率差异带来的干扰 */
