@@ -43,10 +43,28 @@ namespace SouthAirLauncher
                 return;
             }
 
+            CleanupOldLauncher();
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             Application.Run(new LauncherForm());
             GC.KeepAlive(mutex);
+        }
+
+        /** 上次自更新把运行中的 exe 改名为 .old，新进程启动时把它清掉 */
+        private static void CleanupOldLauncher()
+        {
+            try
+            {
+                string old = Application.ExecutablePath + ".old";
+                if (File.Exists(old))
+                {
+                    File.Delete(old);
+                }
+            }
+            catch
+            {
+                // 旧文件仍被占用时留着，下次启动再清
+            }
         }
 
         [DllImport("user32.dll", CharSet = CharSet.Unicode)]
@@ -2165,6 +2183,11 @@ namespace SouthAirLauncher
             return ReadLocalVersionField("\"commit\"\\s*:\\s*\"([a-fA-F0-9]+)\"");
         }
 
+        private string ReadLocalLauncherCommit()
+        {
+            return ReadLocalVersionField("\"launcher\"\\s*:\\s*\"([a-fA-F0-9]+)\"");
+        }
+
         private string ReadLocalVersionField(string pattern)
         {
             try
@@ -2183,7 +2206,7 @@ namespace SouthAirLauncher
             }
         }
 
-        private void WriteLocalVersion(string commit)
+        private void WriteLocalVersion(string commit, string launcherCommit)
         {
             try
             {
@@ -2192,7 +2215,16 @@ namespace SouthAirLauncher
                 {
                     version = "1.5.0";
                 }
+                if (commit.Length == 0)
+                {
+                    commit = ReadLocalCommit();
+                }
+                if (launcherCommit.Length == 0)
+                {
+                    launcherCommit = ReadLocalLauncherCommit();
+                }
                 string json = "{\"version\":\"" + version + "\",\"commit\":\"" + commit
+                    + "\",\"launcher\":\"" + launcherCommit
                     + "\",\"built\":\"" + DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ssK") + "\"}";
                 File.WriteAllText(LocalVersionPath, json, new UTF8Encoding(false));
             }
@@ -2268,11 +2300,19 @@ namespace SouthAirLauncher
                     throw new InvalidOperationException("最新 Release 中没有 .jar 资产");
                 }
                 info.AssetUrl = asset.Groups[1].Value;
+
+                /* 启动器本体也一起发：可执行文件按 .exe 后缀匹配 */
+                Match launcher = Regex.Match(json,
+                    "\"browser_download_url\"\\s*:\\s*\"([^\"]+\\.exe)\"");
+                if (launcher.Success)
+                {
+                    info.LauncherUrl = launcher.Groups[1].Value;
+                }
                 return info;
             }
         }
 
-        private static void DownloadJar(string url, string target)
+        private static void DownloadAsset(string url, string target)
         {
             using (WebClient client = new WebClient())
             {
@@ -2315,8 +2355,12 @@ namespace SouthAirLauncher
                 SetStatus("正在检查更新…", UiColors.Gold, true);
                 ReleaseInfo release = await Task.Run(() => FetchLatestRelease());
                 string localCommit = ReadLocalCommit();
+                bool jarCurrent = SameCommit(localCommit, release.Commit);
+                // Release 里带 .exe 资产时才检查启动器本体，旧版本发布不受影响
+                bool exeCurrent = release.LauncherUrl.Length == 0
+                    || SameCommit(ReadLocalLauncherCommit(), release.Commit);
 
-                if (SameCommit(localCommit, release.Commit))
+                if (jarCurrent && exeCurrent)
                 {
                     MessageBox.Show(this,
                         "当前已是最新版本。" + Environment.NewLine + Environment.NewLine
@@ -2328,11 +2372,22 @@ namespace SouthAirLauncher
 
                 string localText = localCommit.Length > 0
                     ? ShortCommit(localCommit) : "未记录（旧版绿色包）";
+                StringBuilder detail = new StringBuilder();
+                if (!jarCurrent)
+                {
+                    detail.Append("将下载新的南空提瓦特小助手.jar 并替换，随后自动重启本地服务；"
+                        + Environment.NewLine);
+                }
+                if (!exeCurrent)
+                {
+                    detail.Append("将同时更新启动器本体，更新后需要重新打开启动器生效；"
+                        + Environment.NewLine);
+                }
                 DialogResult answer = MessageBox.Show(this,
                     "发现新版本：" + release.Tag + Environment.NewLine
                         + "本地提交：" + localText + " → 最新提交：" + ShortCommit(release.Commit)
                         + Environment.NewLine + Environment.NewLine
-                        + "将下载新的南空提瓦特小助手.jar 并替换，随后自动重启本地服务；"
+                        + detail
                         + "data 目录与配置都会保留。" + Environment.NewLine + Environment.NewLine
                         + "现在下载并更新吗？",
                     "发现新版本", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
@@ -2341,21 +2396,63 @@ namespace SouthAirLauncher
                     return;
                 }
 
-                string temp = Path.Combine(baseDir, JarFileName + ".new");
-                if (File.Exists(temp))
-                {
-                    File.Delete(temp);
-                }
                 SetStatus("正在下载更新…", UiColors.Gold, true);
-                await Task.Run(delegate { DownloadJar(release.AssetUrl, temp); });
-                if (!IsValidJar(temp))
+                bool exeUpdated = false;
+
+                if (!exeCurrent)
                 {
-                    File.Delete(temp);
-                    throw new InvalidOperationException("下载的 jar 校验失败，请稍后重试");
+                    string tempExe = Path.Combine(baseDir, "SouthAirLauncher.new.exe");
+                    if (File.Exists(tempExe))
+                    {
+                        File.Delete(tempExe);
+                    }
+                    await Task.Run(delegate { DownloadAsset(release.LauncherUrl, tempExe); });
+                    if (!IsValidExe(tempExe))
+                    {
+                        File.Delete(tempExe);
+                        throw new InvalidOperationException("下载的启动器校验失败，请稍后重试");
+                    }
+                    try
+                    {
+                        ApplyExeUpdate(tempExe);
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new InvalidOperationException(
+                            "启动器本体更新失败（可能被安全软件拦截）：" + ex.Message
+                            + "。请关闭启动器后，用 Release 里的 SouthAirLauncher.exe 手动覆盖。", ex);
+                    }
+                    exeUpdated = true;
                 }
 
-                ApplyJarUpdate(temp, release);
+                if (!jarCurrent)
+                {
+                    string temp = Path.Combine(baseDir, JarFileName + ".new");
+                    if (File.Exists(temp))
+                    {
+                        File.Delete(temp);
+                    }
+                    await Task.Run(delegate { DownloadAsset(release.AssetUrl, temp); });
+                    if (!IsValidJar(temp))
+                    {
+                        File.Delete(temp);
+                        throw new InvalidOperationException("下载的 jar 校验失败，请稍后重试");
+                    }
+                    ApplyJarUpdate(temp, release, exeUpdated ? release.Commit : "");
+                }
+                else if (exeUpdated)
+                {
+                    WriteLocalVersion(release.Commit, release.Commit);
+                    SetStatus("启动器已更新", UiColors.Gold, false);
+                }
                 applied = true;
+
+                if (exeUpdated)
+                {
+                    MessageBox.Show(this,
+                        "启动器本体已更新，请关闭当前窗口并重新打开「南空提瓦特小助手」后生效。",
+                        "更新完成", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
             }
             catch (WebException ex)
             {
@@ -2383,7 +2480,7 @@ namespace SouthAirLauncher
         }
 
         /** 替换 jar 前先停服务并备份旧文件，替换失败时回滚到旧版本 */
-        private void ApplyJarUpdate(string tempPath, ReleaseInfo release)
+        private void ApplyJarUpdate(string tempPath, ReleaseInfo release, string launcherCommit)
         {
             string jarPath = Path.Combine(baseDir, JarFileName);
             string backupPath = jarPath + ".bak";
@@ -2413,10 +2510,81 @@ namespace SouthAirLauncher
                 throw;
             }
 
-            WriteLocalVersion(release.Commit);
+            WriteLocalVersion(release.Commit, launcherCommit);
             AppendLog("已更新到 " + release.Tag + "，旧 jar 备份为 " + Path.GetFileName(backupPath));
             SetStatus("更新完成，正在重启本地服务…", UiColors.Gold, true);
             RestartService(null, EventArgs.Empty);
+        }
+
+        /** 运行中的 exe 允许改名但禁止覆盖：改名成 .old，把新文件放回原位，下次启动清理 .old */
+        private static void ApplyExeUpdate(string tempPath)
+        {
+            string exePath = Application.ExecutablePath;
+            string backupPath = exePath + ".old";
+            try
+            {
+                if (File.Exists(backupPath))
+                {
+                    try
+                    {
+                        File.Delete(backupPath);
+                    }
+                    catch
+                    {
+                        // 旧备份仍被占用时忽略，下面改名会失败并走统一提示
+                    }
+                }
+                File.Move(exePath, backupPath);
+                try
+                {
+                    File.Move(tempPath, exePath);
+                }
+                catch
+                {
+                    File.Move(backupPath, exePath);
+                    throw;
+                }
+            }
+            catch
+            {
+                try
+                {
+                    if (File.Exists(tempPath))
+                    {
+                        File.Delete(tempPath);
+                    }
+                }
+                catch
+                {
+                    // 删除临时文件失败不影响提示
+                }
+                throw;
+            }
+        }
+
+        /** 启动器是原生 PE 文件，检查大小与 MZ 头即可排除下载到错误内容 */
+        private static bool IsValidExe(string path)
+        {
+            try
+            {
+                if (!File.Exists(path) || new FileInfo(path).Length < 60 * 1024)
+                {
+                    return false;
+                }
+                using (FileStream stream = File.OpenRead(path))
+                {
+                    byte[] head = new byte[2];
+                    if (stream.Read(head, 0, 2) != 2)
+                    {
+                        return false;
+                    }
+                    return head[0] == 0x4D && head[1] == 0x5A;
+                }
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private sealed class ReleaseInfo
@@ -2424,6 +2592,7 @@ namespace SouthAirLauncher
             public string Tag = "";
             public string Commit = "";
             public string AssetUrl = "";
+            public string LauncherUrl = "";
         }
 
         /* ---------------- 启动原神 ---------------- */

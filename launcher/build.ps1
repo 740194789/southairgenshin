@@ -85,6 +85,10 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Copy-Item (Join-Path $outDir "南空提瓦特小助手.exe") $distDir -Force
+# 同时留一份到 release 目录，由 GitHub Actions 作为 Release 资产发布（用于 exe 自动更新）
+$releaseDir = Join-Path $PSScriptRoot "release"
+New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
+Copy-Item (Join-Path $outDir "南空提瓦特小助手.exe") (Join-Path $releaseDir "SouthAirLauncher.exe") -Force
 # 清理旧名字的可执行文件，避免绿色版里同时出现两个启动器
 $legacyExe = Join-Path $distDir "SouthAirGenshin.exe"
 if (Test-Path $legacyExe) { Remove-Item $legacyExe -Force -ErrorAction SilentlyContinue }

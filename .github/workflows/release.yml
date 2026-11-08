@@ -28,7 +28,8 @@ jobs:
       - name: Prepare asset
         run: |
           cp target/southair-genshin.jar SouthAirGenshin.jar
-          ls -lh SouthAirGenshin.jar
+          cp launcher/release/SouthAirLauncher.exe SouthAirLauncher.exe
+          ls -lh SouthAirGenshin.jar SouthAirLauncher.exe
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
@@ -39,7 +40,9 @@ jobs:
             提交：${{ github.sha }}
             构建：${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
-            下载 `SouthAirGenshin.jar`，重命名为 `南空提瓦特小助手.jar` 覆盖到绿色版目录即可更新（保留 data 与配置）。
-            启动器的「检查更新」会自动下载并改名，无需手动操作。
-          files: SouthAirGenshin.jar
+            启动器的「检查更新」会自动下载 `SouthAirGenshin.jar` 与 `SouthAirLauncher.exe`
+            并完成替换（jar 立即生效，启动器本体重新打开后生效），无需手动操作。
+          files: |
+            SouthAirGenshin.jar
+            SouthAirLauncher.exe
           fail_on_unmatched_files: true
