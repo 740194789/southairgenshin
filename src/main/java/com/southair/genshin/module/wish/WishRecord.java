@@ -204,4 +204,47 @@ public class WishRecord extends BaseEntity {
     public void setEditedAt(Long editedAt) {
         this.editedAt = editedAt;
     }
+
+    /**
+     * 时间顺序：先比抽卡时间；同一秒内的十连按游戏内抽卡编号（clientUid 的 gacha-&lt;id&gt;）排序，
+     * 没有编号的手动记录再退回本地自增 id。避免同秒记录被数据库按插入顺序排反，导致「已垫」取错最新一条。
+     */
+    public static int compareChronologically(WishRecord a, WishRecord b) {
+        LocalDateTime timeA = a.getWishTime();
+        LocalDateTime timeB = b.getWishTime();
+        if (timeA != null && timeB != null) {
+            int cmp = timeA.compareTo(timeB);
+            if (cmp != 0) {
+                return cmp;
+            }
+        } else if (timeA != null) {
+            return 1;
+        } else if (timeB != null) {
+            return -1;
+        }
+        long orderA = pullOrder(a);
+        long orderB = pullOrder(b);
+        if (orderA != orderB) {
+            return orderA < orderB ? -1 : 1;
+        }
+        Long idA = a.getId();
+        Long idB = b.getId();
+        if (idA != null && idB != null && !idA.equals(idB)) {
+            return idA < idB ? -1 : 1;
+        }
+        return 0;
+    }
+
+    /** 链接导入时 clientUid = gacha-<游戏内抽卡编号>，编号越大越新；手动记录返回 0。 */
+    private static long pullOrder(WishRecord record) {
+        String clientUid = record.getClientUid();
+        if (clientUid != null && clientUid.startsWith("gacha-")) {
+            try {
+                return Long.parseLong(clientUid.substring("gacha-".length()));
+            } catch (NumberFormatException ignored) {
+                return 0L;
+            }
+        }
+        return 0L;
+    }
 }

@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 @Service
@@ -56,15 +57,25 @@ public class StatsService {
         vo.setPoolDistribution(distribution);
 
         List<WishRecord> recent = wishRepository.findTop5ByUserIdAndGameOrderByWishTimeDesc(userId, gameKey);
-        vo.setRecentWishes(recent);
-        applyPityProgress(vo, recent.isEmpty() ? null : recent.get(0));
-        List<WishRecord> all = wishRepository.findByUserIdAndGameOrderByWishTimeAsc(userId, gameKey);
+        List<WishRecord> recentSorted = new ArrayList<>(recent);
+        recentSorted.sort(Collections.reverseOrder(WishRecord::compareChronologically));
+        vo.setRecentWishes(recentSorted);
+        List<WishRecord> all = sortChronologically(
+                wishRepository.findByUserIdAndGameOrderByWishTimeAsc(userId, gameKey));
+        applyPityProgress(vo, all.isEmpty() ? null : all.get(all.size() - 1));
         applyPoolStats(vo, all, gameKey);
         applyLuckStats(vo, all);
         if (!GameType.isStarRail(gameKey)) {
             applyCapturingRadiance(vo, userId, gameKey);
         }
         return vo;
+    }
+
+    /** 同一秒的十连按游戏内抽卡编号排序，避免数据库按插入顺序排反 */
+    private static List<WishRecord> sortChronologically(List<WishRecord> records) {
+        List<WishRecord> sorted = new ArrayList<>(records);
+        sorted.sort(WishRecord::compareChronologically);
+        return sorted;
     }
 
     /**
@@ -257,9 +268,10 @@ public class StatsService {
      * 55% / 75% 为社区通行估算值。</p>
      */
     private void applyCapturingRadiance(OverviewVO vo, Long userId, String game) {
-        List<WishRecord> fives = wishRepository
+        List<WishRecord> fives = new ArrayList<>(wishRepository
                 .findByUserIdAndGameAndPoolAndRarityOrderByWishTimeAscIdAsc(
-                        userId, game, "角色活动", 5);
+                        userId, game, "角色活动", 5));
+        fives.sort(WishRecord::compareChronologically);
 
         int losses = 0;
         long upCount = 0;

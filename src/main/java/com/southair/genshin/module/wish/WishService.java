@@ -305,7 +305,10 @@ public class WishService {
         }
 
         Map<String, Integer> seen = new HashMap<>();
-        for (WishRecord source : records) {
+        /* 按真实抽卡顺序写入，让自增 id 与时间一致：同秒十连在后面的统计里才能正确取到「最新一条」 */
+        List<WishRecord> ordered = new ArrayList<>(records);
+        ordered.sort(WishRecord::compareChronologically);
+        for (WishRecord source : ordered) {
             int rarity = clamp(source.getRarity(), 1, 5, 3);
             if (!isRecordable(rarity, trim(source.getItemType()))) {
                 result.setFiltered(result.getFiltered() + 1);
