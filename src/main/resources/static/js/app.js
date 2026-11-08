@@ -1941,11 +1941,7 @@
                 + '<span class="asset-note">≈ ' + num(dailyPulls) + ' 抽/天 · 每天自动计入资源</span>'
                 + '</div>'
                 + '<div class="fortune-actions">'
-                + (state.game === 'genshin'
-                    ? '<button class="btn btn-text" id="resource-ocr" type="button">识图填充</button>'
-                    : '')
-                + '<button class="btn btn-text" id="resource-ai" type="button">AI 录入</button>'
-                + '<button class="btn btn-outline" id="resource-edit" type="button">编辑资源</button>'
+                + '<button class="btn btn-outline" id="resource-enter" type="button">录入资源</button>'
                 + '</div>'
                 + '</aside>'
                 + '</section>'
@@ -1983,28 +1979,35 @@
                 + ' 按自然日自动累加</p>'
                 + '</section>';
 
-            var editBtn = $('#resource-edit');
-            if (editBtn) {
-                editBtn.addEventListener('click', function () {
-                    guard(function () {
-                        return editResource(resource);
+            var enterBtn = $('#resource-enter');
+            if (enterBtn) {
+                enterBtn.addEventListener('click', function () {
+                    var actions = [];
+                    if (state.game === 'genshin') {
+                        actions.push({
+                            key: 'ocr',
+                            label: '识图填充',
+                            run: function () {
+                                return openResourceOcr(resource);
+                            }
+                        });
+                    }
+                    actions.push({
+                        key: 'ai',
+                        label: 'AI 自然语言录入',
+                        primary: true,
+                        run: openAiInput
                     });
-                });
-            }
-
-            var ocrBtn = $('#resource-ocr');
-            if (ocrBtn) {
-                ocrBtn.addEventListener('click', function () {
-                    guard(function () {
-                        return openResourceOcr(resource);
+                    actions.push({
+                        key: 'manual',
+                        label: '手动填写',
+                        run: function () {
+                            return editResource(resource);
+                        }
                     });
-                });
-            }
-
-            var aiBtn = $('#resource-ai');
-            if (aiBtn) {
-                aiBtn.addEventListener('click', function () {
-                    guard(openAiInput);
+                    guard(function () {
+                        return openEntryMenu('录入资源', '选择录入方式', actions);
+                    });
                 });
             }
 
@@ -2411,8 +2414,7 @@
             '<div class="page-head">'
             + '<div><p class="eyebrow">Wish Records</p><h2>抽卡记录</h2><p class="sub">五星出货记录 · 记录抽到五星用了多少抽 · 支持链接导入</p></div>'
             + '<div class="head-actions">'
-            + '<button class="btn btn-outline" id="wish-ai" type="button">AI 录入</button>'
-            + '<button class="btn btn-primary" id="wish-add" type="button">+ 录入五星</button>'
+            + '<button class="btn btn-primary" id="wish-enter" type="button">+ 录入记录</button>'
             + '</div>'
             + '</div>'
             + '<div class="toolbar">'
@@ -2431,22 +2433,32 @@
             + '<button class="btn btn-text btn-sm btn-danger" id="wish-batch-del" type="button" disabled>批量删除</button>'
             + '</div>'
             + '</div>'
-            + '<div class="toolbar-tools">'
-            + '<button class="btn btn-outline btn-sm" id="wish-ocr" type="button">截图识别</button>'
-            + '<button class="btn btn-outline btn-sm" id="wish-link-import" type="button">链接导入</button>'
-            + '</div>'
             + '</div>'
             + '<div id="wish-list"><div class="loading">加载中…</div></div>'
             + '<div id="wish-pager" class="pager"></div>';
 
-        $('#wish-add').addEventListener('click', function () {
+        $('#wish-enter').addEventListener('click', function () {
             guard(function () {
-                return openEditor('wishes', null);
+                return openEntryMenu('录入抽卡记录', '选择录入方式', [
+                    {
+                        key: 'manual',
+                        label: '手动录入五星',
+                        primary: true,
+                        run: function () {
+                            return openEditor('wishes', null);
+                        }
+                    },
+                    { key: 'ai', label: 'AI 自然语言录入', run: openAiInput },
+                    {
+                        key: 'ocr',
+                        label: '截图识别',
+                        run: function () {
+                            return openOcrDialog();
+                        }
+                    },
+                    { key: 'link', label: '链接导入（自动读取）', run: importFromLink }
+                ]);
             });
-        });
-
-        $('#wish-ai').addEventListener('click', function () {
-            guard(openAiInput);
         });
 
         $('#wish-only-five').addEventListener('change', function (event) {
@@ -3265,16 +3277,6 @@
             guard(function () {
                 return submitBatchEditor();
             });
-        });
-
-        $('#wish-ocr').addEventListener('click', function () {
-            guard(function () {
-                return openOcrDialog();
-            });
-        });
-
-        $('#wish-link-import').addEventListener('click', function () {
-            guard(importFromLink);
         });
     }
 
@@ -4285,6 +4287,21 @@
                     close(btn.dataset.choice);
                 }
             });
+        });
+    }
+
+    /** 一个「录入」入口 → 弹出录入方式选项 → 执行所选操作 */
+    function openEntryMenu(title, hint, actions) {
+        return openChoice(title, hint, actions).then(function (choice) {
+            if (!choice) {
+                return null;
+            }
+            for (var i = 0; i < actions.length; i += 1) {
+                if (actions[i].key === choice) {
+                    return actions[i].run();
+                }
+            }
+            return null;
         });
     }
 
@@ -5587,30 +5604,23 @@
                 + ' · 角色最高 C6，武器最高 R5'
                 + (game === 'genshin' ? ' · 支持截图识图' : '') + '</p></div>'
                 + '<div class="head-actions">'
-                + (game === 'genshin'
-                    ? '<button class="btn btn-outline" id="collection-ocr" type="button">识图读取</button>'
-                    : '')
-                + '<button class="btn btn-outline" id="collection-ai" type="button">AI 录入</button>'
-                + '<button class="btn btn-primary" id="collection-add" type="button">+ 补充已有</button>'
+                + '<button class="btn btn-primary" id="collection-enter" type="button">+ 录入图鉴</button>'
                 + '</div></div>'
                 + collectionSectionsHtml(game, items || [], owned, g, ocr)
                 + '<p class="foot-tip">手动补充与识图记录保存在本机浏览器，已随全量备份一起导出 / 导入；'
                 + '长按「手动 +N」或「识图 C/R」标签才会清除，抽卡记录会随导入自动更新。</p>';
 
-            $('#collection-add').addEventListener('click', function () {
-                guard(openOwnedForm);
-            });
-
-            $('#collection-ai').addEventListener('click', function () {
-                guard(openAiInput);
-            });
-
-            var ocrButton = $('#collection-ocr');
-            if (ocrButton) {
-                ocrButton.addEventListener('click', function () {
-                    guard(openCollectionOcr);
+            $('#collection-enter').addEventListener('click', function () {
+                var actions = [];
+                if (game === 'genshin') {
+                    actions.push({ key: 'ocr', label: '识图读取', run: openCollectionOcr });
+                }
+                actions.push({ key: 'ai', label: 'AI 自然语言录入', primary: true, run: openAiInput });
+                actions.push({ key: 'manual', label: '手动补充已有', run: openOwnedForm });
+                guard(function () {
+                    return openEntryMenu('录入收藏图鉴', '选择录入方式', actions);
                 });
-            }
+            });
 
             function removeOwned(section, name) {
                 if (!window.confirm('清除「' + name + '」的手动补充？')) {
