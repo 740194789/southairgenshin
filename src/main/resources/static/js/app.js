@@ -3804,16 +3804,18 @@
         var hasPull = /抽|出|歪|获得|拿到|中了/.test(text);
         if (hit && hasPull) {
             var isWeapon = nameLists(game).weapons.indexOf(hit.name) >= 0;
+            var pool = aiPool(text, game, isWeapon);
             var values = {
                 itemName: hit.name,
                 rarity: 5,
-                pool: aiPool(text, game, isWeapon),
+                pool: pool,
                 wishTime: aiWishTime(text),
                 captureTriggered: false
             };
             var pity = aiPity(text, hit.index);
             if (pity) {
-                values.pityCount = Math.min(90, pity);
+                // 武器池硬保底 80 抽，其余卡池 90 抽
+                values.pityCount = Math.min(pool === GAMES[game].weaponPool ? 80 : 90, pity);
             }
             return { type: 'wish', name: hit.name, values: values };
         }

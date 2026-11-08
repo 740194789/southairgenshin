@@ -4,6 +4,7 @@ import com.southair.genshin.common.BusinessException;
 import com.southair.genshin.common.GameType;
 import com.southair.genshin.module.resource.AccountResource;
 import com.southair.genshin.module.resource.AccountResourceRepository;
+import com.southair.genshin.module.wish.WishPitySnapshotRepository;
 import com.southair.genshin.module.wish.WishRecord;
 import com.southair.genshin.module.wish.WishRecordRepository;
 import com.southair.genshin.module.wish.WishService;
@@ -39,11 +40,14 @@ public class BackupService {
 
     private final WishRecordRepository wishRepository;
     private final AccountResourceRepository resourceRepository;
+    private final WishPitySnapshotRepository pitySnapshotRepository;
 
     public BackupService(WishRecordRepository wishRepository,
-                         AccountResourceRepository resourceRepository) {
+                         AccountResourceRepository resourceRepository,
+                         WishPitySnapshotRepository pitySnapshotRepository) {
         this.wishRepository = wishRepository;
         this.resourceRepository = resourceRepository;
+        this.pitySnapshotRepository = pitySnapshotRepository;
     }
 
     @Transactional(readOnly = true)
@@ -122,6 +126,10 @@ public class BackupService {
         }
         if (wishes.size() > MAX_RECORDS) {
             throw new BusinessException("单次导入最多 " + MAX_RECORDS + " 条抽卡记录");
+        }
+        // 备份文件不含保底快照：恢复记录后旧快照会与新数据对不上，清空后按记录推导
+        if (!wishes.isEmpty()) {
+            pitySnapshotRepository.deleteByUserIdAndGame(userId, gameKey);
         }
 
         boolean replace = "replace".equalsIgnoreCase(mode);
