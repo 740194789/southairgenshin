@@ -92,7 +92,7 @@
 </view>
 
 <!-- 单条编辑 -->
-<view wx:if="{{editorVisible}}" class="mask" bindtap="closeEditor">
+<view wx:if="{{editorVisible}}" class="mask">
   <view class="modal" catchtap="noop">
     <view class="modal-head">
       <text class="modal-title">{{editorId ? '编辑抽卡' : '录入五星'}} · {{g.fullName}}</text>
@@ -146,7 +146,7 @@
 </view>
 
 <!-- 批量编辑本页 -->
-<view wx:if="{{batchVisible}}" class="mask" bindtap="closeBatchEdit">
+<view wx:if="{{batchVisible}}" class="mask">
   <view class="modal" catchtap="noop">
     <view class="modal-head">
       <text class="modal-title">批量编辑本页 · {{g.fullName}}</text>
@@ -172,7 +172,7 @@
 </view>
 
 <!-- 链接导入：云函数下载抽卡记录 JSON / CSV -->
-<view wx:if="{{linkVisible}}" class="mask" bindtap="closeLinkImport">
+<view wx:if="{{linkVisible}}" class="mask">
   <view class="modal" catchtap="noop">
     <view class="modal-head">
       <text class="modal-title">链接导入 · {{g.fullName}}</text>

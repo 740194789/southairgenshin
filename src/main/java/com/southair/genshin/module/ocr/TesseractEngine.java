@@ -115,6 +115,14 @@ public class TesseractEngine {
     }
 
     /**
+     * 数字白名单 + TSV：底栏的原石 / 摩拉没有文字标签，整页识别常把数字和图标、
+     * 相邻文字一起吞掉；单独裁条带后用纯数字识别，并按坐标把两个数字配成一对。
+     */
+    public OcrOutput recognizeDigitsWithTsv(byte[] image, String ext) {
+        return run(image, ext, false, "eng", "6", "0123456789");
+    }
+
+    /**
      * 识别第三方助手「出金历史」截图：先把白字阈值化成黑白，再放大并以稀疏文本模式识别。
      *
      * @param image 图片字节
@@ -225,6 +233,12 @@ public class TesseractEngine {
     }
 
     private OcrOutput run(byte[] image, String ext, boolean history) {
+        return run(image, ext, history, history ? "chi_sim" : properties.getTesseract().getLang(),
+                history ? "11" : "6", null);
+    }
+
+    private OcrOutput run(byte[] image, String ext, boolean history, String lang, String psm,
+                          String whitelist) {
         if (!isAvailable()) {
             throw new IllegalStateException(hint.isEmpty() ? "本机未安装 tesseract" : hint);
         }
@@ -248,11 +262,15 @@ public class TesseractEngine {
 
             List<String> args = new ArrayList<>(Arrays.asList(
                     command(), input.toString(), outputBase.toString(),
-                    "-l", history ? "chi_sim" : properties.getTesseract().getLang(),
-                    "--psm", history ? "11" : "6",
+                    "-l", lang,
+                    "--psm", psm,
                     // tesseract 5 开启 TSV 后不再默认输出 txt，需要显式同时开启
                     "-c", "tessedit_create_tsv=1",
                     "-c", "tessedit_create_txt=1"));
+            if (whitelist != null && !whitelist.isEmpty()) {
+                args.add("-c");
+                args.add("tessedit_char_whitelist=" + whitelist);
+            }
 
             Process process = new ProcessBuilder(args).redirectErrorStream(true).start();
             int timeout = Math.max(5, properties.getTesseract().getTimeoutSeconds());

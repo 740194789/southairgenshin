@@ -92,9 +92,9 @@ public class OcrService {
     }
 
     /**
-     * 底栏的原石 / 摩拉数字用整页识别容易出现单字符误差（例如 6 被认成 0）。
-     * 按整页 TSV 给出的数字位置重新裁剪、放大并加数字白名单识别一次；
-     * 只有位数不变时才替换，避免误用别处的数字。
+     * 底栏的原石 / 摩拉数字用整页识别容易出现单字符误差（例如 6 被认成 0），
+     * 也可能整段漏读。按整页 TSV 给出的数字位置重新裁剪、放大并加数字白名单识别一次；
+     * 位数明显变少（丢了首位）时不采用，仍缺的字段再用底栏条带兜底。
      */
     private void refineBottomNumbers(BufferedImage image, String tsv, OcrResourceResult result) {
         if (image == null) {
@@ -103,10 +103,12 @@ public class OcrService {
         Long primogems = result.getValues().get("primogems");
         Long mora = result.getValues().get("mora");
         if (primogems == null && mora == null) {
+            recoverBottomNumbers(image, result);
             return;
         }
         int[][] boxes = resourceParser.bottomNumberBoxes(tsv, image.getWidth(), image.getHeight());
         if (boxes == null) {
+            recoverBottomNumbers(image, result);
             return;
         }
         String[] keys = {"primogems", "mora"};
@@ -116,21 +118,106 @@ public class OcrService {
                 continue;
             }
             int[] box = boxes[i];
-            int pad = Math.max(2, box[3] / 3);
-            int left = Math.max(0, box[0] - pad);
-            int top = Math.max(0, box[1] - pad);
-            int right = Math.min(image.getWidth(), box[0] + box[2] + pad);
-            int bottom = Math.min(image.getHeight(), box[1] + box[3] + pad);
+            int padY = Math.max(2, box[3] / 3);
+            // 横向多留一个数字宽度：底栏数字字号不大，TSV 框有时会漏掉首位（9195 → 495）
+            int padX = Math.max(6, box[3]);
+            int left = Math.max(0, box[0] - padX);
+            int top = Math.max(0, box[1] - padY);
+            int right = Math.min(image.getWidth(), box[0] + box[2] + padX);
+            int bottom = Math.min(image.getHeight(), box[1] + box[3] + padY);
             if (right - left < 8 || bottom - top < 6) {
                 continue;
             }
             Long value = extractNumber(tesseractEngine.recognizeNumber(
-                    toPng(upscale(image.getSubimage(left, top, right - left, bottom - top), 3)), ".png"));
-            if (value == null || String.valueOf(value).length() != String.valueOf(current).length()) {
+                    toPng(upscale(image.getSubimage(left, top, right - left, bottom - top), 5)), ".png"));
+            if (value == null || String.valueOf(value).length() < String.valueOf(current).length()) {
                 continue;
             }
             result.getValues().put(keys[i], value);
         }
+        if (!result.getValues().containsKey("primogems") || !result.getValues().containsKey("mora")) {
+            recoverBottomNumbers(image, result);
+        }
+    }
+
+    /** 底栏兜底条带：左下角 55% × 16%，避开右下角的 UID 和「背包容量」文字 */
+    private static final double BOTTOM_STRIP_WIDTH = 0.55;
+    private static final double BOTTOM_STRIP_TOP = 0.84;
+    /** 只在原尺寸截图上兜底：缩略图小字误差大，仍交给上面的整页框选路径 */
+    private static final int BOTTOM_STRIP_MIN_WIDTH = 1400;
+    /** 原石数字与摩拉数字的分界（占整图宽度比例），原神底栏是固定布局 */
+    private static final double[] BOTTOM_STRIP_CUTS = {0.14, 0.13, 0.15};
+
+    /**
+     * 整页 OCR 读不到底栏数字时（窗口缩放 / 底栏小字被整页分词吞掉），
+     * 单独裁左下角条带、只留白色数字，再从中间切开分别识别。
+     * 两段数字拼起来必须与整条带的结果一致才采信，避免把图标噪声当数字。
+     */
+    private void recoverBottomNumbers(BufferedImage image, OcrResourceResult result) {
+        int width = image.getWidth();
+        int height = image.getHeight();
+        if (width < BOTTOM_STRIP_MIN_WIDTH) {
+            return;
+        }
+        int right = (int) Math.round(width * BOTTOM_STRIP_WIDTH);
+        int top = (int) Math.round(height * BOTTOM_STRIP_TOP);
+        if (right < 40 || height - top < 20) {
+            return;
+        }
+        BufferedImage enlarged = upscale(whiteMask(image.getSubimage(0, top, right, height - top)), 5);
+        String merged = digitsOf(tesseractEngine.recognizeDigitsWithTsv(toPng(enlarged), ".png").getText());
+        if (merged.length() < 3 || merged.length() > 12) {
+            return;
+        }
+        for (double ratio : BOTTOM_STRIP_CUTS) {
+            int cut = (int) Math.round(width * ratio * 5);
+            if (cut <= 0 || cut >= enlarged.getWidth()) {
+                continue;
+            }
+            String left = digitsOf(tesseractEngine.recognizeDigitsWithTsv(
+                    toPng(enlarged.getSubimage(0, 0, cut, enlarged.getHeight())), ".png").getText());
+            String rightText = digitsOf(tesseractEngine.recognizeDigitsWithTsv(
+                    toPng(enlarged.getSubimage(cut, 0, enlarged.getWidth() - cut, enlarged.getHeight())),
+                    ".png").getText());
+            if (left.isEmpty() || rightText.isEmpty() || !(left + rightText).equals(merged)) {
+                continue;
+            }
+            Long primogems = extractNumber(left);
+            Long mora = extractNumber(rightText);
+            if (primogems == null || mora == null) {
+                continue;
+            }
+            if (!result.getValues().containsKey("primogems")) {
+                result.getValues().put("primogems", primogems);
+            }
+            if (!result.getValues().containsKey("mora")) {
+                result.getValues().put("mora", mora);
+            }
+            return;
+        }
+    }
+
+    /** 底栏数字是浅灰白字：只保留低饱和的亮像素，金色图标与彩色背景直接丢掉 */
+    private BufferedImage whiteMask(BufferedImage image) {
+        BufferedImage target = new BufferedImage(image.getWidth(), image.getHeight(),
+                BufferedImage.TYPE_INT_RGB);
+        for (int y = 0; y < image.getHeight(); y++) {
+            for (int x = 0; x < image.getWidth(); x++) {
+                int rgb = image.getRGB(x, y);
+                int r = (rgb >> 16) & 0xFF;
+                int g = (rgb >> 8) & 0xFF;
+                int b = rgb & 0xFF;
+                int min = Math.min(r, Math.min(g, b));
+                int max = Math.max(r, Math.max(g, b));
+                boolean text = min >= 200 && max - min <= 30;
+                target.setRGB(x, y, text ? 0x000000 : 0xFFFFFF);
+            }
+        }
+        return target;
+    }
+
+    private String digitsOf(String text) {
+        return text == null ? "" : text.replaceAll("[^0-9]", "");
     }
 
     public OcrWishResult parseWishText(String text, String tsv, String game) {
@@ -212,7 +299,7 @@ public class OcrService {
         }
         BufferedImage crop = image.getSubimage(left, top, right - left, bottom - top);
         // 面板上的小字是白字 + 发光描边，先转成「白底黑字」再识别，命中率高很多
-        byte[] png = toPng(binarizeHeader(upscale(crop, 3)));
+        byte[] png = toPng(binarize(upscale(crop, 3), LABEL_TEXT_THRESHOLD, false));
         if (png == null) {
             return null;
         }
@@ -224,14 +311,15 @@ public class OcrService {
      * 命之座界面没有「命座 N」这样的文字，改成数右侧 6 个节点的白色锁。
      * 只有普通整页识别（收藏识图）才尝试，出金历史不会走这里。
      *
-     * <p>先用整页文字确认当前是角色面板：背包 / 其它界面的网格行也可能被当成 6 个节点，
-     * 但不会出现「命之座 / 天赋 / 圣遗物」这些菜单文字，据此可以避免在背包截图上误数出满命。</p>
+     * <p>先用整页文字确认当前是角色面板：背包 / 其它界面的网格行也可能被当成 6 个节点。
+     * 角色详情左侧一定有「属性 + 武器/天赋/圣遗物」菜单，背包只有页签没有「属性」，
+     * 据此避免在背包截图上误数出满命；「命座」可能被读成「命怀座」，按「命 + 座」判断。</p>
      */
     private Integer readConstellation(BufferedImage image, String text) {
         String compact = text == null ? "" : text.replaceAll("\\s+", "");
-        boolean detailPage = (compact.contains("命") && compact.contains("座"))
-                || compact.contains("天赋")
-                || compact.contains("圣遗物");
+        boolean detailPage = (compact.contains("属性")
+                && (compact.contains("武器") || compact.contains("天赋") || compact.contains("圣遗物")))
+                || (compact.contains("命") && compact.contains("座"));
         if (!detailPage) {
             return null;
         }
@@ -251,6 +339,12 @@ public class OcrService {
     private static final double HEADER_BOTTOM = 0.110;
     /** 左上角标题的白字阈值：高于该亮度视为文字 */
     private static final int HEADER_WHITE_THRESHOLD = 150;
+    /** 角色标题是金色字：亮度下限 + 金色判定（红高、蓝低于绿） */
+    private static final int HEADER_GOLD_THRESHOLD = 120;
+    /** 命座名列表是偏灰的白字，亮度比标题低，阈值要降下来 */
+    private static final int LABEL_TEXT_THRESHOLD = 120;
+    /** 七种元素关键字，用于判断标题左侧是不是元素前缀 */
+    private static final String ELEMENT_CHARS = "水火冰雷风岩草";
 
     /** 武器详情页右侧面板的标题区（武器名大字号），左上角标题读不到时用它兜底 */
     private static final double PANEL_LEFT = 0.700;
@@ -292,19 +386,62 @@ public class OcrService {
         BufferedImage enlarged = upscale(crop, 4);
         String lang = tesseractEngine.getChineseLanguage();
         String raw = tesseractEngine.recognizeLine(toPng(enlarged), ".png", lang);
-        if (extractHeaderName(raw) != null) {
-            return raw;
+        String white = tesseractEngine.recognizeLine(toPng(binarize(enlarged, HEADER_WHITE_THRESHOLD, false)), ".png", lang);
+        // 角色标题是金色字，白字阈值会把它当成背景；按金色像素二值化后识别率最高
+        String gold = tesseractEngine.recognizeLine(toPng(binarize(enlarged, HEADER_GOLD_THRESHOLD, true)), ".png", lang);
+        return pickHeaderText(raw, white, gold);
+    }
+
+    /**
+     * 从三种识别结果里挑最像标题的一条：优先含「元素」（角色），其次「X / 名字」结构，
+     * 再次武器类型前缀。
+     *
+     * <p>同分时保留靠前的候选：原图直接识别的笔画最完整（二值化容易丢细笔画，
+     * 出现「刻晴 → 刻普」「七七 → 七七国国」这类误差），只在原图结果明显不是标题时才用二值化结果。</p>
+     */
+    private String pickHeaderText(String raw, String white, String gold) {
+        String best = null;
+        int bestScore = 0;
+        for (String candidate : new String[]{raw, white, gold}) {
+            int score = headerScore(candidate);
+            if (score > bestScore) {
+                bestScore = score;
+                best = candidate;
+            }
         }
-        byte[] png = toPng(binarizeHeader(enlarged));
-        if (png == null) {
-            return raw;
+        if (best != null) {
+            return best;
         }
-        String binary = tesseractEngine.recognizeLine(png, ".png", lang);
-        return extractHeaderName(binary) != null ? binary : raw;
+        for (String candidate : new String[]{raw, white, gold}) {
+            if (extractHeaderName(candidate) != null) {
+                return candidate;
+            }
+        }
+        return raw;
+    }
+
+    private int headerScore(String text) {
+        String compact = text == null ? "" : text.replaceAll("\\s+", "");
+        if (compact.isEmpty()) {
+            return 0;
+        }
+        if (compact.contains("元素")) {
+            return 3;
+        }
+        if (looksLikeElementHeader(compact)) {
+            return 2;
+        }
+        for (String type : WEAPON_TYPES) {
+            if (compact.contains(type)) {
+                return 2;
+            }
+        }
+        return extractHeaderName(text) != null ? 1 : 0;
     }
 
     /**
      * 角色名：标题必须是「X元素 / 名字」格式；武器页标题里没有「元素」，不会被当成角色。
+     * 「元素」两个字可能被识别错（如「元泰」），所以左侧出现七种元素之一 + 斜杠也算角色标题。
      *
      * @return 清理后的角色名；不是角色详情页时返回 null
      */
@@ -313,7 +450,22 @@ public class OcrService {
             return null;
         }
         String compact = header.replaceAll("\\s+", "");
-        return compact.contains("元素") ? extractHeaderName(header) : null;
+        return compact.contains("元素") || looksLikeElementHeader(compact) ? extractHeaderName(header) : null;
+    }
+
+    /** 斜杠左侧出现元素字（水/火/冰/雷/风/岩/草）时视为角色标题 */
+    private boolean looksLikeElementHeader(String compact) {
+        int slash = compact.lastIndexOf('/');
+        if (slash < 0) {
+            return false;
+        }
+        String prefix = compact.substring(0, slash);
+        for (int i = 0; i < prefix.length(); i++) {
+            if (ELEMENT_CHARS.indexOf(prefix.charAt(i)) >= 0) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -423,8 +575,8 @@ public class OcrService {
         return value >= 1 && value <= 5 ? value : null;
     }
 
-    /** 标题是深色半透明底上的白字；转成「浅底 + 深色字」更适合 tesseract 单行识别 */
-    private BufferedImage binarizeHeader(BufferedImage image) {
+    /** 深色半透明底上的标题 / 命座名；转成「浅底 + 深色字」更适合 tesseract 识别 */
+    private BufferedImage binarize(BufferedImage image, int threshold, boolean goldOnly) {
         BufferedImage target = new BufferedImage(image.getWidth(), image.getHeight(),
                 BufferedImage.TYPE_INT_RGB);
         for (int y = 0; y < image.getHeight(); y++) {
@@ -434,7 +586,11 @@ public class OcrService {
                 int g = (rgb >> 8) & 0xFF;
                 int b = rgb & 0xFF;
                 int luminance = (int) (r * 0.299 + g * 0.587 + b * 0.114);
-                target.setRGB(x, y, luminance >= HEADER_WHITE_THRESHOLD ? 0x000000 : 0xFFFFFF);
+                boolean text = luminance >= threshold;
+                if (goldOnly) {
+                    text = text && r >= 130 && g >= 100 && b < g;
+                }
+                target.setRGB(x, y, text ? 0x000000 : 0xFFFFFF);
             }
         }
         return target;

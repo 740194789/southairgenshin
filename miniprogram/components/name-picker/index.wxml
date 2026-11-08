@@ -1,4 +1,4 @@
-<view wx:if="{{visible}}" class="np-mask" bindtap="onMaskTap" catchtouchmove="noop">
+<view wx:if="{{visible}}" class="np-mask" catchtouchmove="noop">
   <view class="np-modal" catchtap="noop">
     <view class="np-head">
       <text class="np-title">选择角色 / 物品</text>

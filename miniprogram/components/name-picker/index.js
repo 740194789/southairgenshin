@@ -158,10 +158,6 @@ Component({
       this.triggerEvent('close');
     },
 
-    onMaskTap: function () {
-      this.triggerEvent('close');
-    },
-
     noop: function () {
     },
 

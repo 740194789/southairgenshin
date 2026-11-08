@@ -2906,6 +2906,36 @@ body.game-starrail {
     grid-column: 1 / -1;
 }
 
+.ai-examples {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+.ai-examples-label {
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.ai-example {
+    padding: 5px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--muted);
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: border-color 0.2s, color 0.2s;
+}
+
+.ai-example:hover {
+    border-color: var(--gold);
+    color: var(--text);
+}
+
 .modal-foot {
     grid-column: 1 / -1;
     display: flex;

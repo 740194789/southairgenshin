@@ -10,7 +10,7 @@ if (-not (Test-Path $csc)) {
 }
 
 $outDir = Join-Path $PSScriptRoot "out"
-$distDir = Join-Path $root "dist\SouthAirGenshin"
+$distDir = Join-Path $root "dist\南空提瓦特小助手"
 $libsDir = Join-Path $PSScriptRoot "libs"
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 New-Item -ItemType Directory -Force -Path $distDir | Out-Null

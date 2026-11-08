@@ -60,7 +60,6 @@ public class OcrResourceParser {
         if (!values.containsKey("primogems") || !values.containsKey("mora")) {
             fillBottomBar(lines, values, imageWidth, imageHeight);
         }
-
         result.setValues(values);
         List<String> missing = new ArrayList<>();
         for (String[] entry : LABELS) {

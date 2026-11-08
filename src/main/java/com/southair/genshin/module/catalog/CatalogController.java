@@ -40,12 +40,19 @@ public class CatalogController {
 
     private final ObjectMapper objectMapper;
     private final Map<String, CacheEntry> cache = new ConcurrentHashMap<>();
+    private final Map<String, RankCacheEntry> rankCache = new ConcurrentHashMap<>();
 
     @Value("${app.catalog.genshin-url:https://gi.yatta.moe/api/v2/chs/avatar}")
     private String genshinUrl;
 
     @Value("${app.catalog.starrail-url:https://fastly.jsdelivr.net/gh/Mar-7th/StarRailRes@master/index_min/cn/characters.json}")
     private String starrailUrl;
+
+    @Value("${app.catalog.genshin-weapon-url:https://gi.yatta.moe/api/v2/chs/weapon}")
+    private String genshinWeaponUrl;
+
+    @Value("${app.catalog.starrail-lightcone-url:https://fastly.jsdelivr.net/gh/Mar-7th/StarRailRes@master/index_min/cn/light_cones.json}")
+    private String starrailLightConeUrl;
 
     public CatalogController(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
@@ -72,6 +79,50 @@ public class CatalogController {
         }
     }
 
+    /** 武器图标：原神为 Yatta 武器（只取五星），星铁为 StarRailRes 光锥（只取五星） */
+    @GetMapping("/weapons")
+    public R<Map<String, String>> weapons(@RequestParam(defaultValue = "genshin") String game) {
+        String gameKey = GameType.normalize(game);
+        String key = gameKey + "-weapon";
+        long now = System.currentTimeMillis();
+        CacheEntry cached = cache.get(key);
+        if (cached != null && now - cached.at < CACHE_TTL) {
+            return R.ok(cached.data);
+        }
+        try {
+            Map<String, String> data = GameType.isStarRail(gameKey)
+                    ? fetchStarRailLightCones() : fetchGenshinWeapons();
+            cache.put(key, new CacheEntry(data, now));
+            return R.ok(data);
+        } catch (Exception e) {
+            if (cached != null) {
+                return R.ok(cached.data);
+            }
+            throw new BusinessException(500, "武器图鉴获取失败（需要联网）：" + e.getMessage());
+        }
+    }
+
+    /** 星级：名称 → 4/5，用于新角色（如瓦列里）自动归到四星 / 五星 */
+    @GetMapping("/ranks")
+    public R<Map<String, Integer>> ranks(@RequestParam(defaultValue = "genshin") String game) {
+        String gameKey = GameType.normalize(game);
+        long now = System.currentTimeMillis();
+        RankCacheEntry cached = rankCache.get(gameKey);
+        if (cached != null && now - cached.at < CACHE_TTL) {
+            return R.ok(cached.data);
+        }
+        try {
+            Map<String, Integer> data = fetchRanks(gameKey);
+            rankCache.put(gameKey, new RankCacheEntry(data, now));
+            return R.ok(data);
+        } catch (Exception e) {
+            if (cached != null) {
+                return R.ok(cached.data);
+            }
+            throw new BusinessException(500, "图鉴星级获取失败（需要联网）：" + e.getMessage());
+        }
+    }
+
     /** 原神：Yatta 的角色列表，图标拼成 gi.yatta.moe 的静态地址。 */
     private Map<String, String> fetchGenshin() throws Exception {
         JsonNode root = getJson(genshinUrl);
@@ -82,6 +133,85 @@ public class CatalogController {
             String icon = entry.getValue().path("icon").asText("").trim();
             if (!name.isEmpty() && !icon.isEmpty()) {
                 map.put(name, "https://gi.yatta.moe/assets/UI/" + icon + (icon.endsWith(".png") ? "" : ".png"));
+            }
+        });
+        return map;
+    }
+
+    /** 原神武器：Yatta 武器列表，只保留五星 */
+    private Map<String, String> fetchGenshinWeapons() throws Exception {
+        JsonNode root = getJson(genshinWeaponUrl);
+        JsonNode items = root.path("data").path("items");
+        Map<String, String> map = new TreeMap<>();
+        items.fields().forEachRemaining(entry -> {
+            JsonNode item = entry.getValue();
+            if (item.path("rank").asInt(0) != 5) {
+                return;
+            }
+            String name = item.path("name").asText("").trim();
+            String icon = item.path("icon").asText("").trim();
+            if (!name.isEmpty() && !icon.isEmpty()) {
+                map.put(name, "https://gi.yatta.moe/assets/UI/" + icon
+                        + (icon.endsWith(".png") ? "" : ".png"));
+            }
+        });
+        return map;
+    }
+
+    /** 星铁光锥：StarRailRes 光锥列表，只保留五星 */
+    private Map<String, String> fetchStarRailLightCones() throws Exception {
+        JsonNode root = getJson(starrailLightConeUrl);
+        Map<String, String> map = new TreeMap<>();
+        root.fields().forEachRemaining(entry -> {
+            JsonNode item = entry.getValue();
+            if (item.path("rarity").asInt(0) != 5) {
+                return;
+            }
+            String name = item.path("name").asText("").trim();
+            String icon = item.path("icon").asText("").trim();
+            if (!name.isEmpty() && !icon.isEmpty()) {
+                map.put(name, "https://vizualabstract.github.io/StarRailStaticAPI/assets/" + icon);
+            }
+        });
+        return map;
+    }
+
+    /** 名称 → 星级（角色 + 五星武器 / 光锥），用于新角色自动分四星 / 五星 */
+    private Map<String, Integer> fetchRanks(String gameKey) throws Exception {
+        Map<String, Integer> map = new TreeMap<>();
+        if (GameType.isStarRail(gameKey)) {
+            JsonNode characters = getJson(starrailUrl);
+            characters.fields().forEachRemaining(entry -> {
+                String name = entry.getValue().path("name").asText("").trim();
+                int rank = entry.getValue().path("rarity").asInt(0);
+                if (!name.isEmpty() && rank > 0) {
+                    map.put(name, rank);
+                }
+            });
+            JsonNode cones = getJson(starrailLightConeUrl);
+            cones.fields().forEachRemaining(entry -> {
+                String name = entry.getValue().path("name").asText("").trim();
+                int rank = entry.getValue().path("rarity").asInt(0);
+                if (!name.isEmpty() && rank > 0) {
+                    map.put(name, rank);
+                }
+            });
+            return map;
+        }
+        JsonNode avatars = getJson(genshinUrl);
+        avatars.path("data").path("items").fields().forEachRemaining(entry -> {
+            String name = entry.getValue().path("name").asText("").trim();
+            int rank = entry.getValue().path("rank").asInt(0);
+            if (!name.isEmpty() && rank > 0) {
+                map.put(name, rank);
+            }
+        });
+        JsonNode weapons = getJson(genshinWeaponUrl);
+        weapons.path("data").path("items").fields().forEachRemaining(entry -> {
+            String name = entry.getValue().path("name").asText("").trim();
+            int rank = entry.getValue().path("rank").asInt(0);
+            if (!name.isEmpty() && rank > 0) {
+                map.put(name, rank);
             }
         });
         return map;
@@ -102,21 +232,16 @@ public class CatalogController {
     }
 
     /**
-     * 先走 JDK 自带的 HttpURLConnection；部分网络（如 Cloudflare）会重置 Java 的 TLS 连接，
-     * 此时自动改用系统 curl（Windows 10+ / 多数 Linux 自带）再试一次。
+     * 优先用系统 curl（带整体超时 + 重试）；没有 curl 时再退回 JDK 自带的 HttpURLConnection。
+     * 部分站点（如 Cloudflare 防护的 Yatta）会重置 Java 的 TLS 连接或慢速吐数据。
      */
     private JsonNode getJson(String url) throws Exception {
-        Exception javaError;
-        try {
-            return getJsonByJava(url);
-        } catch (Exception e) {
-            javaError = e;
-        }
+        // 先走系统 curl：带整体超时与重试，Yatta 这类站点对 Java TLS 指纹不友好时更稳
         String body = getJsonByCurl(url);
-        if (body == null || body.trim().isEmpty()) {
-            throw javaError;
+        if (body != null && !body.trim().isEmpty()) {
+            return objectMapper.readTree(body);
         }
-        return objectMapper.readTree(body);
+        return getJsonByJava(url);
     }
 
     private JsonNode getJsonByJava(String url) throws Exception {
@@ -141,9 +266,10 @@ public class CatalogController {
     private String getJsonByCurl(String url) {
         List<String> commands = new ArrayList<>();
         if (System.getProperty("os.name", "").toLowerCase().contains("win")) {
+            // PATH 里的 curl 往往是较新的版本；系统自带的旧 curl 访问部分站点会 TLS 握手失败
+            commands.add("curl.exe");
             String systemRoot = System.getenv("SystemRoot");
             commands.add((systemRoot == null ? "C:\\Windows" : systemRoot) + "\\System32\\curl.exe");
-            commands.add("curl.exe");
         }
         commands.add("curl");
         for (String command : commands) {
@@ -157,13 +283,14 @@ public class CatalogController {
 
     private String runCurl(String command, String url) {
         ProcessBuilder builder = new ProcessBuilder(
-                command, "-sL", "--max-time", "20", "--compressed",
+                command, "-sL", "--max-time", "8", "--compressed",
+                "--retry", "1", "--retry-all-errors", "--retry-delay", "1",
                 "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
                 "-H", "Accept: application/json", url);
         builder.redirectErrorStream(true);
         try {
             Process process = builder.start();
-            if (!process.waitFor(25, TimeUnit.SECONDS)) {
+            if (!process.waitFor(20, TimeUnit.SECONDS)) {
                 process.destroyForcibly();
                 return null;
             }
@@ -193,6 +320,16 @@ public class CatalogController {
         final long at;
 
         CacheEntry(Map<String, String> data, long at) {
+            this.data = data;
+            this.at = at;
+        }
+    }
+
+    private static class RankCacheEntry {
+        final Map<String, Integer> data;
+        final long at;
+
+        RankCacheEntry(Map<String, Integer> data, long at) {
             this.data = data;
             this.at = at;
         }

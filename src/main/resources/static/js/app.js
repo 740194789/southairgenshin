@@ -147,21 +147,30 @@
             '五郎', '九条裟罗', '鹿野院平藏', '绮良良', '云堇', '久岐忍', '柯莱', '多莉', '坎蒂丝',
             '莱依拉', '珐露珊', '瑶瑶', '米卡', '卡维', '琳妮特', '菲米尼', '夏洛蒂', '夏沃蕾',
             '嘉明', '赛索斯', '卡齐娜', '欧洛伦', '蓝砚', '伊安珊', '伊法', '塔利雅', '爱诺',
-            '雅珂达', '叶洛亚', '布伦妮', '阿罗夏'],
+            '雅珂达', '叶洛亚', '布伦妮', '阿罗夏', '瓦列里'],
         starrail: ['三月七', '丹恒', '阿兰', '艾丝妲', '黑塔', '希露瓦', '娜塔莎', '佩拉', '桑博',
             '虎克', '玲可', '卢卡', '青雀', '停云', '素裳', '驭空', '桂乃芬', '雪衣', '寒鸦',
             '貊泽', '加拉赫', '米沙']
     };
+
+    /** 在线图鉴拿到的星级优先（新角色也能自动归类），拿不到时退回内置四星名单 */
+    function isFourStarCharacter(game, name) {
+        var ranks = (CATALOG_RANKS || {})[game] || {};
+        var rank = ranks[name];
+        if (rank) {
+            return Number(rank) === 4;
+        }
+        return (FOUR_STAR_CHARACTERS[game] || []).indexOf(name) >= 0;
+    }
 
     function ownedNameOptions(game, category) {
         var lists = nameLists(game);
         if (category === 'weapons5') {
             return lists.weapons;
         }
-        var four = FOUR_STAR_CHARACTERS[game] || [];
         var wantFour = category === 'characters4';
         return lists.characters.filter(function (name) {
-            return (four.indexOf(name) >= 0) === wantFour;
+            return isFourStarCharacter(game, name) === wantFour;
         });
     }
 
@@ -1935,6 +1944,7 @@
                 + (state.game === 'genshin'
                     ? '<button class="btn btn-text" id="resource-ocr" type="button">识图填充</button>'
                     : '')
+                + '<button class="btn btn-text" id="resource-ai" type="button">AI 录入</button>'
                 + '<button class="btn btn-outline" id="resource-edit" type="button">编辑资源</button>'
                 + '</div>'
                 + '</aside>'
@@ -1988,6 +1998,13 @@
                     guard(function () {
                         return openResourceOcr(resource);
                     });
+                });
+            }
+
+            var aiBtn = $('#resource-ai');
+            if (aiBtn) {
+                aiBtn.addEventListener('click', function () {
+                    guard(openAiInput);
                 });
             }
 
@@ -2394,6 +2411,7 @@
             '<div class="page-head">'
             + '<div><p class="eyebrow">Wish Records</p><h2>抽卡记录</h2><p class="sub">五星出货记录 · 记录抽到五星用了多少抽 · 支持链接导入</p></div>'
             + '<div class="head-actions">'
+            + '<button class="btn btn-outline" id="wish-ai" type="button">AI 录入</button>'
             + '<button class="btn btn-primary" id="wish-add" type="button">+ 录入五星</button>'
             + '</div>'
             + '</div>'
@@ -2425,6 +2443,10 @@
             guard(function () {
                 return openEditor('wishes', null);
             });
+        });
+
+        $('#wish-ai').addEventListener('click', function () {
+            guard(openAiInput);
         });
 
         $('#wish-only-five').addEventListener('change', function (event) {
@@ -2693,10 +2715,9 @@
     /* 录入五星时只提供五星角色与五星武器 / 光锥 */
     function fiveStarNameOptions() {
         var lists = nameLists(state.game);
-        var four = FOUR_STAR_CHARACTERS[state.game] || [];
         var protagonist = PROTAGONISTS[state.game];
         var characters = lists.characters.filter(function (name) {
-            return name !== protagonist && four.indexOf(name) < 0;
+            return name !== protagonist && !isFourStarCharacter(state.game, name);
         });
         return characters.concat(lists.weapons);
     }
@@ -2866,11 +2887,6 @@
 
         search.addEventListener('input', renderGrid);
         $('.modal-close', mask).addEventListener('click', close);
-        mask.addEventListener('click', function (event) {
-            if (event.target === mask) {
-                close();
-            }
-        });
 
         renderGrid();
         document.body.appendChild(mask);
@@ -3026,14 +3042,6 @@
             $('.modal-cancel', mask).addEventListener('click', function () {
                 close(null);
             });
-            mask.addEventListener('click', function (event) {
-                if (opts.maskClosable === false) {
-                    return;
-                }
-                if (event.target === mask) {
-                    close(null);
-                }
-            });
             form.addEventListener('submit', function (event) {
                 event.preventDefault();
                 var values = collectValues(form, fields);
@@ -3089,10 +3097,10 @@
         return values;
     }
 
-    function openEditor(type, item) {
+    function openEditor(type, item, initial) {
         var isEdit = !!item;
         var config = formConfig(type, isEdit);
-        var values = isEdit ? toFormValues(type, item) : null;
+        var values = isEdit ? toFormValues(type, item) : (initial || null);
 
         return openForm((isEdit ? '编辑' : '新增') + config.title, config.fields, values, {
             validate: function (data) {
@@ -3199,11 +3207,6 @@
             $('.modal-cancel', mask).addEventListener('click', function () {
                 close(null);
             });
-            mask.addEventListener('click', function (event) {
-                if (event.target === mask) {
-                    close(null);
-                }
-            });
 
             form.addEventListener('submit', function (event) {
                 event.preventDefault();
@@ -3298,6 +3301,9 @@
                     return '请粘贴完整的抽卡记录链接';
                 }
                 return null;
+            },
+            onMount: function (mask, form) {
+                bindGachaAuto(mask, form);
             }
         }).then(function (values) {
             if (!values) {
@@ -3313,8 +3319,69 @@
                     + (result.filtered ? '，忽略 ' + result.filtered + ' 条' : ''));
                 refreshWishList();
                 return result;
+            }).catch(function (err) {
+                var message = String(err && err.message ? err.message : '');
+                // authkey 已过期：提示重新获取，而不是只弹一句失败
+                if (/authkey|抽卡记录/i.test(message)) {
+                    openChoice('抽卡链接已失效', message
+                        + '。建议重新获取：先打开游戏内「抽卡记录」页面，再点「从本机自动读取」'
+                        + '（日志和缓存都没有时会自动启用代理模式抓取新链接）。',
+                        [
+                            { key: 'retry', label: '重新获取链接', primary: true },
+                            { key: 'cancel', label: '取消' }
+                        ]).then(function (choice) {
+                        if (choice === 'retry') {
+                            return importFromLink();
+                        }
+                        return null;
+                    });
+                    return null;
+                }
+                throw err;
             });
         });
+    }
+
+    /* 桌面启动器：从本机日志 / webCaches / 代理获取带 authkey 的抽卡链接 */
+    var gachaAutoTarget = null;
+
+    function bindGachaAuto(mask, form) {
+        if (!(window.chrome && window.chrome.webview)) {
+            return;
+        }
+        var input = $('textarea[name="url"], input[name="url"]', mask);
+        var foot = $('.modal-foot', mask);
+        if (!input || !foot) {
+            return;
+        }
+        var button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'btn btn-outline';
+        button.textContent = '从本机自动读取';
+        button.addEventListener('click', function () {
+            button.disabled = true;
+            button.textContent = '正在读取本机记录…';
+            window.chrome.webview.postMessage({ action: 'gachaUrlAuto', game: state.game });
+        });
+        foot.insertBefore(button, $('.modal-cancel', mask));
+        gachaAutoTarget = { mask: mask, input: input, button: button };
+        // 弹窗关闭时通知启动器停止代理并恢复系统代理设置
+        var observer = new MutationObserver(function () {
+            if (!mask.isConnected) {
+                observer.disconnect();
+                gachaAutoTarget = null;
+                window.chrome.webview.postMessage({ action: 'gachaProxyStop' });
+            }
+        });
+        observer.observe(document.body, { childList: true });
+    }
+
+    function resetGachaButton() {
+        if (!gachaAutoTarget) {
+            return;
+        }
+        gachaAutoTarget.button.disabled = false;
+        gachaAutoTarget.button.textContent = '从本机自动读取';
     }
 
     /* ---------------- UIGF / SRGF 互转 ---------------- */
@@ -3400,7 +3467,7 @@
 
     /* ---------------- 账号资源 ---------------- */
 
-    function resourceFormFields(resource) {
+    function resourceFormFields(resource, overrides) {
         var g = gameConfig();
         var fields = [
             { key: 'primogems', label: g.currency, type: 'number', min: 0, max: 999999999, step: '1', default: resource.primogems },
@@ -3418,17 +3485,23 @@
                 { key: 'sanctifyingEssence', label: '祝圣精华（个）', type: 'number', min: 0, max: 999999, step: '1', default: resource.sanctifyingEssence || 0 }
             ]);
         }
+        /* 智能录入解析出的字段直接作为表单默认值 */
+        var patch = overrides || {};
+        fields.forEach(function (field) {
+            if (patch[field.key] !== undefined && patch[field.key] !== null) {
+                field.default = patch[field.key];
+            }
+        });
         return fields;
     }
 
-    function editResource(resource) {
+    function editResource(resource, overrides) {
         var g = gameConfig();
-        var fields = resourceFormFields(resource);
+        var fields = resourceFormFields(resource, overrides);
         return openForm('编辑账号资源 · ' + g.fullName, fields, null, {
             hint: '1 抽 = ' + resource.primogemsPerPull + ' ' + g.currency
                 + '；每日额度按自然日自动累加到资源，手动修改资产或额度后从当天重新计',
-            submitText: '保存资源',
-            maskClosable: false
+            submitText: '保存资源'
         }).then(function (values) {
             if (!values) {
                 return null;
@@ -3438,6 +3511,385 @@
                 loadDashboard();
                 return updated;
             });
+        });
+    }
+
+    /* ---------------- 离线 AI 录入（本地语义解析，不联网） ---------------- */
+
+    /* 资源关键词：命中的数值回填到对应字段 */
+    var AI_RESOURCE_WORDS = [
+        { key: 'primogems', words: ['原石', '星琼', '石头'] },
+        { key: 'mora', words: ['摩拉', '信用点'] },
+        { key: 'intertwinedFates', words: ['纠缠之缘', '纠缠', '星轨专票', '专票'] },
+        { key: 'acquaintedFates', words: ['相遇之缘', '相遇', '星轨通票', '通票'] },
+        { key: 'heroWit', words: ['大英雄的经验', '大英雄', '经验书', '紫书'] },
+        { key: 'adventurerExp', words: ['冒险家的经验', '冒险家', '蓝书'] },
+        { key: 'wandererAdvice', words: ['流浪者的经验', '流浪者', '绿书'] },
+        { key: 'sanctifyingUnction', words: ['祝圣油膏', '油膏'] },
+        { key: 'sanctifyingEssence', words: ['祝圣精华', '精华'] }
+    ];
+
+    var AI_NUMBER = '([0-9][0-9,]*(?:\\.[0-9]+)?|[零〇一二两三四五六七八九十百千万]+)';
+
+    function aiCompact(text) {
+        return String(text || '').replace(/\s+/g, '');
+    }
+
+    function aiPad(n) {
+        return (n < 10 ? '0' : '') + n;
+    }
+
+    /** 阿拉伯数字 / 中文数字统一转数值（支持「六百」「六十六」「1.2万」这类说法） */
+    function aiNumber(text) {
+        var raw = String(text || '').replace(/,/g, '');
+        if (/^[0-9]+(\.[0-9]+)?$/.test(raw)) {
+            return Number(raw);
+        }
+        var digit = { '零': 0, '〇': 0, '一': 1, '二': 2, '两': 2, '三': 3, '四': 4,
+            '五': 5, '六': 6, '七': 7, '八': 8, '九': 9 };
+        var unit = { '十': 10, '百': 100, '千': 1000 };
+        var total = 0;
+        var section = 0;
+        var number = 0;
+        for (var i = 0; i < raw.length; i += 1) {
+            var ch = raw.charAt(i);
+            if (digit[ch] !== undefined) {
+                number = digit[ch];
+            } else if (ch === '万') {
+                total += (section + number) * 10000;
+                section = 0;
+                number = 0;
+            } else if (unit[ch]) {
+                section += (number || 1) * unit[ch];
+                number = 0;
+            } else {
+                return NaN;
+            }
+        }
+        return total + section + number;
+    }
+
+    /** 在关键词前后找数值，兼容「600原石」「原石：600」两种语序 */
+    function aiAmountNear(text, word) {
+        var escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        var patterns = [
+            new RegExp(AI_NUMBER + '\\s*(万|w|W)?\\s*(?:个|枚|抽|本|份)?\\s*' + escaped),
+            new RegExp(escaped + '\\s*(?:还有|有|是|大概|约|剩|：|:|＝|=)?\\s*' + AI_NUMBER + '\\s*(万|w|W)?')
+        ];
+        for (var i = 0; i < patterns.length; i += 1) {
+            var match = patterns[i].exec(text);
+            if (!match) {
+                continue;
+            }
+            var value = aiNumber(match[1]);
+            if (isNaN(value)) {
+                continue;
+            }
+            return /万|w|W/.test(match[2] || '') ? value * 10000 : value;
+        }
+        return null;
+    }
+
+    /** 资源类语句 → 表单字段 */
+    function aiParseResource(text, game) {
+        var fields = resourceFormFields({});
+        var values = {};
+        var found = 0;
+        AI_RESOURCE_WORDS.forEach(function (token) {
+            var allowed = fields.some(function (field) {
+                return field.key === token.key;
+            });
+            if (!allowed) {
+                return;
+            }
+            for (var i = 0; i < token.words.length; i += 1) {
+                var amount = aiAmountNear(text, token.words[i]);
+                if (amount !== null) {
+                    values[token.key] = amount;
+                    found += 1;
+                    return;
+                }
+            }
+        });
+        return found ? values : null;
+    }
+
+    /** 抽卡时间：绝对日期、相对日期、可选时刻 */
+    function aiWishTime(text) {
+        var now = new Date();
+        var h = 12;
+        var mi = 0;
+        var dateText = /(\d{1,2})[:：](\d{1,2})/.exec(text);
+        var hourText = /(上午|中午|下午|晚上)?(\d{1,2})点(?:(\d{1,2})分?)?/.exec(text);
+        if (dateText) {
+            h = Number(dateText[1]);
+            mi = Number(dateText[2]);
+        } else if (hourText) {
+            h = Number(hourText[2]);
+            mi = hourText[3] ? Number(hourText[3]) : 0;
+            if (/下午|晚上/.test(hourText[1] || '') && h < 12) {
+                h += 12;
+            }
+        }
+        if (h > 23) {
+            h = 23;
+        }
+        if (mi > 59) {
+            mi = 59;
+        }
+
+        var y = now.getFullYear();
+        var m = now.getMonth() + 1;
+        var d = now.getDate();
+        var full = /(\d{4})[年\-/．.](\d{1,2})[月\-/．.](\d{1,2})[日号]?/.exec(text);
+        var monthDay = /(\d{1,2})月(\d{1,2})[日号]?/.exec(text);
+        var dayOnly = /(\d{1,2})[日号]/.exec(text);
+        var relative = /前天|昨天|昨日|昨晚|今天|今日|刚才|刚刚|现在/.test(text);
+
+        if (full) {
+            y = Number(full[1]);
+            m = Number(full[2]);
+            d = Number(full[3]);
+        } else if (monthDay) {
+            m = Number(monthDay[1]);
+            d = Number(monthDay[2]);
+        } else if (dayOnly) {
+            d = Number(dayOnly[1]);
+        } else if (/前天/.test(text)) {
+            d -= 2;
+        } else if (/昨天|昨日|昨晚/.test(text)) {
+            d -= 1;
+        }
+        if (!dateText && !hourText && relative) {
+            h = now.getHours();
+            mi = now.getMinutes();
+        }
+
+        var built = new Date(y, Math.max(1, m) - 1, Math.max(1, d), h, mi);
+        if (built.getTime() > now.getTime() + 24 * 3600 * 1000 && !full) {
+            built.setFullYear(built.getFullYear() - 1);
+        }
+        return built.getFullYear() + '-' + aiPad(built.getMonth() + 1) + '-' + aiPad(built.getDate())
+            + 'T' + aiPad(built.getHours()) + ':' + aiPad(built.getMinutes());
+    }
+
+    /** 文本里找名称：先整词命中（取最长），再对 3 字以上的名称容错 1 个字 */
+    function aiMatchName(text, names) {
+        var best = null;
+        names.forEach(function (name) {
+            var idx = text.indexOf(name);
+            if (idx >= 0 && (!best || name.length > best.name.length)) {
+                best = { name: name, index: idx };
+            }
+        });
+        if (best) {
+            return best;
+        }
+        names.forEach(function (name) {
+            if (name.length < 3 || best) {
+                return;
+            }
+            for (var i = 0; i + name.length - 1 <= text.length; i += 1) {
+                for (var len = name.length - 1; len <= name.length + 1; len += 1) {
+                    if (i + len > text.length) {
+                        continue;
+                    }
+                    if (aiEditDistance(name, text.substr(i, len)) <= 1) {
+                        best = { name: name, index: i };
+                        return;
+                    }
+                }
+            }
+        });
+        return best;
+    }
+
+    function aiEditDistance(a, b) {
+        var prev = [];
+        for (var j = 0; j <= b.length; j += 1) {
+            prev[j] = j;
+        }
+        for (var i = 1; i <= a.length; i += 1) {
+            var cur = [i];
+            for (var k = 1; k <= b.length; k += 1) {
+                cur[k] = Math.min(prev[k] + 1, cur[k - 1] + 1,
+                    prev[k - 1] + (a.charAt(i - 1) === b.charAt(k - 1) ? 0 : 1));
+            }
+            prev = cur;
+        }
+        return prev[b.length];
+    }
+
+    function aiPool(text, game, isWeapon) {
+        var g = GAMES[game];
+        if (/常驻|标准/.test(text)) {
+            return '常驻';
+        }
+        if (/武器池|武器祈愿|武器活动|光锥池|光锥活动/.test(text)) {
+            return g.weaponPool;
+        }
+        if (game === 'genshin' && /集录|混池/.test(text)) {
+            return '集录祈愿';
+        }
+        if (game === 'starrail' && /联动/.test(text)) {
+            return '联动';
+        }
+        return isWeapon ? g.weaponPool : g.charPool;
+    }
+
+    /** 抽数：优先取靠近「出 / 抽到 / 歪」的那个数字 */
+    function aiPity(text, nameIndex) {
+        var re = /([0-9]{1,3}|[零〇一二三四五六七八九十百]{1,5})\s*(?:抽|连|发)/g;
+        var best = null;
+        var match;
+        while ((match = re.exec(text)) !== null) {
+            var value = aiNumber(match[1]);
+            if (isNaN(value) || value < 1 || value > 200) {
+                continue;
+            }
+            var around = text.slice(Math.max(0, match.index - 12), match.index + match[0].length + 14);
+            var score = /出|歪|中|拿到|来了|获得|抽到/.test(around) ? 2 : 0;
+            if (nameIndex !== undefined && match.index > nameIndex && match.index - nameIndex < 30) {
+                score += 1;
+            }
+            if (!best || score > best.score) {
+                best = { value: value, score: score };
+            }
+        }
+        return best ? best.value : null;
+    }
+
+    /** 收藏补充：按名称判断分栏，命座 / 精炼折算额外数量 */
+    function aiOwnedValues(text, game, name) {
+        var lists = nameLists(game);
+        var category = 'characters5';
+        if (lists.weapons.indexOf(name) >= 0) {
+            category = 'weapons5';
+        } else if (isFourStarCharacter(game, name)) {
+            category = 'characters4';
+        }
+        var copies = 1;
+        if (category === 'weapons5') {
+            var refine = /精[炼]?\s*([0-9一二两三四五])(?![\d])/.exec(text)
+                || /([0-9一二两三四五])\s*精/.exec(text);
+            copies = refine ? aiNumber(refine[1]) : 1;
+            if (!isFinite(copies) || copies < 1) {
+                copies = 1;
+            }
+            copies = Math.min(5, copies);
+        } else {
+            var con = /([0-9一二两三四五六])\s*命/.exec(text);
+            if (/满命/.test(text)) {
+                copies = 7;
+            } else if (con) {
+                copies = (aiNumber(con[1]) || 0) + 1;
+            }
+            if (!isFinite(copies) || copies < 1) {
+                copies = 1;
+            }
+            copies = Math.min(6, copies);
+        }
+        return { category: category, name: name, copies: copies };
+    }
+
+    /** 一句话 → 动作类型 + 预填字段；解析不出来返回 null */
+    function parseNaturalEntry(raw, game) {
+        var text = aiCompact(raw);
+        if (!text) {
+            return null;
+        }
+        var hit = aiMatchName(text, fiveStarNameOptions());
+        var hasPull = /抽|出|歪|获得|拿到|中了/.test(text);
+        if (hit && hasPull) {
+            var isWeapon = nameLists(game).weapons.indexOf(hit.name) >= 0;
+            var values = {
+                itemName: hit.name,
+                rarity: 5,
+                pool: aiPool(text, game, isWeapon),
+                wishTime: aiWishTime(text),
+                captureTriggered: false
+            };
+            var pity = aiPity(text, hit.index);
+            if (pity) {
+                values.pityCount = Math.min(90, pity);
+            }
+            return { type: 'wish', name: hit.name, values: values };
+        }
+        var resources = aiParseResource(text, game);
+        if (resources) {
+            return { type: 'resource', values: resources };
+        }
+        var lists = nameLists(game);
+        var owned = hit || aiMatchName(text, lists.characters.concat(lists.weapons));
+        if (owned) {
+            return { type: 'owned', name: owned.name, values: aiOwnedValues(text, game, owned.name) };
+        }
+        return null;
+    }
+
+    function openAiInput() {
+        var g = gameConfig();
+        var examples = state.game === 'genshin'
+            ? ['2024年10月3日抽了66抽抽到了七七', '我现在有600原石',
+                '原石9195，摩拉22219696，纠缠之缘12', '七七2命，天空之刃精2', '昨天10点出了天空之刃']
+            : ['10月3日66抽出了姬子', '我现在有600星琼',
+                '星琼91950，信用点22219696，星轨专票12', '三月七3命，于夜色中精2'];
+        var parsed = null;
+
+        return openForm('AI 录入 · ' + g.fullName, [
+            {
+                key: 'text',
+                label: '用一句话说清楚',
+                type: 'textarea',
+                full: true,
+                placeholder: '例如：2024年10月3日抽了66抽抽到了七七'
+            }
+        ], null, {
+            hint: '本地离线解析，不联网、不上传。解析后会打开对应表单，确认无误再保存。'
+                + '能听懂：抽卡记录（日期 / 抽数 / 五星）、账号资源、收藏补充（命座 / 精炼）。',
+            submitText: '解析并填充',
+            onMount: function (mask, form) {
+                var area = $('textarea[name="text"]', form);
+                var box = document.createElement('div');
+                box.className = 'ai-examples';
+                box.innerHTML = '<span class="ai-examples-label">示例</span>'
+                    + examples.map(function (example) {
+                        return '<button type="button" class="ai-example">' + esc(example) + '</button>';
+                    }).join('');
+                $$('.ai-example', box).forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        area.value = btn.textContent;
+                        area.focus();
+                    });
+                });
+                form.insertBefore(box, $('.modal-foot', form));
+            },
+            validate: function (values) {
+                if (!aiCompact(values.text)) {
+                    return '先输入一句话';
+                }
+                parsed = parseNaturalEntry(values.text, state.game);
+                if (!parsed) {
+                    return '没解析出来，换个说法试试，例如「10月3日 66抽 出了七七」';
+                }
+                return null;
+            }
+        }).then(function (values) {
+            if (!values || !parsed) {
+                return null;
+            }
+            if (parsed.type === 'wish') {
+                toast('已解析：' + parsed.name + ' · ' + parsed.values.pool
+                    + (parsed.values.pityCount ? ' · ' + parsed.values.pityCount + ' 抽' : ''));
+                return openEditor('wishes', null, parsed.values);
+            }
+            if (parsed.type === 'resource') {
+                return api('/api/resources').then(function (resource) {
+                    return editResource(resource, parsed.values);
+                });
+            }
+            toast(parsed.name + ' 已转成收藏补充');
+            return openOwnedForm(parsed.values);
         });
     }
 
@@ -3582,11 +4034,6 @@
             $('.modal-cancel', mask).addEventListener('click', function () {
                 close(null);
             });
-            mask.addEventListener('click', function (event) {
-                if (event.target === mask) {
-                    close(null);
-                }
-            });
             retryBtn.addEventListener('click', startCapture);
             recognizeBtn.addEventListener('click', function () {
                 if (!latest) {
@@ -3687,8 +4134,7 @@
                 var fields = resourceFormFields(resource);
                 return openForm('识图结果 · 原神资源', fields, merged, {
                     hint: hint,
-                    submitText: '确认填入',
-                    maskClosable: false
+                    submitText: '确认填入'
                 }).then(function (values) {
                     if (!values) {
                         return null;
@@ -3710,6 +4156,50 @@
         }
         window.chrome.webview.addEventListener('message', function (event) {
             var message = event.data || {};
+            if (message.action === 'gachaUrlResult' && message.url) {
+                if (!gachaAutoTarget || !gachaAutoTarget.mask.isConnected) {
+                    return;
+                }
+                gachaAutoTarget.input.value = message.url;
+                resetGachaButton();
+                toast('已从' + (message.sourceText || '本机') + '获取抽卡链接，请点击「读取并导入」');
+                return;
+            }
+            if (message.action === 'gachaUrlProxyPrompt') {
+                resetGachaButton();
+                if (!gachaAutoTarget || !gachaAutoTarget.mask.isConnected) {
+                    return;
+                }
+                openChoice('本机日志和缓存里没有抽卡链接',
+                    '可以启用代理模式：临时把系统代理指向本程序，然后在游戏内重新打开「抽卡记录」页面。'
+                    + '抓到链接后会自动关闭代理并恢复原来的系统代理设置。',
+                    [
+                        { key: 'proxy', label: '启用代理模式', primary: true },
+                        { key: 'cancel', label: '取消' }
+                    ]).then(function (choice) {
+                    if (choice === 'proxy' && window.chrome && window.chrome.webview) {
+                        window.chrome.webview.postMessage({ action: 'gachaProxyStart' });
+                        toast('代理模式已开启，请在游戏内打开「抽卡记录」页面（最多等待 2 分钟）');
+                    }
+                });
+                return;
+            }
+            if (message.action === 'gachaUrlProxyStarted') {
+                if (gachaAutoTarget && gachaAutoTarget.mask.isConnected) {
+                    gachaAutoTarget.button.disabled = true;
+                    gachaAutoTarget.button.textContent = '等待游戏打开抽卡记录…';
+                }
+                return;
+            }
+            if (message.action === 'gachaProxyStopped') {
+                resetGachaButton();
+                return;
+            }
+            if (message.action === 'gachaUrlError') {
+                resetGachaButton();
+                toast(message.message || '没有获取到抽卡链接', 'error');
+                return;
+            }
             if (message.action === 'gameCaptureFrame' && message.dataUrl) {
                 if (liveCaptureSession && liveCaptureSession.onFrame) {
                     liveCaptureSession.onFrame(message);
@@ -3788,11 +4278,6 @@
             });
             $('.modal-cancel', mask).addEventListener('click', function () {
                 close(null);
-            });
-            mask.addEventListener('click', function (event) {
-                if (event.target === mask) {
-                    close(null);
-                }
             });
             $('.choice-actions', mask).addEventListener('click', function (event) {
                 var btn = event.target.closest('[data-choice]');
@@ -4082,15 +4567,30 @@
     /* ---------------- 图鉴数据源 ---------------- */
 
     var CATALOG_KEY = 'sg_catalog_';
+    var CATALOG_WEAPON_KEY = 'sg_catalog_weapons_';
+    var CATALOG_RANK_KEY = 'sg_catalog_ranks_';
+    /** 在线刷新得到的武器图标 / 星级，启动时合并进本地映射 */
+    var CATALOG_WEAPONS = { genshin: {}, starrail: {} };
+    var CATALOG_RANKS = { genshin: {}, starrail: {} };
 
     function loadCatalogCache() {
         ['genshin', 'starrail'].forEach(function (game) {
             var cached = safeParse(localStorage.getItem(CATALOG_KEY + game));
-            if (!cached || typeof cached !== 'object') {
-                return;
+            if (cached && typeof cached === 'object') {
+                window.SG_AVATARS = window.SG_AVATARS || {};
+                window.SG_AVATARS[game] = Object.assign({}, window.SG_AVATARS[game] || {}, cached);
             }
-            window.SG_AVATARS = window.SG_AVATARS || {};
-            window.SG_AVATARS[game] = Object.assign({}, window.SG_AVATARS[game] || {}, cached);
+            var cachedWeapons = safeParse(localStorage.getItem(CATALOG_WEAPON_KEY + game));
+            if (cachedWeapons && typeof cachedWeapons === 'object') {
+                CATALOG_WEAPONS[game] = cachedWeapons;
+                window.SG_WEAPON_ICONS = window.SG_WEAPON_ICONS || {};
+                window.SG_WEAPON_ICONS[game] = Object.assign({},
+                    window.SG_WEAPON_ICONS[game] || {}, cachedWeapons);
+            }
+            var cachedRanks = safeParse(localStorage.getItem(CATALOG_RANK_KEY + game));
+            if (cachedRanks && typeof cachedRanks === 'object') {
+                CATALOG_RANKS[game] = cachedRanks;
+            }
         });
     }
 
@@ -4098,6 +4598,11 @@
     var CATALOG_URLS = {
         genshin: 'https://gi.yatta.moe/api/v2/chs/avatar',
         starrail: 'https://fastly.jsdelivr.net/gh/Mar-7th/StarRailRes@master/index_min/cn/characters.json'
+    };
+
+    var CATALOG_WEAPON_URLS = {
+        genshin: 'https://gi.yatta.moe/api/v2/chs/weapon',
+        starrail: 'https://fastly.jsdelivr.net/gh/Mar-7th/StarRailRes@master/index_min/cn/light_cones.json'
     };
 
     function parseCatalog(game, root) {
@@ -4123,11 +4628,63 @@
         return map;
     }
 
-    function fetchCatalogDirect(game) {
-        var url = CATALOG_URLS[game];
-        if (!url) {
-            return Promise.reject(new Error('不支持的游戏'));
+    /* 五星武器 / 光锥图标：原神取 rank=5，星铁取 rarity=5 */
+    function parseWeaponCatalog(game, root) {
+        var map = {};
+        if (game === 'starrail') {
+            Object.keys(root || {}).forEach(function (id) {
+                var item = root[id] || {};
+                if (Number(item.rarity) !== 5) {
+                    return;
+                }
+                if (item.name && item.icon) {
+                    map[item.name] = 'https://vizualabstract.github.io/StarRailStaticAPI/assets/'
+                        + item.icon;
+                }
+            });
+            return map;
         }
+        var items = root && root.data && root.data.items ? root.data.items : {};
+        Object.keys(items).forEach(function (id) {
+            var item = items[id] || {};
+            if (Number(item.rank) !== 5) {
+                return;
+            }
+            var icon = String(item.icon || '');
+            if (item.name && icon) {
+                map[item.name] = 'https://gi.yatta.moe/assets/UI/' + icon
+                    + (icon.slice(-4) === '.png' ? '' : '.png');
+            }
+        });
+        return map;
+    }
+
+    /* 名称 → 星级：原神 avatar/weapon 的 rank，星铁 characters/light_cones 的 rarity */
+    function parseRanks(game, root) {
+        var map = {};
+        if (!root) {
+            return map;
+        }
+        if (game === 'starrail') {
+            Object.keys(root).forEach(function (id) {
+                var item = root[id] || {};
+                if (item.name && Number(item.rarity) > 0) {
+                    map[item.name] = Number(item.rarity);
+                }
+            });
+            return map;
+        }
+        var items = root.data && root.data.items ? root.data.items : {};
+        Object.keys(items).forEach(function (id) {
+            var item = items[id] || {};
+            if (item.name && Number(item.rank) > 0) {
+                map[item.name] = Number(item.rank);
+            }
+        });
+        return map;
+    }
+
+    function fetchJson(url) {
         var opts = { headers: { Accept: 'application/json' }, cache: 'no-store' };
         var timer = null;
         if (typeof AbortController !== 'undefined') {
@@ -4143,32 +4700,74 @@
                 throw new Error('HTTP ' + res.status);
             }
             return res.json();
-        }).then(function (root) {
-            return parseCatalog(game, root);
         });
     }
 
     function refreshCatalog(game) {
-        return fetchCatalogDirect(game).catch(function () {
-            return null;
-        }).then(function (directMap) {
-            if (directMap && Object.keys(directMap).length) {
-                return directMap;
+        return Promise.all([
+            fetchJson(CATALOG_URLS[game]).catch(function () {
+                return null;
+            }),
+            fetchJson(CATALOG_WEAPON_URLS[game]).catch(function () {
+                return null;
+            })
+        ]).then(function (roots) {
+            var avatars = roots[0] ? parseCatalog(game, roots[0]) : {};
+            var weapons = roots[1] ? parseWeaponCatalog(game, roots[1]) : {};
+            var ranks = {};
+            if (roots[0]) {
+                ranks = Object.assign(ranks, parseRanks(game, roots[0]));
             }
-            // 浏览器直连失败时回退到本机服务代取
-            return api('/api/catalog', null, game);
-        }).then(function (map) {
-            if (!map) {
+            if (roots[1]) {
+                ranks = Object.assign(ranks, parseRanks(game, roots[1]));
+            }
+            // 直连失败的单项回退到本机服务代取
+            var avatarTask = Object.keys(avatars).length ? Promise.resolve(avatars)
+                : api('/api/catalog', null, game).catch(function () {
+                    return {};
+                });
+            var weaponTask = Object.keys(weapons).length ? Promise.resolve(weapons)
+                : api('/api/catalog/weapons', null, game).catch(function () {
+                    return {};
+                });
+            var rankTask = Object.keys(ranks).length ? Promise.resolve(ranks)
+                : api('/api/catalog/ranks', null, game).catch(function () {
+                    return {};
+                });
+            return Promise.all([avatarTask, weaponTask, rankTask]);
+        }).then(function (parts) {
+            var avatars = parts[0] || {};
+            var weapons = parts[1] || {};
+            var ranks = parts[2] || {};
+            if (!Object.keys(avatars).length) {
                 throw new Error('图鉴数据为空');
             }
             window.SG_AVATARS = window.SG_AVATARS || {};
-            window.SG_AVATARS[game] = Object.assign({}, window.SG_AVATARS[game] || {}, map);
+            window.SG_AVATARS[game] = Object.assign({}, window.SG_AVATARS[game] || {}, avatars);
+            if (Object.keys(weapons).length) {
+                CATALOG_WEAPONS[game] = Object.assign({}, CATALOG_WEAPONS[game] || {}, weapons);
+                window.SG_WEAPON_ICONS = window.SG_WEAPON_ICONS || {};
+                window.SG_WEAPON_ICONS[game] = Object.assign({},
+                    window.SG_WEAPON_ICONS[game] || {}, weapons);
+            }
+            if (Object.keys(ranks).length) {
+                CATALOG_RANKS[game] = Object.assign({}, CATALOG_RANKS[game] || {}, ranks);
+            }
             try {
-                localStorage.setItem(CATALOG_KEY + game, JSON.stringify(map));
+                localStorage.setItem(CATALOG_KEY + game, JSON.stringify(avatars));
+                if (Object.keys(weapons).length) {
+                    localStorage.setItem(CATALOG_WEAPON_KEY + game,
+                        JSON.stringify(CATALOG_WEAPONS[game]));
+                }
+                if (Object.keys(ranks).length) {
+                    localStorage.setItem(CATALOG_RANK_KEY + game,
+                        JSON.stringify(CATALOG_RANKS[game]));
+                }
             } catch (e) {
                 /* 忽略隐私模式下的写入失败 */
             }
-            toast('图鉴已更新：' + Object.keys(map).length + ' 个角色');
+            toast('图鉴已更新：' + Object.keys(avatars).length + ' 个角色 · '
+                + Object.keys(CATALOG_WEAPONS[game] || {}).length + ' 把武器');
             var view = state.view;
             if (view === 'stats') {
                 loadStats();
@@ -4398,23 +4997,41 @@
         if (!labels && !page) {
             return null;
         }
-        function matched(nodeName) {
-            if (labels && labels.indexOf(nodeName) >= 0) {
-                return true;
-            }
-            if (page && page.indexOf(nodeName) >= 0) {
-                return true;
-            }
-            // 小字 OCR 容易错一个字，在命座名列里做 1 个字的容错匹配
-            if (!labels) {
-                return false;
-            }
-            for (var at = 0; at + nodeName.length <= labels.length; at += 1) {
-                if (editDistance(labels.substr(at, nodeName.length), nodeName) <= 1) {
+        var labelLines = String(labelText || '').split(/[\r\n]+/)
+            .map(normalizeOcrLine).filter(Boolean);
+        // 命座名是长句（如芙宁娜的「爱是难驯鸟…」）时，小字 OCR 常错两三个字，
+        // 按整行相似度过一遍，避免只靠逐字容错漏掉这类角色
+        function fuzzyLabelHit(nodeName) {
+            for (var i = 0; i < labelLines.length; i += 1) {
+                if (lineSimilarity(labelLines[i], nodeName) >= 0.65) {
                     return true;
                 }
             }
             return false;
+        }
+        function matched(nodeName) {
+            // 命座名里可能带引号 / 逗号（如芙宁娜的长句命座），比较前统一去掉标点
+            var key = normalizeOcrLine(nodeName) || nodeName;
+            if (labels && labels.indexOf(key) >= 0) {
+                return true;
+            }
+            // 两字命座名（如「雷厉」「廉贞」）只在命座名列里做 1 个字的容错，
+            // 不参与整页匹配，否则「心魔」「我界」这类词会在别处误命中
+            if (labels) {
+                for (var at = 0; at + key.length <= labels.length; at += 1) {
+                    if (editDistance(labels.substr(at, key.length), key) <= 1) {
+                        return true;
+                    }
+                }
+            }
+            if (key.length < 4) {
+                return false;
+            }
+            if (fuzzyLabelHit(key)) {
+                return true;
+            }
+            // 整页文字只认四字及以上的长命座名，避免「心魔」「我界」这类词在别处误命中
+            return Boolean(page && page.indexOf(key) >= 0);
         }
         var counts = {};
         Object.keys(genshin).forEach(function (nodeName) {
@@ -4438,7 +5055,7 @@
 
     function normalizeOcrLine(text) {
         return String(text || '').replace(/\s+/g, '')
-            .replace(/[·•・\-–—_:：,，.。!！?？"'“”‘’()（）\[\]【】<>《》/\\|+*#%&@~^$]/g, '');
+            .replace(/[·•・\-–—_:：,，.。!！?？"'“”‘’「」『』()（）\[\]【】<>《》/\\|+*#%&@~^$]/g, '');
     }
 
     function editDistance(a, b) {
@@ -4557,12 +5174,20 @@
         }
         var hasConstellation = constellation !== null && constellation !== undefined
             && isFinite(Number(constellation));
-        // 标题没匹配上时，用右侧的命座名反查角色（例如「雷厉 / 苛捐 / 登楼 …」→ 刻晴）
+        // 右侧命座名与角色一一对应：识别到命座后优先用它反查（例如「雷厉 / 苛捐 / 登楼 …」→ 刻晴）
         var constellationChar = hasConstellation
             ? constellationCharacter(text, constellationText) : null;
-        var charMatch = headerMatch(lists.characters)
-            || (constellationChar ? { name: constellationChar, score: 1 } : null)
-            || matchOcrName(text, lists.characters);
+        var headerHit = headerMatch(lists.characters);
+        var charMatch;
+        if (headerHit && headerHit.score >= 1) {
+            // 标题完整命中（不是相似度凑出来的）时最可信
+            charMatch = headerHit;
+        } else if (constellationChar) {
+            // 标题读错或读不到时，以 6 个命座名为准
+            charMatch = { name: constellationChar, score: 1 };
+        } else {
+            charMatch = headerHit || matchOcrName(text, lists.characters);
+        }
         var weaponMatch = headerMatch(lists.weapons) || matchOcrName(text, lists.weapons);
         var hasWeapon = !hasConstellation && weaponHeader
             && lists.weapons.indexOf(weaponHeader) >= 0;
@@ -4588,7 +5213,7 @@
         var section = best
             ? (kind === 'weapon'
                 ? 'weapons5'
-                : (FOUR_STAR_CHARACTERS.genshin.indexOf(best.name) >= 0 ? 'characters4' : 'characters5'))
+                : (isFourStarCharacter('genshin', best.name) ? 'characters4' : 'characters5'))
             : 'characters5';
         var name = best ? best.name : '';
         var scannedRank = parseOcrRank(text, kind);
@@ -4649,7 +5274,6 @@
         ], { category: section, name: name, rank: rank }, {
             hint: hint + '。核对后保存，同一名称会覆盖旧的识图记录。',
             submitText: '写入收藏',
-            maskClosable: false,
             onMount: function (mask) {
                 var categoryEl = $('select[name="category"]', mask);
                 var nameEl = $('input[name="name"]', mask);
@@ -4867,16 +5491,22 @@
         }).join('');
     }
 
-    function openOwnedForm() {
+    function openOwnedForm(initial) {
         var g = gameConfig();
         var defs = collectionDefs(g);
+        var seed = initial || {};
+        var seedCategory = seed.category;
+        var hasSeedCategory = defs.some(function (def) {
+            return def.key === seedCategory;
+        });
         // 单独持有名称字段，类别切换时直接改它的候选名单
         var nameField = {
             key: 'name',
             label: '名称',
             type: 'name-picker',
             full: true,
-            options: ownedNameOptions(state.game, defs[0].key)
+            default: seed.name || '',
+            options: ownedNameOptions(state.game, hasSeedCategory ? seedCategory : defs[0].key)
         };
         return openForm('补充已有 · ' + g.fullName, [
             {
@@ -4887,7 +5517,7 @@
                 options: defs.map(function (def) {
                     return { value: def.key, label: def.title };
                 }),
-                default: defs[0].key
+                default: hasSeedCategory ? seedCategory : defs[0].key
             },
             nameField,
             {
@@ -4897,7 +5527,7 @@
                 full: true,
                 min: 1,
                 max: 6,
-                default: 1
+                default: seed.copies || 1
             }
         ], null, {
             hint: '类别决定分栏；额外数量会叠加到抽卡记录统计，角色按命座展示（最高 C6），武器按精炼展示（最高 R5）。',
@@ -4960,6 +5590,7 @@
                 + (game === 'genshin'
                     ? '<button class="btn btn-outline" id="collection-ocr" type="button">识图读取</button>'
                     : '')
+                + '<button class="btn btn-outline" id="collection-ai" type="button">AI 录入</button>'
                 + '<button class="btn btn-primary" id="collection-add" type="button">+ 补充已有</button>'
                 + '</div></div>'
                 + collectionSectionsHtml(game, items || [], owned, g, ocr)
@@ -4968,6 +5599,10 @@
 
             $('#collection-add').addEventListener('click', function () {
                 guard(openOwnedForm);
+            });
+
+            $('#collection-ai').addEventListener('click', function () {
+                guard(openAiInput);
             });
 
             var ocrButton = $('#collection-ocr');
@@ -5476,11 +6111,6 @@
             });
             $('.modal-cancel', mask).addEventListener('click', function () {
                 close(false);
-            });
-            mask.addEventListener('click', function (event) {
-                if (event.target === mask) {
-                    close(false);
-                }
             });
 
             var enginesBox = $('#ocr-engines', mask);

@@ -6,8 +6,12 @@ using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Net;
+using System.Net.Security;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using System.Security.Authentication;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -417,6 +421,11 @@ namespace SouthAirLauncher
         private Panel loadingCard;
         private WebView2 webView;
         private CoreWebView2Environment coreEnvironment;
+
+        /* ---------------- 抽卡链接自动获取 ---------------- */
+        /** 扫描游戏日志 / webCaches 缓存；都失败时由用户确认后启用代理兜底 */
+        private readonly GachaUrlScanner gachaUrlScanner = new GachaUrlScanner();
+        private LocalGachaProxy gachaProxy;
         private LaunchCard launchCard;
         private float uiScale = 1f;
 
@@ -809,9 +818,9 @@ namespace SouthAirLauncher
             navPanel.Controls.Add(navLabel);
 
             AddNav(navPanel, "dashboard", "◈", "资源", 26);
-            AddNav(navPanel, "wishes", "✧", "抽卡记录", 76);
-            AddNav(navPanel, "collection", "✦", "收藏图鉴", 126);
-            AddNav(navPanel, "stats", "◎", "统计", 176);
+            AddNav(navPanel, "stats", "◎", "统计", 76);
+            AddNav(navPanel, "wishes", "✧", "抽卡记录", 126);
+            AddNav(navPanel, "collection", "✦", "收藏图鉴", 176);
             AddNav(navPanel, "settings", "⚙", "设置", 226);
             navButtons["dashboard"].Active = true;
 
@@ -1368,6 +1377,18 @@ namespace SouthAirLauncher
             {
                 CaptureGameWindow();
             }
+            else if (message.IndexOf("gachaUrlAuto", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                StartGachaAutoLookup();
+            }
+            else if (message.IndexOf("gachaProxyStart", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                StartGachaProxy();
+            }
+            else if (message.IndexOf("gachaProxyStop", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                StopGachaProxy(true);
+            }
         }
 
         /// <summary>抓取原神窗口画面，转成 JPEG data URL 回传给页面做资源识别。</summary>
@@ -1873,6 +1894,18 @@ namespace SouthAirLauncher
             {
                 return;
             }
+            if (InvokeRequired)
+            {
+                try
+                {
+                    BeginInvoke(new Action(delegate { PostLauncherJson(json); }));
+                }
+                catch
+                {
+                    // 窗口已关闭时忽略
+                }
+                return;
+            }
             try
             {
                 webView.CoreWebView2.PostWebMessageAsJson(json);
@@ -1889,6 +1922,133 @@ namespace SouthAirLauncher
             PostLauncherJson("{\"action\":\"gameCaptureError\",\"message\":\"" + safe + "\"}");
             SetStatus(text, UiColors.Red, true);
         }
+
+        /* ---------------- 抽卡链接自动获取 ---------------- */
+
+        /** 页面点击「从本机自动读取」：先扫日志，再扫 webCaches，都没有就提示是否启用代理 */
+        private void StartGachaAutoLookup()
+        {
+            Task.Run(new Action(delegate
+            {
+                string url = null;
+                string source = null;
+                try
+                {
+                    url = gachaUrlScanner.FindFromLogs();
+                    if (url != null)
+                    {
+                        source = "本机日志";
+                    }
+                    else
+                    {
+                        url = gachaUrlScanner.FindFromWebCaches();
+                        if (url != null)
+                        {
+                            source = "webCaches 缓存";
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    AppendLog("扫描抽卡链接失败：" + ex.Message);
+                }
+                if (url != null)
+                {
+                    PostGachaUrl(url, source);
+                }
+                else
+                {
+                    PostLauncherJson("{\"action\":\"gachaUrlProxyPrompt\"}");
+                }
+            }));
+        }
+
+        private void PostGachaUrl(string url, string source)
+        {
+            // authkey 是账号凭证：只回传给页面，不写日志、不落盘
+            AppendLog("已获取抽卡记录链接（来源：" + source + "），authkey 未写入日志");
+            PostLauncherJson("{\"action\":\"gachaUrlResult\",\"url\":\"" + JsonEscape(url)
+                + "\",\"sourceText\":\"" + JsonEscape(source) + "\"}");
+        }
+
+        private void PostGachaError(string text)
+        {
+            PostLauncherJson("{\"action\":\"gachaUrlError\",\"message\":\"" + JsonEscape(text) + "\"}");
+        }
+
+        private string JsonEscape(string text)
+        {
+            return text == null ? "" : text.Replace("\\", "\\\\").Replace("\"", "\\\"");
+        }
+
+        /** 兜底：启动本地代理，让游戏重新打开抽卡记录页时把带 authkey 的 URL 送过来 */
+        private void StartGachaProxy()
+        {
+            StopGachaProxy(false);
+            try
+            {
+                gachaProxy = new LocalGachaProxy(delegate(string url) { OnGachaProxyCaptured(url); },
+                    delegate(string text) { AppendLog(text); });
+                gachaProxy.Start();
+                PostLauncherJson("{\"action\":\"gachaUrlProxyStarted\",\"port\":" + gachaProxy.Port + "}");
+                AppendLog("代理模式已启动（127.0.0.1:" + gachaProxy.Port + "），等待游戏打开抽卡记录");
+                gachaProxyTimeout = new System.Threading.Timer(delegate
+                {
+                    if (gachaProxy == null)
+                    {
+                        return;
+                    }
+                    StopGachaProxy(false);
+                    PostGachaError("代理模式等待超时：请在游戏内重新打开「抽卡记录」页面后重试");
+                }, null, 120000, Timeout.Infinite);
+            }
+            catch (Exception ex)
+            {
+                StopGachaProxy(false);
+                PostGachaError("代理模式启动失败：" + ex.Message);
+            }
+        }
+
+        private void OnGachaProxyCaptured(string url)
+        {
+            System.Threading.Timer timer = gachaProxyTimeout;
+            if (timer != null)
+            {
+                timer.Dispose();
+                gachaProxyTimeout = null;
+            }
+            StopGachaProxy(false);
+            PostGachaUrl(url, "代理模式");
+        }
+
+        private void StopGachaProxy(bool notify)
+        {
+            System.Threading.Timer timer = gachaProxyTimeout;
+            gachaProxyTimeout = null;
+            if (timer != null)
+            {
+                timer.Dispose();
+            }
+            if (gachaProxy != null)
+            {
+                try
+                {
+                    gachaProxy.Stop();
+                }
+                catch
+                {
+                    // 代理已结束时忽略
+                }
+                gachaProxy = null;
+                AppendLog("已关闭抽卡链接代理并恢复系统代理设置");
+            }
+            if (notify)
+            {
+                PostLauncherJson("{\"action\":\"gachaProxyStopped\"}");
+            }
+        }
+
+        private System.Threading.Timer gachaProxyTimeout;
 
         private async void NavigateView(string view)
         {
@@ -2269,49 +2429,133 @@ namespace SouthAirLauncher
         /* ---------------- 启动原神 ---------------- */
 
         private static readonly string[] GameExeNames = { "YuanShen.exe", "GenshinImpact.exe" };
+        private static readonly string[] GameLauncherExeNames = { "HoYoPlay.exe", "launcher.exe" };
+        private bool launchingGame;
 
-        /** 启动原神：先用上次保存的路径，找不到就自动搜索，再找不到让用户手动选 */
+        /** 启动原神：优先走官方启动器；找不到启动器再直接启动游戏本体 */
         private async void LaunchGenshin()
         {
-            string path = LoadGamePath();
-            if (path == null || !File.Exists(path))
+            // 连点保护：同一次启动流程里只允许一个在跑，避免拉起两个游戏进程
+            if (launchingGame)
             {
-                SetStatus("正在搜索原神安装目录…", UiColors.Gold, false);
-                Cursor = Cursors.WaitCursor;
-                try
-                {
-                    path = await Task.Run(() => FindGenshinExe());
-                }
-                finally
-                {
-                    Cursor = Cursors.Default;
-                }
-                if (path == null)
-                {
-                    SetStatus("未自动找到原神，请手动选择游戏程序", UiColors.Gold, false);
-                    path = AskGameExe();
-                    if (path == null)
-                    {
-                        return;
-                    }
-                }
-                SaveGamePath(path);
+                return;
             }
-
+            launchingGame = true;
             try
             {
-                ProcessStartInfo info = new ProcessStartInfo(path);
-                info.WorkingDirectory = Path.GetDirectoryName(path);
+                if (IsGenshinRunning())
+                {
+                    SetStatus("原神已在运行，无需重复启动", UiColors.Gold, false);
+                    return;
+                }
+
+                string path = LoadGamePath();
+                if (path == null || !File.Exists(path))
+                {
+                    SetStatus("正在搜索原神安装目录…", UiColors.Gold, false);
+                    Cursor = Cursors.WaitCursor;
+                    try
+                    {
+                        path = await Task.Run(() => FindGenshinExe());
+                    }
+                    finally
+                    {
+                        Cursor = Cursors.Default;
+                    }
+                    if (path == null)
+                    {
+                        SetStatus("未自动找到原神，请手动选择游戏程序", UiColors.Gold, false);
+                        path = AskGameExe();
+                        if (path == null)
+                        {
+                            return;
+                        }
+                    }
+                    SaveGamePath(path);
+                }
+
+                StartGame(path);
+            }
+            finally
+            {
+                launchingGame = false;
+            }
+        }
+
+        /** 官方启动器在就直接开启动器（直接运行 YuanShen.exe 会被反作弊拦成 3,0,0） */
+        private void StartGame(string gameExe)
+        {
+            string launcher = FindGameLauncher(gameExe);
+            try
+            {
+                if (launcher != null)
+                {
+                    ProcessStartInfo viaLauncher = new ProcessStartInfo(launcher);
+                    viaLauncher.WorkingDirectory = Path.GetDirectoryName(launcher);
+                    viaLauncher.UseShellExecute = true;
+                    Process.Start(viaLauncher);
+                    AppendLog("启动米哈游启动器：" + launcher);
+                    SetStatus("已打开米哈游启动器 · 请在启动器里点「开始游戏」", UiColors.Green, false);
+                    return;
+                }
+
+                ProcessStartInfo info = new ProcessStartInfo(gameExe);
+                info.WorkingDirectory = Path.GetDirectoryName(gameExe);
                 info.UseShellExecute = true;
                 Process.Start(info);
-                AppendLog("启动原神：" + path);
-                SetStatus("已启动原神 · " + Path.GetFileName(path), UiColors.Green, false);
+                AppendLog("启动原神：" + gameExe);
+                SetStatus("已启动原神 · 若提示 3,0,0 请改用米哈游启动器", UiColors.Green, false);
             }
             catch (Exception ex)
             {
                 SetStatus("启动原神失败：" + ex.Message, UiColors.Red, true);
                 SaveGamePath(null);
             }
+        }
+
+        /** 游戏本体上层目录里找官方启动器：HoYoPlay 装机时 HoYoPlay.exe / launcher.exe 就在附近 */
+        private static string FindGameLauncher(string gameExe)
+        {
+            try
+            {
+                string dir = Path.GetDirectoryName(gameExe);
+                for (int level = 0; level < 4 && dir != null; level += 1)
+                {
+                    foreach (string name in GameLauncherExeNames)
+                    {
+                        string candidate = Path.Combine(dir, name);
+                        if (File.Exists(candidate))
+                        {
+                            return candidate;
+                        }
+                    }
+                    dir = Path.GetDirectoryName(dir);
+                }
+            }
+            catch
+            {
+                // 路径异常时退回直接启动
+            }
+            return null;
+        }
+
+        private static bool IsGenshinRunning()
+        {
+            foreach (string name in new[] { "YuanShen", "GenshinImpact" })
+            {
+                try
+                {
+                    if (Process.GetProcessesByName(name).Length > 0)
+                    {
+                        return true;
+                    }
+                }
+                catch
+                {
+                    // 读取进程列表失败时按未运行处理
+                }
+            }
+            return false;
         }
 
         private string GamePathFile()
@@ -2771,6 +3015,7 @@ namespace SouthAirLauncher
         private void LauncherForm_FormClosing(object sender, FormClosingEventArgs e)
         {
             closing = true;
+            StopGachaProxy(false);
             if (pollTimer != null)
             {
                 pollTimer.Stop();
@@ -2893,5 +3138,722 @@ namespace SouthAirLauncher
         private static extern bool IsWindowVisible(IntPtr handle);
     }
 
+    /* ============================ 抽卡链接自动获取 ============================ */
+
+    /**
+     * 从本机游戏日志 / webCaches 中查找带 authkey 的抽卡记录链接。
+     *
+     * <p>sink：游戏内打开「抽卡记录」时，日志会写入
+     * {@code OnGetWebViewPageFinish:https://webstatic...authkey=...#/log}；
+     * 日志被滚动覆盖时，退回游戏安装目录下 webCaches 的 data_2 缓存里再找一次。</p>
+     */
+    internal sealed class GachaUrlScanner
+    {
+        private static readonly Regex HeaderUrl = new Regex(
+            "OnGetWebViewPageFinish\\s*:\\s*(https?://[^\\s\"'<>]+)", RegexOptions.Compiled);
+        private static readonly Regex AnyUrl = new Regex(
+            "https?://[^\\s\"'<>\\x00]+", RegexOptions.Compiled);
+        private static readonly Regex GameDataDir = new Regex(
+            "([A-Za-z]:\\\\[^\\r\\n\"']{0,260}?(?:GenshinImpact_Data|YuanShen_Data|StarRail_Data))",
+            RegexOptions.Compiled);
+
+        /** authkey 官方约 24 小时失效，这里留 4 小时余量，避免把缓存里的旧链接自动填进输入框 */
+        private const long AUTHKEY_TTL_SECONDS = 20L * 3600;
+
+        public string FindFromLogs()
+        {
+            string best = null;
+            long bestTs = -1;
+            foreach (string log in LogCandidates())
+            {
+                string text = ReadTail(log, 2L * 1024 * 1024);
+                if (string.IsNullOrEmpty(text))
+                {
+                    continue;
+                }
+                DateTime modified;
+                try
+                {
+                    modified = File.GetLastWriteTime(log);
+                }
+                catch
+                {
+                    modified = DateTime.MinValue;
+                }
+                List<string> urls = CollectGachaUrls(HeaderUrl, text);
+                urls.AddRange(CollectGachaUrls(AnyUrl, text));
+                foreach (string url in urls)
+                {
+                    long timestamp = TimestampOf(url);
+                    if (!IsFresh(timestamp, modified))
+                    {
+                        continue;
+                    }
+                    if (timestamp > bestTs)
+                    {
+                        bestTs = timestamp;
+                        best = url;
+                    }
+                }
+            }
+            return best;
+        }
+
+        public string FindFromWebCaches()
+        {
+            string best = null;
+            long bestTs = 0;
+            foreach (string log in LogCandidates())
+            {
+                string text = ReadTail(log, 1024 * 1024);
+                if (string.IsNullOrEmpty(text))
+                {
+                    continue;
+                }
+                MatchCollection matches = GameDataDir.Matches(text);
+                for (int i = matches.Count - 1; i >= 0; i -= 1)
+                {
+                    List<string> urls = ScanWebCaches(matches[i].Groups[1].Value);
+                    foreach (string url in urls)
+                    {
+                        long timestamp = TimestampOf(url);
+                        // 缓存里可能留着几周前的旧链接，必须按 timestamp 过滤
+                        if (!IsFresh(timestamp, DateTime.MinValue))
+                        {
+                            continue;
+                        }
+                        if (timestamp > bestTs)
+                        {
+                            bestTs = timestamp;
+                            best = url;
+                        }
+                    }
+                }
+            }
+            return best;
+        }
+
+        private static IEnumerable<string> LogCandidates()
+        {
+            string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            // 国服 / 国际服原神（Unity 日志）
+            yield return Path.Combine(home, "AppData", "LocalLow", "miHoYo", "原神", "output_log.txt");
+            yield return Path.Combine(home, "AppData", "LocalLow", "miHoYo", "Genshin Impact", "output_log.txt");
+            // 星穹铁道
+            yield return Path.Combine(home, "AppData", "LocalLow", "miHoYo", "Star Rail", "Player.log");
+            yield return Path.Combine(home, "AppData", "LocalLow", "Cognosphere", "Star Rail", "Player.log");
+            // 云原神
+            yield return Path.Combine(home, "AppData", "Local", "miHoYo", "GenshinImpactCloudGame",
+                "config", "logs", "MiHoYoSDK.log");
+        }
+
+        private static List<string> ScanWebCaches(string dataDir)
+        {
+            List<string> found = new List<string>();
+            try
+            {
+                string cacheRoot = Path.Combine(dataDir, "webCaches");
+                if (!Directory.Exists(cacheRoot))
+                {
+                    return found;
+                }
+                List<string> files = new List<string>();
+                foreach (string version in Directory.GetDirectories(cacheRoot))
+                {
+                    string file = Path.Combine(version, "Cache", "Cache_Data", "data_2");
+                    if (File.Exists(file))
+                    {
+                        files.Add(file);
+                    }
+                }
+                files.Sort();
+                int checkedFiles = 0;
+                for (int i = files.Count - 1; i >= 0 && checkedFiles < 3; i -= 1, checkedFiles += 1)
+                {
+                    string text = ReadBytesAsText(files[i], 32L * 1024 * 1024);
+                    if (text == null)
+                    {
+                        continue;
+                    }
+                    found.AddRange(CollectGachaUrls(AnyUrl, text));
+                }
+            }
+            catch
+            {
+                // 缓存目录不可读时直接跳过
+            }
+            return found;
+        }
+
+        private static List<string> CollectGachaUrls(Regex regex, string text)
+        {
+            List<string> urls = new List<string>();
+            MatchCollection matches = regex.Matches(text);
+            for (int i = 0; i < matches.Count; i += 1)
+            {
+                string value = matches[i].Groups.Count > 1
+                    ? matches[i].Groups[1].Value : matches[i].Value;
+                value = value.Trim().TrimEnd(')', '"', '\'', ',', ';');
+                if (IsGachaUrl(value))
+                {
+                    urls.Add(value);
+                }
+            }
+            return urls;
+        }
+
+        /** 链接里的 timestamp 参数（authkey 生成时间） */
+        private static long TimestampOf(string url)
+        {
+            if (url == null)
+            {
+                return 0;
+            }
+            Match match = Regex.Match(url, "[?&]timestamp=(\\d{6,12})");
+            if (!match.Success)
+            {
+                return 0;
+            }
+            long value;
+            return long.TryParse(match.Groups[1].Value, out value) ? value : 0;
+        }
+
+        /**
+         * 只接受较新的 authkey：链接带 timestamp 时按它判断；
+         * 没有 timestamp 的老格式只在日志文件最近更新过时才采信。
+         */
+        private static bool IsFresh(long timestamp, DateTime logModified)
+        {
+            long now = DateTimeOffset.Now.ToUnixTimeSeconds();
+            if (timestamp > 0)
+            {
+                return timestamp <= now + 3600 && now - timestamp <= AUTHKEY_TTL_SECONDS;
+            }
+            return logModified != DateTime.MinValue
+                && (DateTime.Now - logModified).TotalSeconds <= AUTHKEY_TTL_SECONDS;
+        }
+
+        private static bool IsGachaUrl(string url)
+        {
+            if (url == null)
+            {
+                return false;
+            }
+            string lower = url.ToLowerInvariant();
+            if (!lower.Contains("authkey="))
+            {
+                return false;
+            }
+            return lower.Contains("webview_gacha") || lower.Contains("game_biz=hk4e_")
+                || lower.Contains("game_biz=hkrpg_") || lower.Contains("gacha_info")
+                || lower.Contains("gacha_record");
+        }
+
+        private static string ReadTail(string path, long maxBytes)
+        {
+            try
+            {
+                if (!File.Exists(path))
+                {
+                    return null;
+                }
+                using (FileStream stream = new FileStream(path, FileMode.Open, FileAccess.Read,
+                           FileShare.ReadWrite))
+                {
+                    long length = stream.Length;
+                    stream.Seek(Math.Max(0, length - maxBytes), SeekOrigin.Begin);
+                    using (StreamReader reader = new StreamReader(stream, Encoding.UTF8))
+                    {
+                        return reader.ReadToEnd();
+                    }
+                }
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static string ReadBytesAsText(string path, long maxBytes)
+        {
+            try
+            {
+                using (FileStream stream = new FileStream(path, FileMode.Open, FileAccess.Read,
+                           FileShare.ReadWrite))
+                {
+                    long length = Math.Min(stream.Length, maxBytes);
+                    byte[] bytes = new byte[length];
+                    int read = 0;
+                    while (read < bytes.Length)
+                    {
+                        int count = stream.Read(bytes, read, bytes.Length - read);
+                        if (count <= 0)
+                        {
+                            break;
+                        }
+                        read += count;
+                    }
+                    return Encoding.UTF8.GetString(bytes);
+                }
+            }
+            catch
+            {
+                return null;
+            }
+        }
+    }
+
+    /**
+     * 本地 HTTPS 代理兜底：只对米哈游域名做 TLS 中间人，抓到带 authkey 的请求后
+     * 立即回传并关闭；其它域名原样隧道转发，不读内容。
+     */
+    internal sealed class LocalGachaProxy
+    {
+        private readonly Action<string> onUrl;
+        private readonly Action<string> onStatus;
+        private TcpListener listener;
+        private Thread acceptThread;
+        private volatile bool running;
+        private readonly Dictionary<string, X509Certificate2> certificates =
+            new Dictionary<string, X509Certificate2>();
+        private readonly object certificateLock = new object();
+
+        public int Port { get; private set; }
+
+        public LocalGachaProxy(Action<string> onUrl, Action<string> onStatus)
+        {
+            this.onUrl = onUrl;
+            this.onStatus = onStatus;
+        }
+
+        public void Start()
+        {
+            listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+            Port = ((IPEndPoint)listener.LocalEndpoint).Port;
+            running = true;
+            acceptThread = new Thread(AcceptLoop);
+            acceptThread.IsBackground = true;
+            acceptThread.Start();
+            SystemProxy.Enable("127.0.0.1:" + Port);
+        }
+
+        public void Stop()
+        {
+            running = false;
+            try
+            {
+                if (listener != null)
+                {
+                    listener.Stop();
+                }
+            }
+            catch
+            {
+                // 已停止时忽略
+            }
+            SystemProxy.Restore();
+        }
+
+        private void AcceptLoop()
+        {
+            while (running)
+            {
+                try
+                {
+                    TcpClient client = listener.AcceptTcpClient();
+                    Thread thread = new Thread(new ThreadStart(delegate { HandleClient(client); }));
+                    thread.IsBackground = true;
+                    thread.Start();
+                }
+                catch
+                {
+                    if (!running)
+                    {
+                        break;
+                    }
+                }
+            }
+        }
+
+        private void HandleClient(TcpClient client)
+        {
+            try
+            {
+                client.ReceiveTimeout = 15000;
+                client.SendTimeout = 15000;
+                NetworkStream stream = client.GetStream();
+                byte[] header = ReadHeader(stream);
+                if (header == null)
+                {
+                    return;
+                }
+                string text = Encoding.ASCII.GetString(header);
+                string firstLine = text.Split(new string[] { "\r\n" }, 2,
+                    StringSplitOptions.None)[0];
+                string[] parts = firstLine.Split(' ');
+                if (parts.Length < 2 || !parts[0].Equals("CONNECT", StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+
+                string hostPort = parts[1];
+                int colon = hostPort.LastIndexOf(':');
+                string host = colon > 0 ? hostPort.Substring(0, colon) : hostPort;
+                int port = colon > 0 ? int.Parse(hostPort.Substring(colon + 1)) : 443;
+
+                byte[] established = Encoding.ASCII.GetBytes(
+                    "HTTP/1.1 200 Connection Established\r\n\r\n");
+                stream.Write(established, 0, established.Length);
+                stream.Flush();
+
+                if (IsHoyoHost(host))
+                {
+                    Mitm(client, stream, host, port);
+                }
+                else
+                {
+                    Tunnel(stream, host, port);
+                }
+            }
+            catch
+            {
+                // 单条连接失败不影响后续抓取
+            }
+            finally
+            {
+                try
+                {
+                    client.Close();
+                }
+                catch
+                {
+                    // 已关闭时忽略
+                }
+            }
+        }
+
+        private static bool IsHoyoHost(string host)
+        {
+            string lower = host.ToLowerInvariant();
+            return lower.Contains("webstatic") || lower.Contains("public-operation")
+                || lower.EndsWith(".mihoyo.com") || lower.EndsWith(".hoyoverse.com");
+        }
+
+        private void Mitm(TcpClient client, NetworkStream stream, string host, int port)
+        {
+            try
+            {
+                using (SslStream ssl = new SslStream(stream, false))
+                {
+                    ssl.AuthenticateAsServer(GetCertificate(host), false, SslProtocols.Tls12, false);
+                    byte[] header = ReadHeader(ssl);
+                    if (header == null)
+                    {
+                        return;
+                    }
+                    string url = ExtractAuthUrl(Encoding.ASCII.GetString(header), host);
+                    if (url != null && onUrl != null)
+                    {
+                        onUrl(url);
+                    }
+                    Relay(ssl, host, port, header);
+                }
+            }
+            catch (Exception ex)
+            {
+                if (onStatus != null)
+                {
+                    onStatus("代理握手失败：" + ex.Message);
+                }
+            }
+        }
+
+        private static string ExtractAuthUrl(string request, string host)
+        {
+            Match match = Regex.Match(request, "^(?:GET|POST)\\s+(\\S+)\\s+HTTP/",
+                RegexOptions.Multiline);
+            if (!match.Success)
+            {
+                return null;
+            }
+            string target = match.Groups[1].Value;
+            if (!target.Contains("authkey="))
+            {
+                return null;
+            }
+            return "https://" + host + (target.StartsWith("/") ? target : "/" + target);
+        }
+
+        private void Relay(SslStream clientSsl, string host, int port, byte[] header)
+        {
+            TcpClient upstream = new TcpClient();
+            try
+            {
+                upstream.Connect(host, port);
+                upstream.ReceiveTimeout = 8000;
+                using (SslStream up = new SslStream(upstream.GetStream(), false,
+                           delegate { return true; }))
+                {
+                    up.AuthenticateAsClient(host);
+                    up.Write(header, 0, header.Length);
+                    up.Flush();
+                    byte[] buffer = new byte[8192];
+                    while (true)
+                    {
+                        int read = up.Read(buffer, 0, buffer.Length);
+                        if (read <= 0)
+                        {
+                            break;
+                        }
+                        clientSsl.Write(buffer, 0, read);
+                        clientSsl.Flush();
+                    }
+                }
+            }
+            catch
+            {
+                // 上游读取失败时直接关闭
+            }
+            finally
+            {
+                try
+                {
+                    upstream.Close();
+                }
+                catch
+                {
+                    // 已关闭时忽略
+                }
+            }
+        }
+
+        private void Tunnel(NetworkStream client, string host, int port)
+        {
+            TcpClient upstream = new TcpClient();
+            try
+            {
+                upstream.Connect(host, port);
+                NetworkStream up = upstream.GetStream();
+                Thread thread = new Thread(new ThreadStart(delegate
+                {
+                    try
+                    {
+                        CopyStream(up, client);
+                    }
+                    catch
+                    {
+                        // 任一端关闭即结束
+                    }
+                    finally
+                    {
+                        try
+                        {
+                            client.Close();
+                        }
+                        catch
+                        {
+                            // 已关闭时忽略
+                        }
+                    }
+                }));
+                thread.IsBackground = true;
+                thread.Start();
+                CopyStream(client, up);
+            }
+            catch
+            {
+                // 连接失败时直接关闭
+            }
+            finally
+            {
+                try
+                {
+                    upstream.Close();
+                }
+                catch
+                {
+                    // 已关闭时忽略
+                }
+            }
+        }
+
+        private static void CopyStream(Stream from, Stream to)
+        {
+            byte[] buffer = new byte[8192];
+            while (true)
+            {
+                int read = from.Read(buffer, 0, buffer.Length);
+                if (read <= 0)
+                {
+                    break;
+                }
+                to.Write(buffer, 0, read);
+                to.Flush();
+            }
+        }
+
+        private static byte[] ReadHeader(Stream stream)
+        {
+            MemoryStream data = new MemoryStream();
+            byte[] one = new byte[1];
+            while (data.Length < 16384)
+            {
+                int read = stream.Read(one, 0, 1);
+                if (read <= 0)
+                {
+                    break;
+                }
+                data.Write(one, 0, 1);
+                if (data.Length >= 4)
+                {
+                    byte[] all = data.ToArray();
+                    int n = all.Length;
+                    if (all[n - 4] == 13 && all[n - 3] == 10 && all[n - 2] == 13 && all[n - 1] == 10)
+                    {
+                        return all;
+                    }
+                }
+            }
+            return data.Length == 0 ? null : data.ToArray();
+        }
+
+        private X509Certificate2 GetCertificate(string host)
+        {
+            lock (certificateLock)
+            {
+                if (certificates.ContainsKey(host))
+                {
+                    return certificates[host];
+                }
+                RSACryptoServiceProvider rsa = new RSACryptoServiceProvider(2048);
+                CertificateRequest request = new CertificateRequest("CN=" + host, rsa,
+                    HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+                request.CertificateExtensions.Add(
+                    new X509BasicConstraintsExtension(false, false, 0, false));
+                request.CertificateExtensions.Add(
+                    new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature
+                        | X509KeyUsageFlags.KeyEncipherment, false));
+                X509Certificate2 cert = request.CreateSelfSigned(
+                    DateTimeOffset.Now.AddDays(-1), DateTimeOffset.Now.AddDays(7));
+                X509Certificate2 exportable = new X509Certificate2(cert.Export(X509ContentType.Pfx),
+                    "", X509KeyStorageFlags.Exportable);
+                certificates[host] = exportable;
+                return exportable;
+            }
+        }
+    }
+
+    /**
+     * 临时把当前用户的系统代理指向本地抓包端口；关闭代理后恢复原设置。
+     * 只写 HKCU，不修改系统级配置，也不安装证书。
+     */
+    internal static class SystemProxy
+    {
+        private const string KeyPath = @"Software\Microsoft\Windows\CurrentVersion\Internet Settings";
+        private static readonly object Sync = new object();
+        private static bool active;
+        private static object oldEnable;
+        private static object oldServer;
+        private static object oldOverride;
+
+        public static void Enable(string server)
+        {
+            lock (Sync)
+            {
+                if (active)
+                {
+                    return;
+                }
+                using (RegistryKey key = Registry.CurrentUser.OpenSubKey(KeyPath, true))
+                {
+                    if (key == null)
+                    {
+                        return;
+                    }
+                    oldEnable = key.GetValue("ProxyEnable");
+                    oldServer = key.GetValue("ProxyServer");
+                    oldOverride = key.GetValue("ProxyOverride");
+                    key.SetValue("ProxyEnable", 1, RegistryValueKind.DWord);
+                    key.SetValue("ProxyServer", server, RegistryValueKind.String);
+                    key.SetValue("ProxyOverride",
+                        "localhost;127.*;10.*;172.16.*;172.17.*;172.18.*;172.19.*;172.20.*;"
+                        + "172.21.*;172.22.*;172.23.*;172.24.*;172.25.*;172.26.*;172.27.*;"
+                        + "172.28.*;172.29.*;172.30.*;172.31.*;192.168.*;<local>",
+                        RegistryValueKind.String);
+                    active = true;
+                }
+            }
+            Notify();
+        }
+
+        public static void Restore()
+        {
+            lock (Sync)
+            {
+                if (!active)
+                {
+                    return;
+                }
+                active = false;
+                try
+                {
+                    using (RegistryKey key = Registry.CurrentUser.OpenSubKey(KeyPath, true))
+                    {
+                        if (key == null)
+                        {
+                            return;
+                        }
+                        if (oldEnable != null)
+                        {
+                            key.SetValue("ProxyEnable", oldEnable, RegistryValueKind.DWord);
+                        }
+                        else
+                        {
+                            key.DeleteValue("ProxyEnable", false);
+                        }
+                        if (oldServer != null)
+                        {
+                            key.SetValue("ProxyServer", oldServer, RegistryValueKind.String);
+                        }
+                        else
+                        {
+                            key.DeleteValue("ProxyServer", false);
+                        }
+                        if (oldOverride != null)
+                        {
+                            key.SetValue("ProxyOverride", oldOverride, RegistryValueKind.String);
+                        }
+                        else
+                        {
+                            key.DeleteValue("ProxyOverride", false);
+                        }
+                    }
+                }
+                catch
+                {
+                    // 恢复失败时不影响退出
+                }
+            }
+            Notify();
+        }
+
+        private static void Notify()
+        {
+            try
+            {
+                InternetSetOption(IntPtr.Zero, 39, IntPtr.Zero, 0); // SETTINGS_CHANGED
+                InternetSetOption(IntPtr.Zero, 37, IntPtr.Zero, 0); // REFRESH
+            }
+            catch
+            {
+                // 通知失败时下次系统读取代理设置仍会生效
+            }
+        }
+
+        [DllImport("wininet.dll", SetLastError = true)]
+        private static extern bool InternetSetOption(IntPtr hInternet, int option,
+            IntPtr buffer, int length);
+    }
 
 }

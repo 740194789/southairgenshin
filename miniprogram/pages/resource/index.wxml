@@ -169,7 +169,7 @@
 <name-picker visible="{{pickerVisible}}" game="{{game}}" current="{{selectedChar}}" names="{{charNames}}"
   showTabs="{{false}}" excludeProtagonist="{{true}}" bind:select="onPickChar" bind:close="onClosePicker"/>
 
-<view wx:if="{{editing}}" class="mask" bindtap="closeEdit">
+<view wx:if="{{editing}}" class="mask">
   <view class="modal" catchtap="noop">
     <view class="modal-head">
       <text class="modal-title">编辑资源 · {{g.fullName}}</text>
