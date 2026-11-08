@@ -2,6 +2,8 @@ package com.southair.genshin.module.stats;
 
 import com.southair.genshin.common.GameType;
 import com.southair.genshin.module.resource.ResourceService;
+import com.southair.genshin.module.wish.WishPitySnapshot;
+import com.southair.genshin.module.wish.WishPitySnapshotRepository;
 import com.southair.genshin.module.wish.WishRecord;
 import com.southair.genshin.module.wish.WishRecordRepository;
 import org.springframework.stereotype.Service;
@@ -9,18 +11,26 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class StatsService {
 
     private final WishRecordRepository wishRepository;
+    private final WishPitySnapshotRepository pitySnapshotRepository;
     private final ResourceService resourceService;
 
-    public StatsService(WishRecordRepository wishRepository, ResourceService resourceService) {
+    public StatsService(WishRecordRepository wishRepository,
+                        WishPitySnapshotRepository pitySnapshotRepository,
+                        ResourceService resourceService) {
         this.wishRepository = wishRepository;
+        this.pitySnapshotRepository = pitySnapshotRepository;
         this.resourceService = resourceService;
     }
 
@@ -62,8 +72,9 @@ public class StatsService {
         vo.setRecentWishes(recentSorted);
         List<WishRecord> all = sortChronologically(
                 wishRepository.findByUserIdAndGameOrderByWishTimeAsc(userId, gameKey));
-        applyPityProgress(vo, all.isEmpty() ? null : all.get(all.size() - 1));
-        applyPoolStats(vo, all, gameKey);
+        Map<String, WishPitySnapshot> snapshots = loadSnapshots(userId, gameKey);
+        applyPityProgress(vo, all.isEmpty() ? null : all.get(all.size() - 1), snapshots);
+        applyPoolStats(vo, all, gameKey, snapshots);
         applyLuckStats(vo, all);
         if (!GameType.isStarRail(gameKey)) {
             applyCapturingRadiance(vo, userId, gameKey);
@@ -78,10 +89,36 @@ public class StatsService {
         return sorted;
     }
 
+    /** 读取各卡池的保底快照（链接导入时保存，含被过滤掉的三星 / 四星武器） */
+    private Map<String, WishPitySnapshot> loadSnapshots(Long userId, String game) {
+        Map<String, WishPitySnapshot> snapshots = new HashMap<>();
+        for (WishPitySnapshot item : pitySnapshotRepository.findByUserIdAndGame(userId, game)) {
+            snapshots.put(item.getPool(), item);
+        }
+        return snapshots;
+    }
+
+    /**
+     * 快照比该卡池最新一条记录还新时以快照为准；否则说明导入后又新增 / 修改过记录，
+     * 退回按记录推导，避免用到过期数据。
+     */
+    private static int snapshotPity(int derived, int cap, WishRecord latest, WishPitySnapshot snapshot) {
+        if (snapshot == null || snapshot.getPityCount() == null || snapshot.getUpdatedAt() == null) {
+            return derived;
+        }
+        long latestAt = latest == null || latest.getWishTime() == null ? 0L
+                : latest.getWishTime().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+        if (snapshot.getUpdatedAt() <= latestAt) {
+            return derived;
+        }
+        return Math.max(0, Math.min(cap, snapshot.getPityCount()));
+    }
+
     /**
      * 按卡池统计：保底进度、五星数、五星平均抽数与 UP / 定轨保底状态。
      */
-    private void applyPoolStats(OverviewVO vo, List<WishRecord> all, String game) {
+    private void applyPoolStats(OverviewVO vo, List<WishRecord> all, String game,
+                                Map<String, WishPitySnapshot> snapshots) {
         String[][] pools = GameType.isStarRail(game)
                 ? new String[][]{{"角色活动", "90"}, {"光锥活动", "80"}, {"联动", "90"}, {"常驻", "90"}}
                 : new String[][]{{"角色活动", "90"}, {"武器活动", "80"}, {"集录祈愿", "90"}, {"常驻", "90"}};
@@ -114,6 +151,7 @@ public class StatsService {
                 currentPity = Integer.valueOf(5).equals(latest.getRarity())
                         ? 0 : (latest.getPityCount() == null ? 0 : latest.getPityCount());
             }
+            currentPity = snapshotPity(currentPity, cap, latest, snapshots.get(pool));
 
             OverviewVO.PoolStat stat = new OverviewVO.PoolStat();
             stat.setPool(pool);
@@ -321,12 +359,14 @@ public class StatsService {
      * 保底进度：角色活动 / 常驻上限 90 抽，武器活动（原神）/ 光锥活动（星穹铁道）上限 80 抽。
      * 最近一条记录为五星时，保底计数已重置为 0。
      */
-    private void applyPityProgress(OverviewVO vo, WishRecord latest) {
+    private void applyPityProgress(OverviewVO vo, WishRecord latest,
+                                   Map<String, WishPitySnapshot> snapshots) {
         String pool = latest == null ? null : latest.getPool();
         int cap = ("武器活动".equals(pool) || "光锥活动".equals(pool)) ? 80 : 90;
         int latestCount = latest == null || latest.getPityCount() == null ? 0 : latest.getPityCount();
         boolean latestFiveStar = latest != null && Integer.valueOf(5).equals(latest.getRarity());
         int currentCount = latestFiveStar ? 0 : latestCount;
+        currentCount = snapshotPity(currentCount, cap, latest, pool == null ? null : snapshots.get(pool));
         int pullsToPity = Math.max(cap - currentCount, 0);
 
         vo.setPityPool(pool);

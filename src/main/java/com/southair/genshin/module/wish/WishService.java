@@ -35,10 +35,13 @@ public class WishService {
 
     private final WishRecordRepository repository;
     private final SyncTombstoneRepository tombstoneRepository;
+    private final WishPitySnapshotRepository pitySnapshotRepository;
 
-    public WishService(WishRecordRepository repository, SyncTombstoneRepository tombstoneRepository) {
+    public WishService(WishRecordRepository repository, SyncTombstoneRepository tombstoneRepository,
+                       WishPitySnapshotRepository pitySnapshotRepository) {
         this.repository = repository;
         this.tombstoneRepository = tombstoneRepository;
+        this.pitySnapshotRepository = pitySnapshotRepository;
     }
 
     @Transactional(readOnly = true)
@@ -248,7 +251,7 @@ public class WishService {
      */
     @Transactional(readOnly = true)
     public WishImportResult previewRecords(Long userId, String game, List<WishRecord> records, String mode) {
-        WishImportResult result = doImport(userId, game, records, mode, MAX_IMPORT_RECORDS, false);
+        WishImportResult result = doImport(userId, game, records, mode, MAX_IMPORT_RECORDS, false, null);
         result.setPreview(true);
         return result;
     }
@@ -270,11 +273,21 @@ public class WishService {
     @Transactional
     public WishImportResult importRecords(Long userId, String game, List<WishRecord> records, String mode,
                                           int limit) {
-        return doImport(userId, game, records, mode, limit, true);
+        return doImport(userId, game, records, mode, limit, true, null);
+    }
+
+    /**
+     * 带「各卡池当前保底」快照的导入：链接导入会把被过滤掉的三星 / 四星武器也算进去，
+     * 让统计页的已垫与游戏内计数一致。
+     */
+    @Transactional
+    public WishImportResult importRecords(Long userId, String game, List<WishRecord> records, String mode,
+                                          int limit, Map<String, Integer> pitySnapshot) {
+        return doImport(userId, game, records, mode, limit, true, pitySnapshot);
     }
 
     private WishImportResult doImport(Long userId, String game, List<WishRecord> records, String mode,
-                                      int limit, boolean save) {
+                                      int limit, boolean save, Map<String, Integer> pitySnapshot) {
         if (records == null || records.isEmpty()) {
             throw new BusinessException("没有可导入的抽卡记录");
         }
@@ -338,7 +351,44 @@ public class WishService {
             result.setImported(result.getImported() + 1);
             seen.put(key, seenCount + 1);
         }
+        if (save) {
+            savePitySnapshot(userId, gameKey, pitySnapshot, replace);
+        }
         return result;
+    }
+
+    /**
+     * 保存各卡池当前保底快照。覆盖导入会先清空旧快照；
+     * 没有快照的导入（CSV / JSON 备份）保持记录推导，不做改动。
+     */
+    private void savePitySnapshot(Long userId, String game, Map<String, Integer> snapshot, boolean replace) {
+        if (replace) {
+            pitySnapshotRepository.deleteByUserIdAndGame(userId, game);
+        }
+        if (snapshot == null || snapshot.isEmpty()) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        Map<String, WishPitySnapshot> existing = new HashMap<>();
+        for (WishPitySnapshot item : pitySnapshotRepository.findByUserIdAndGame(userId, game)) {
+            existing.put(item.getPool(), item);
+        }
+        for (Map.Entry<String, Integer> entry : snapshot.entrySet()) {
+            String pool = entry.getKey();
+            if (!StringUtils.hasText(pool) || entry.getValue() == null) {
+                continue;
+            }
+            WishPitySnapshot item = existing.get(pool);
+            if (item == null) {
+                item = new WishPitySnapshot();
+                item.setUserId(userId);
+                item.setGame(game);
+                item.setPool(pool.trim());
+            }
+            item.setPityCount(Math.max(0, entry.getValue()));
+            item.setUpdatedAt(now);
+            pitySnapshotRepository.save(item);
+        }
     }
 
     /**

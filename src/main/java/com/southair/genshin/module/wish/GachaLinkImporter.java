@@ -155,7 +155,7 @@ public class GachaLinkImporter {
             throw new BusinessException("链接中没有读到抽卡记录，authkey 可能已失效，请重新复制");
         }
 
-        applyPity(items);
+        Map<String, Integer> currentPity = applyPity(items);
 
         String uid = extractUid(url);
         List<WishRecord> records = new ArrayList<>(items.size());
@@ -174,7 +174,7 @@ public class GachaLinkImporter {
             record.setEditedAt(now);
             records.add(record);
         }
-        return wishService.importRecords(userId, gameKey, records, mode, MAX_RECORDS);
+        return wishService.importRecords(userId, gameKey, records, mode, MAX_RECORDS, currentPity);
     }
 
     /** 链接 query 中的 uid，用于多 UID 区分；没有则返回 null。 */
@@ -361,13 +361,17 @@ public class GachaLinkImporter {
     /**
      * 按卡池分别累加出货序号，命中五星时记录本次保底抽数并清零，
      * 与游戏内「已累计 X 抽」的口径一致。
+     *
+     * @return 每个卡池最后的累计抽数（未出五星的垫数），用于保存保底快照
      */
-    private void applyPity(List<GachaItem> items) {
+    private Map<String, Integer> applyPity(List<GachaItem> items) {
+        Map<String, Integer> currentPity = new HashMap<>();
         Map<String, List<GachaItem>> byPool = new HashMap<>();
         for (GachaItem item : items) {
             byPool.computeIfAbsent(item.pool, key -> new ArrayList<>()).add(item);
         }
-        for (List<GachaItem> poolItems : byPool.values()) {
+        for (Map.Entry<String, List<GachaItem>> entry : byPool.entrySet()) {
+            List<GachaItem> poolItems = entry.getValue();
             poolItems.sort(Comparator
                     .comparing((GachaItem item) -> item.time)
                     .thenComparingLong(item -> parseId(item.id)));
@@ -379,7 +383,9 @@ public class GachaLinkImporter {
                     count = 0;
                 }
             }
+            currentPity.put(entry.getKey(), count);
         }
+        return currentPity;
     }
 
     private LocalDateTime parseTime(String value) {
