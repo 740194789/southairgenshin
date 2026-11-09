@@ -400,14 +400,27 @@
             + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
     }
 
+    /** 统一成后端要求的 yyyy-MM-dd HH:mm:ss，单位数月份 / 日期 / 时间自动补零 */
     function toApiTime(value) {
         if (!value) {
             return null;
         }
-        if (value.length === 16) {
-            return value.replace('T', ' ') + ':00';
+        var text = String(value).trim().replace('T', ' ');
+        var match = /^(\d{4})\D(\d{1,2})\D(\d{1,2})(?:\D+(\d{1,2})\D(\d{1,2})(?:\D(\d{1,2}))?)?/
+            .exec(text);
+        if (!match) {
+            return text;
         }
-        return value.replace('T', ' ');
+        function pad(part) {
+            var number = Number(part);
+            return (number < 10 ? '0' : '') + number;
+        }
+        var result = match[1] + '-' + pad(match[2]) + '-' + pad(match[3]);
+        if (match[4] === undefined) {
+            return result + ' 00:00:00';
+        }
+        result += ' ' + pad(match[4]) + ':' + pad(match[5]);
+        return result + ':' + (match[6] === undefined ? '00' : pad(match[6]));
     }
 
     var toastTimer = null;
@@ -2763,6 +2776,55 @@
         };
     }
 
+    /** 混池 / 常驻 / 联动：角色与武器都可能出，选名称时不自动改卡池 */
+    function isMixedPool(g, pool) {
+        return pool === '常驻' || pool === '集录祈愿' || pool === '联动';
+    }
+
+    /** 卡池与名称候选联动：武器池只列武器，角色池只列角色，混池列出全部 */
+    function bindWishPoolPicker(form, fields) {
+        var nameField = fields.filter(function (field) { return field.key === 'itemName'; })[0];
+        var poolEl = form.querySelector('[name="pool"]');
+        var nameEl = form.querySelector('[name="itemName"]');
+        if (!nameField || !poolEl || !nameEl) {
+            return;
+        }
+        var trigger = $('.name-picker-trigger[data-picker-key="itemName"]', form);
+        var g = gameConfig();
+        var lists = nameLists(state.game);
+        // 编辑已有记录时名称可能不在五星名单里，用全量名单作为基准，避免被清空
+        var base = (nameField.options || lists.characters.concat(lists.weapons)).slice();
+
+        function candidates(pool) {
+            if (pool === g.weaponPool) {
+                return base.filter(function (name) {
+                    return lists.weapons.indexOf(name) >= 0;
+                });
+            }
+            if (pool === g.charPool) {
+                return base.filter(function (name) {
+                    return lists.weapons.indexOf(name) < 0;
+                });
+            }
+            return base.slice();
+        }
+
+        function apply(pool) {
+            nameField.options = candidates(pool);
+            if (nameEl.value && nameField.options.indexOf(nameEl.value) < 0) {
+                nameEl.value = '';
+                if (trigger) {
+                    updateNameTrigger(trigger, '');
+                }
+            }
+        }
+
+        apply(poolEl.value);
+        poolEl.addEventListener('change', function () {
+            apply(poolEl.value);
+        });
+    }
+
     /** 名称图标：角色取头像、武器 / 光锥取图标，缺失时回退首字 */
     function itemIconUrl(name) {
         var lists = nameLists(state.game);
@@ -2788,7 +2850,21 @@
         var lists = nameLists(state.game);
         var groups;
         if (options.names) {
-            groups = [{ key: 'custom', label: options.label || '可选', list: options.names.slice() }];
+            // 传入限定名单时仍按角色 / 武器分组，只有一类时退化成单页签
+            var chosen = options.names.slice();
+            groups = [
+                { key: 'characters', label: g.itemTypes[0], list: chosen.filter(function (name) {
+                    return lists.weapons.indexOf(name) < 0;
+                }) },
+                { key: 'weapons', label: g.itemTypes[1], list: chosen.filter(function (name) {
+                    return lists.weapons.indexOf(name) >= 0;
+                }) }
+            ].filter(function (group) {
+                return group.list.length > 0;
+            });
+            if (!groups.length) {
+                groups = [{ key: 'custom', label: options.label || '可选', list: chosen }];
+            }
         } else {
             /* 抽卡记录不会出现主角，角色分页里排除 */
             var protagonist = PROTAGONISTS[state.game];
@@ -2803,8 +2879,13 @@
             });
         }
         var active = groups[0] ? groups[0].key : '';
-        if (!options.names && currentName && lists.weapons.indexOf(currentName) >= 0) {
-            active = 'weapons';
+        if (currentName && lists.weapons.indexOf(currentName) >= 0) {
+            var weaponGroup = groups.filter(function (group) {
+                return group.key === 'weapons';
+            })[0];
+            if (weaponGroup) {
+                active = 'weapons';
+            }
         }
 
         var mask = document.createElement('div');
@@ -3038,6 +3119,9 @@
                     openNamePicker(input.value, function (name) {
                         input.value = name;
                         updateNameTrigger(btn, name);
+                        if (typeof opts.onNamePick === 'function') {
+                            opts.onNamePick(key, name, form);
+                        }
                     }, pickerOpts);
                 });
             });
@@ -3104,7 +3188,7 @@
             values[key] = item[key];
         });
         if (type === 'wishes' && item.wishTime) {
-            values.wishTime = String(item.wishTime).replace(' ', 'T').slice(0, 16);
+            values.wishTime = String(item.wishTime).replace(' ', 'T').slice(0, 19);
         }
         return values;
     }
@@ -3123,6 +3207,25 @@
                     return '抽到五星用了多少抽需在 1-90 之间';
                 }
                 return null;
+            },
+            onMount: function (mask, form) {
+                bindWishPoolPicker(form, config.fields);
+            },
+            onNamePick: function (key, name, form) {
+                if (key !== 'itemName') {
+                    return;
+                }
+                var poolEl = form.querySelector('[name="pool"]');
+                if (!poolEl) {
+                    return;
+                }
+                var g = gameConfig();
+                // 混池 / 常驻 / 联动里角色武器都有，保持用户自定义的卡池不动
+                if (isMixedPool(g, poolEl.value)) {
+                    return;
+                }
+                var isWeapon = nameLists(state.game).weapons.indexOf(name) >= 0;
+                poolEl.value = isWeapon ? g.weaponPool : g.charPool;
             }
         }).then(function (data) {
             if (!data) {
