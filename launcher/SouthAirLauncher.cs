@@ -2651,32 +2651,39 @@ namespace SouthAirLauncher
             }
         }
 
-        /** 官方启动器在就直接开启动器（直接运行 YuanShen.exe 会被反作弊拦成 3,0,0） */
+        /** 直接启动游戏本体；只有启动失败时才退回官方启动器 */
         private void StartGame(string gameExe)
         {
-            string launcher = FindGameLauncher(gameExe);
             try
             {
-                if (launcher != null)
-                {
-                    ProcessStartInfo viaLauncher = new ProcessStartInfo(launcher);
-                    viaLauncher.WorkingDirectory = Path.GetDirectoryName(launcher);
-                    viaLauncher.UseShellExecute = true;
-                    Process.Start(viaLauncher);
-                    AppendLog("启动米哈游启动器：" + launcher);
-                    SetStatus("已打开米哈游启动器 · 请在启动器里点「开始游戏」", UiColors.Green, false);
-                    return;
-                }
-
                 ProcessStartInfo info = new ProcessStartInfo(gameExe);
                 info.WorkingDirectory = Path.GetDirectoryName(gameExe);
                 info.UseShellExecute = true;
                 Process.Start(info);
                 AppendLog("启动原神：" + gameExe);
-                SetStatus("已启动原神 · 若提示 3,0,0 请改用米哈游启动器", UiColors.Green, false);
+                SetStatus("已启动原神 · " + Path.GetFileName(gameExe), UiColors.Green, false);
             }
             catch (Exception ex)
             {
+                // 游戏本体拉不起来时，再尝试打开米哈游启动器
+                string launcher = FindGameLauncher(gameExe);
+                if (launcher != null)
+                {
+                    try
+                    {
+                        ProcessStartInfo viaLauncher = new ProcessStartInfo(launcher);
+                        viaLauncher.WorkingDirectory = Path.GetDirectoryName(launcher);
+                        viaLauncher.UseShellExecute = true;
+                        Process.Start(viaLauncher);
+                        AppendLog("直接启动失败，已打开米哈游启动器：" + launcher);
+                        SetStatus("已打开米哈游启动器 · 请在启动器里点「开始游戏」", UiColors.Gold, false);
+                        return;
+                    }
+                    catch
+                    {
+                        // 启动器也失败时走下面的统一提示
+                    }
+                }
                 SetStatus("启动原神失败：" + ex.Message, UiColors.Red, true);
                 SaveGamePath(null);
             }
