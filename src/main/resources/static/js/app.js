@@ -3873,7 +3873,8 @@
                 placeholder: '例如：2025年10月22日20时01分05秒 角色池5抽抽到了莫娜'
             }
         ], null, {
-            hint: '本地离线解析，不联网、不上传。解析后会打开对应表单，确认无误再保存。'
+            hint: '本地离线解析，不联网、不上传。一行一条，可一次粘贴多行批量录入；'
+                + '解析后会先列出结果供核对，确认无误再保存。'
                 + '能听懂：抽卡记录（日期 / 20:01:05 时刻 / 抽数 / 五星 / 角色池·武器池·混池·联动池·常驻池）、'
                 + '账号资源、收藏补充（命座 / 精炼）。',
             submitText: '解析并填充',
@@ -3897,6 +3898,15 @@
                 if (!aiCompact(values.text)) {
                     return '先输入一句话';
                 }
+                var batch = aiWishLines(values.text, state.game);
+                if (batch.lines.length > 1) {
+                    if (batch.failures.length) {
+                        return '第 ' + batch.failures.join('、') + ' 行没解析出来，'
+                            + '参考写法「7抽莫娜 2025年10月22日 20时01分05秒」';
+                    }
+                    parsed = { type: 'batch', items: batch.items };
+                    return null;
+                }
                 parsed = parseNaturalEntry(values.text, state.game);
                 if (!parsed) {
                     return '没解析出来，换个说法试试，例如「10月3日 66抽 出了七七」';
@@ -3906,6 +3916,9 @@
         }).then(function (values) {
             if (!values || !parsed) {
                 return null;
+            }
+            if (parsed.type === 'batch') {
+                return confirmBatchWishes(parsed.items);
             }
             if (parsed.type === 'wish') {
                 toast('已解析：' + parsed.name + ' · ' + parsed.values.pool
@@ -3919,6 +3932,111 @@
             }
             toast(parsed.name + ' 已转成收藏补充');
             return openOwnedForm(parsed.values);
+        });
+    }
+
+    /** 多行文本按行解析：每行一条五星记录，返回成功项与解析失败的行号 */
+    function aiWishLines(raw, game) {
+        var lines = String(raw || '').split(/[\r\n]+/)
+            .map(function (line) { return line.trim(); })
+            .filter(Boolean);
+        var items = [];
+        var failures = [];
+        lines.forEach(function (line, index) {
+            var parsed = parseNaturalEntry(line, game);
+            if (!parsed || parsed.type !== 'wish') {
+                failures.push(index + 1);
+                return;
+            }
+            items.push(parsed);
+        });
+        return { lines: lines, items: items, failures: failures };
+    }
+
+    /** 批量录入：先列出解析结果供核对，确认后一次提交，重复记录由后端自动跳过 */
+    function confirmBatchWishes(items) {
+        var g = gameConfig();
+        var lists = nameLists(state.game);
+        var characterType = g.itemTypes[0];
+        var weaponType = g.itemTypes[1];
+        var records = items.map(function (item) {
+            var isWeapon = lists.weapons.indexOf(item.name) >= 0;
+            var pool = item.values.pool;
+            var itemType = isWeapon ? weaponType : characterType;
+            return {
+                itemName: item.name,
+                rarity: 5,
+                itemType: itemType,
+                pool: pool,
+                isUp: inferIsUp(state.game, pool, item.name, itemType),
+                pityCount: item.values.pityCount || 1,
+                wishTime: toApiTime(item.values.wishTime)
+            };
+        });
+
+        return new Promise(function (resolve) {
+            var mask = document.createElement('div');
+            mask.className = 'modal-mask';
+            mask.innerHTML = '<div class="modal ai-batch-modal">'
+                + '<header><h3>批量录入确认 · ' + esc(g.fullName) + '</h3>'
+                + '<button class="modal-close" type="button" aria-label="关闭">×</button></header>'
+                + '<p class="modal-hint">共 ' + records.length + ' 条五星记录；UP 按常驻名单自动判断，'
+                + '确认后一次性导入，重复记录会自动跳过。</p>'
+                + '<div class="modal-body"><ul class="ai-batch-list">'
+                + records.map(function (record, index) {
+                    return '<li class="ai-batch-row">'
+                        + '<span class="ai-batch-index">' + (index + 1) + '</span>'
+                        + '<span class="ai-batch-name">' + esc(record.itemName) + '</span>'
+                        + '<span class="ai-batch-pool">' + esc(poolLabel(record.pool)) + '</span>'
+                        + '<span class="ai-batch-pity">' + record.pityCount + ' 抽</span>'
+                        + '<span class="ai-batch-time">' + esc(String(record.wishTime).slice(0, 19)) + '</span>'
+                        + (record.isUp ? '<span class="pool-tag up">UP</span>' : '')
+                        + '</li>';
+                }).join('')
+                + '</ul></div>'
+                + '<footer class="modal-foot">'
+                + '<button type="button" class="btn btn-text modal-cancel">取消</button>'
+                + '<button type="button" class="btn btn-primary modal-confirm">确认导入</button>'
+                + '</footer></div>';
+            document.body.appendChild(mask);
+            document.body.style.overflow = 'hidden';
+
+            function close(result) {
+                mask.remove();
+                document.body.style.overflow = '';
+                resolve(result);
+            }
+
+            $('.modal-close', mask).addEventListener('click', function () {
+                close(null);
+            });
+            $('.modal-cancel', mask).addEventListener('click', function () {
+                close(null);
+            });
+            $('.modal-confirm', mask).addEventListener('click', function () {
+                var button = this;
+                button.disabled = true;
+                button.textContent = '正在导入…';
+                api('/api/wishes/import?format=json&mode=merge', {
+                    method: 'POST',
+                    body: records
+                }).then(close).catch(function (err) {
+                    button.disabled = false;
+                    button.textContent = '确认导入';
+                    toast(err && err.message ? err.message : '导入失败', 'error');
+                });
+            });
+        }).then(function (result) {
+            if (!result) {
+                return null;
+            }
+            toast('批量导入完成：新增 ' + result.imported + ' 条'
+                + (result.skipped ? '，跳过重复 ' + result.skipped + ' 条' : '')
+                + (result.filtered ? '，忽略 ' + result.filtered + ' 条' : ''));
+            if ($('#wish-list')) {
+                refreshWishList();
+            }
+            return result;
         });
     }
 

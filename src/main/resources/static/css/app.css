@@ -2936,6 +2936,52 @@ body.game-starrail {
     color: var(--text);
 }
 
+.ai-batch-modal {
+    max-width: 560px;
+}
+
+.ai-batch-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 52vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.ai-batch-row {
+    display: grid;
+    grid-template-columns: 28px minmax(72px, 1.2fr) minmax(64px, 1fr) 56px minmax(120px, 1.4fr) auto;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.03);
+    font-size: 13px;
+}
+
+.ai-batch-index {
+    color: var(--muted);
+    font-size: 12px;
+    text-align: right;
+}
+
+.ai-batch-name {
+    color: var(--text);
+    font-weight: 600;
+}
+
+.ai-batch-pool,
+.ai-batch-pity,
+.ai-batch-time {
+    color: var(--muted);
+    font-size: 12px;
+    white-space: nowrap;
+}
+
 .modal-foot {
     grid-column: 1 / -1;
     display: flex;

@@ -50,20 +50,39 @@ namespace SouthAirLauncher
             GC.KeepAlive(mutex);
         }
 
-        /** 上次自更新把运行中的 exe 改名为 .old，新进程启动时把它清掉 */
+        /** 启动时清理上次更新留下的旧文件：旧 exe、旧 jar 备份与下载临时文件 */
         private static void CleanupOldLauncher()
         {
+            string dir = AppDomain.CurrentDomain.BaseDirectory;
+            TryDelete(Application.ExecutablePath + ".old");
+            TryDelete(Path.Combine(dir, "SouthAirLauncher.new.exe"));
+            TryDelete(Path.Combine(dir, "南空提瓦特小助手.jar.bak"));
+            TryDelete(Path.Combine(dir, "南空提瓦特小助手.jar.new"));
             try
             {
-                string old = Application.ExecutablePath + ".old";
-                if (File.Exists(old))
+                foreach (string path in Directory.GetFiles(dir, "*.new"))
                 {
-                    File.Delete(old);
+                    TryDelete(path);
                 }
             }
             catch
             {
-                // 旧文件仍被占用时留着，下次启动再清
+                // 目录不可读时跳过，不影响启动
+            }
+        }
+
+        private static void TryDelete(string path)
+        {
+            try
+            {
+                if (File.Exists(path))
+                {
+                    File.Delete(path);
+                }
+            }
+            catch
+            {
+                // 仍被占用时留着，下次启动再清
             }
         }
 
