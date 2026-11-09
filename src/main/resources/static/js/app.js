@@ -3497,11 +3497,12 @@
         return fields;
     }
 
-    function editResource(resource, overrides) {
+    function editResource(resource, overrides, batchLines) {
         var g = gameConfig();
         var fields = resourceFormFields(resource, overrides);
         return openForm('编辑账号资源 · ' + g.fullName, fields, null, {
-            hint: '1 抽 = ' + resource.primogemsPerPull + ' ' + g.currency
+            hint: (batchLines > 1 ? '已从 ' + batchLines + ' 行文本解析并填入下方数值，核对后保存。' : '')
+                + '1 抽 = ' + resource.primogemsPerPull + ' ' + g.currency
                 + '；每日额度按自然日自动累加到资源，手动修改资产或额度后从当天重新计',
             submitText: '保存资源'
         }).then(function (values) {
@@ -3785,8 +3786,8 @@
         return best ? best.value : null;
     }
 
-    /** 收藏补充：按名称判断分栏，命座 / 精炼折算额外数量 */
-    function aiOwnedValues(text, game, name) {
+    /** 收藏补充：按名称判断分栏，并把「N命 / 精N」换算成目标总份数（C0 = 1 份） */
+    function aiOwnedTarget(text, game, name) {
         var lists = nameLists(game);
         var category = 'characters5';
         if (lists.weapons.indexOf(name) >= 0) {
@@ -3794,28 +3795,40 @@
         } else if (isFourStarCharacter(game, name)) {
             category = 'characters4';
         }
-        var copies = 1;
+        var target = 1;
         if (category === 'weapons5') {
-            var refine = /精[炼]?\s*([0-9一二两三四五])(?![\d])/.exec(text)
-                || /([0-9一二两三四五])\s*精/.exec(text);
-            copies = refine ? aiNumber(refine[1]) : 1;
-            if (!isFinite(copies) || copies < 1) {
-                copies = 1;
+            if (/满精/.test(text)) {
+                target = 5;
+            } else {
+                var refine = /精[炼]?\s*([0-9一二两三四五])(?![\d])/.exec(text)
+                    || /([0-9一二两三四五])\s*精/.exec(text);
+                target = refine ? aiNumber(refine[1]) : 1;
             }
-            copies = Math.min(5, copies);
+            if (!isFinite(target) || target < 1) {
+                target = 1;
+            }
+            target = Math.min(5, target);
         } else {
-            var con = /([0-9一二两三四五六])\s*命/.exec(text);
             if (/满命/.test(text)) {
-                copies = 7;
-            } else if (con) {
-                copies = (aiNumber(con[1]) || 0) + 1;
+                target = 7;
+            } else {
+                var con = /([0-9一二两三四五六])\s*命/.exec(text);
+                target = con ? (aiNumber(con[1]) || 0) + 1 : 1;
             }
-            if (!isFinite(copies) || copies < 1) {
-                copies = 1;
+            if (!isFinite(target) || target < 1) {
+                target = 1;
             }
-            copies = Math.min(6, copies);
+            target = Math.min(7, target);
         }
-        return { category: category, name: name, copies: copies };
+        return { category: category, name: name, target: target };
+    }
+
+    /** 目标份数 → 展示用徽标：角色 C0–C6，武器 R1–R5 */
+    function ownedBadgeText(category, copies) {
+        if (category === 'weapons5') {
+            return 'R' + Math.min(5, Math.max(1, Number(copies) || 1));
+        }
+        return 'C' + Math.min(6, Math.max(0, (Number(copies) || 1) - 1));
     }
 
     /** 一句话 → 动作类型 + 预填字段；解析不出来返回 null */
@@ -3850,7 +3863,7 @@
         var lists = nameLists(game);
         var owned = hit || aiMatchName(text, lists.characters.concat(lists.weapons));
         if (owned) {
-            return { type: 'owned', name: owned.name, values: aiOwnedValues(text, game, owned.name) };
+            return { type: 'owned', name: owned.name, values: aiOwnedTarget(text, game, owned.name) };
         }
         return null;
     }
@@ -3858,10 +3871,10 @@
     function openAiInput() {
         var g = gameConfig();
         var examples = state.game === 'genshin'
-            ? ['2025年10月22日20时01分05秒 角色池5抽抽到了莫娜', '2025-10-22 20:01:05 混池 30抽出了天空之刃',
-                '我现在有600原石', '原石9195，摩拉22219696，纠缠之缘12', '七七2命，天空之刃精2']
-            : ['2025年10月22日 20:01:05 角色池66抽出了姬子', '联动池40抽出了Saber',
-                '我现在有600星琼', '星琼91950，信用点22219696，星轨专票12', '三月七3命，于夜色中精2'];
+            ? ['7抽莫娜 2025年10月22日 20时01分05秒', '混池 30抽出了天空之刃',
+                '我现在有600原石', '原石9195\n摩拉22219696\n纠缠之缘12', '七七2命\n天空之刃精2\n芙宁娜满命']
+            : ['66抽姬子 2025年10月22日 20:01:05', '联动池40抽出了Saber',
+                '我现在有600星琼', '星琼91950\n信用点22219696\n星轨专票12', '三月七3命\n于夜色中精2'];
         var parsed = null;
 
         return openForm('AI 录入 · ' + g.fullName, [
@@ -3870,13 +3883,11 @@
                 label: '用一句话说清楚',
                 type: 'textarea',
                 full: true,
-                placeholder: '例如：2025年10月22日20时01分05秒 角色池5抽抽到了莫娜'
+                placeholder: '一行一条，例如：7抽莫娜 2025年10月22日 20时01分05秒'
             }
         ], null, {
-            hint: '本地离线解析，不联网、不上传。一行一条，可一次粘贴多行批量录入；'
-                + '解析后会先列出结果供核对，确认无误再保存。'
-                + '能听懂：抽卡记录（日期 / 20:01:05 时刻 / 抽数 / 五星 / 角色池·武器池·混池·联动池·常驻池）、'
-                + '账号资源、收藏补充（命座 / 精炼）。',
+            hint: '本地离线解析，不联网、不上传。一行一条，可一次粘贴多行批量录入（抽卡 / 资源 / 收藏各自一份列表）；'
+                + '多行时请保持同一类型。收藏补充写「几命 / 精几」即可，会按抽卡记录自动算出还差几份。',
             submitText: '解析并填充',
             onMount: function (mask, form) {
                 var area = $('textarea[name="text"]', form);
@@ -3898,18 +3909,21 @@
                 if (!aiCompact(values.text)) {
                     return '先输入一句话';
                 }
-                var batch = aiWishLines(values.text, state.game);
+                var batch = aiBatch(values.text, state.game);
                 if (batch.lines.length > 1) {
                     if (batch.failures.length) {
                         return '第 ' + batch.failures.join('、') + ' 行没解析出来，'
-                            + '参考写法「7抽莫娜 2025年10月22日 20时01分05秒」';
+                            + '参考写法「7抽莫娜 2025年10月22日 20时01分05秒」「七七2命」';
                     }
-                    parsed = { type: 'batch', items: batch.items };
+                    if (!batch.type) {
+                        return '批量录入请只放同一类内容：抽卡记录、账号资源或收藏补充';
+                    }
+                    parsed = batch;
                     return null;
                 }
                 parsed = parseNaturalEntry(values.text, state.game);
                 if (!parsed) {
-                    return '没解析出来，换个说法试试，例如「10月3日 66抽 出了七七」';
+                    return '没解析出来，换个说法试试，例如「10月3日 66抽 出了七七」「七七2命」';
                 }
                 return null;
             }
@@ -3917,8 +3931,8 @@
             if (!values || !parsed) {
                 return null;
             }
-            if (parsed.type === 'batch') {
-                return confirmBatchWishes(parsed.items);
+            if (parsed.items) {
+                return aiApplyBatch(parsed);
             }
             if (parsed.type === 'wish') {
                 toast('已解析：' + parsed.name + ' · ' + parsed.values.pool
@@ -3930,73 +3944,169 @@
                     return editResource(resource, parsed.values);
                 });
             }
-            toast(parsed.name + ' 已转成收藏补充');
-            return openOwnedForm(parsed.values);
+            return openOwnedByTarget(parsed.values);
         });
     }
 
-    /** 多行文本按行解析：每行一条五星记录，返回成功项与解析失败的行号 */
-    function aiWishLines(raw, game) {
+    /** 多行文本按行解析：支持抽卡、资源、收藏三类，返回统一的批量结果 */
+    function aiBatch(raw, game) {
         var lines = String(raw || '').split(/[\r\n]+/)
             .map(function (line) { return line.trim(); })
             .filter(Boolean);
         var items = [];
+        var resources = {};
         var failures = [];
+        var types = [];
         lines.forEach(function (line, index) {
-            var parsed = parseNaturalEntry(line, game);
-            if (!parsed || parsed.type !== 'wish') {
+            var one = parseNaturalEntry(line, game);
+            if (!one) {
                 failures.push(index + 1);
                 return;
             }
-            items.push(parsed);
+            if (one.type === 'resource') {
+                Object.keys(one.values).forEach(function (key) {
+                    resources[key] = one.values[key];
+                });
+            } else {
+                items.push(one);
+            }
+            types.push(one.type);
         });
-        return { lines: lines, items: items, failures: failures };
+        var type = '';
+        if (types.length) {
+            type = types.every(function (item) { return item === types[0]; }) ? types[0] : '';
+        }
+        return { lines: lines, items: items, resources: resources, failures: failures, type: type };
     }
 
-    /** 批量录入：先列出解析结果供核对，确认后一次提交，重复记录由后端自动跳过 */
-    function confirmBatchWishes(items) {
-        var g = gameConfig();
-        var lists = nameLists(state.game);
-        var characterType = g.itemTypes[0];
-        var weaponType = g.itemTypes[1];
-        var records = items.map(function (item) {
-            var isWeapon = lists.weapons.indexOf(item.name) >= 0;
-            var pool = item.values.pool;
-            var itemType = isWeapon ? weaponType : characterType;
-            return {
-                itemName: item.name,
-                rarity: 5,
-                itemType: itemType,
-                pool: pool,
-                isUp: inferIsUp(state.game, pool, item.name, itemType),
-                pityCount: item.values.pityCount || 1,
-                wishTime: toApiTime(item.values.wishTime)
-            };
+    function aiApplyBatch(batch) {
+        if (batch.type === 'wish') {
+            return confirmBatchWishes(batch.items);
+        }
+        if (batch.type === 'owned') {
+            return confirmBatchOwned(batch.items);
+        }
+        return api('/api/resources').then(function (resource) {
+            toast('已解析 ' + batch.lines.length + ' 行资源');
+            return editResource(resource, batch.resources, batch.lines.length);
         });
+    }
 
+    /** 拉取收藏里每个条目的抽卡数量，用于计算「还差几份到 C/R」 */
+    function collectionTotals() {
+        return api('/api/wishes/collection').then(function (items) {
+            var defs = collectionDefs(gameConfig());
+            var totals = {};
+            (items || []).forEach(function (item) {
+                var section = collectionSectionOf(item, defs);
+                if (!section) {
+                    return;
+                }
+                totals[section + '|' + item.itemName] = Number(item.count) || 0;
+            });
+            return totals;
+        });
+    }
+
+    /** 目标份数 - (抽卡数量 + 手动补充) = 还需要补充的份数 */
+    function ownedPlan(totals, owned, values) {
+        var key = values.category + '|' + values.name;
+        var manual = owned[values.category] ? Number(owned[values.category][values.name]) || 0 : 0;
+        var current = (totals[key] || 0) + manual;
+        return {
+            category: values.category,
+            name: values.name,
+            target: values.target,
+            current: current,
+            delta: Math.max(0, values.target - current)
+        };
+    }
+
+    /** 单条收藏补充：按「说到几命就补到几命」计算需要补的份数 */
+    function openOwnedByTarget(values) {
+        return Promise.all([collectionTotals(), Promise.resolve(loadOwnedData())]).then(function (result) {
+            var plan = ownedPlan(result[0], result[1], values);
+            var badge = ownedBadgeText(plan.category, plan.target);
+            if (plan.delta === 0) {
+                toast(plan.name + ' 已是 ' + badge + '，无需补充');
+                return loadCollection();
+            }
+            toast(plan.name + ' 目标 ' + badge + ' · 需补 ' + plan.delta + ' 份');
+            return openOwnedForm({
+                category: plan.category,
+                name: plan.name,
+                copies: plan.delta,
+                hint: '目标 ' + badge + '：抽卡记录已有 ' + plan.current + ' 份，补 ' + plan.delta + ' 份即可。'
+            });
+        });
+    }
+
+    /** 批量收藏补充：先列出每个条目要补多少份，确认后一次写入本机 */
+    function confirmBatchOwned(items) {
+        return Promise.all([collectionTotals(), Promise.resolve(loadOwnedData())]).then(function (result) {
+            var totals = result[0];
+            var owned = result[1];
+            var defs = collectionDefs(gameConfig());
+            var plans = items.map(function (item) {
+                return ownedPlan(totals, owned, item.values);
+            });
+            var rows = plans.map(function (plan) {
+                var title = defs.filter(function (def) {
+                    return def.key === plan.category;
+                }).map(function (def) {
+                    return def.title;
+                })[0] || '';
+                return [
+                    plan.name,
+                    title,
+                    '目标 ' + ownedBadgeText(plan.category, plan.target),
+                    plan.delta > 0 ? '补 ' + plan.delta + ' 份' : '已达标'
+                ];
+            });
+            return confirmAiBatch('批量录入确认 · 收藏',
+                '共 ' + plans.length + ' 条；按「说到几命就补到几命」计算，'
+                + '已够的不会重复叠加，确认后写入本机收藏。',
+                '确认补充', rows, function () {
+                    var data = loadOwnedData();
+                    var added = 0;
+                    plans.forEach(function (plan) {
+                        if (plan.delta <= 0) {
+                            return;
+                        }
+                        data[plan.category][plan.name] = (Number(data[plan.category][plan.name]) || 0)
+                            + plan.delta;
+                        added += plan.delta;
+                    });
+                    saveOwnedData(data);
+                    toast('收藏补充完成：共补 ' + added + ' 份');
+                    return loadCollection();
+                });
+        });
+    }
+
+    /** 通用批量确认弹窗：rows 为每行的单元格文本 */
+    function confirmAiBatch(title, hint, confirmText, rows, run) {
         return new Promise(function (resolve) {
             var mask = document.createElement('div');
             mask.className = 'modal-mask';
             mask.innerHTML = '<div class="modal ai-batch-modal">'
-                + '<header><h3>批量录入确认 · ' + esc(g.fullName) + '</h3>'
+                + '<header><h3>' + esc(title) + '</h3>'
                 + '<button class="modal-close" type="button" aria-label="关闭">×</button></header>'
-                + '<p class="modal-hint">共 ' + records.length + ' 条五星记录；UP 按常驻名单自动判断，'
-                + '确认后一次性导入，重复记录会自动跳过。</p>'
+                + '<p class="modal-hint">' + esc(hint) + '</p>'
                 + '<div class="modal-body"><ul class="ai-batch-list">'
-                + records.map(function (record, index) {
+                + rows.map(function (cells, index) {
                     return '<li class="ai-batch-row">'
                         + '<span class="ai-batch-index">' + (index + 1) + '</span>'
-                        + '<span class="ai-batch-name">' + esc(record.itemName) + '</span>'
-                        + '<span class="ai-batch-pool">' + esc(poolLabel(record.pool)) + '</span>'
-                        + '<span class="ai-batch-pity">' + record.pityCount + ' 抽</span>'
-                        + '<span class="ai-batch-time">' + esc(String(record.wishTime).slice(0, 19)) + '</span>'
-                        + (record.isUp ? '<span class="pool-tag up">UP</span>' : '')
+                        + '<span class="ai-batch-name">' + esc(cells[0]) + '</span>'
+                        + cells.slice(1).map(function (cell) {
+                            return '<span class="ai-batch-meta">' + esc(cell) + '</span>';
+                        }).join('')
                         + '</li>';
                 }).join('')
                 + '</ul></div>'
                 + '<footer class="modal-foot">'
                 + '<button type="button" class="btn btn-text modal-cancel">取消</button>'
-                + '<button type="button" class="btn btn-primary modal-confirm">确认导入</button>'
+                + '<button type="button" class="btn btn-primary modal-confirm">' + esc(confirmText) + '</button>'
                 + '</footer></div>';
             document.body.appendChild(mask);
             document.body.style.overflow = 'hidden';
@@ -4016,28 +4126,65 @@
             $('.modal-confirm', mask).addEventListener('click', function () {
                 var button = this;
                 button.disabled = true;
-                button.textContent = '正在导入…';
-                api('/api/wishes/import?format=json&mode=merge', {
+                button.textContent = '正在处理…';
+                Promise.resolve()
+                    .then(run)
+                    .then(close)
+                    .catch(function (err) {
+                        button.disabled = false;
+                        button.textContent = confirmText;
+                        toast(err && err.message ? err.message : '处理失败', 'error');
+                    });
+            });
+        });
+    }
+
+    /** 批量录入抽卡记录：列出解析结果供核对，确认后一次提交，重复记录自动跳过 */
+    function confirmBatchWishes(items) {
+        var g = gameConfig();
+        var lists = nameLists(state.game);
+        var characterType = g.itemTypes[0];
+        var weaponType = g.itemTypes[1];
+        var records = items.map(function (item) {
+            var isWeapon = lists.weapons.indexOf(item.name) >= 0;
+            var pool = item.values.pool;
+            var itemType = isWeapon ? weaponType : characterType;
+            return {
+                itemName: item.name,
+                rarity: 5,
+                itemType: itemType,
+                pool: pool,
+                isUp: inferIsUp(state.game, pool, item.name, itemType),
+                pityCount: item.values.pityCount || 1,
+                wishTime: toApiTime(item.values.wishTime)
+            };
+        });
+        var rows = records.map(function (record) {
+            return [
+                record.itemName,
+                poolLabel(record.pool),
+                record.pityCount + ' 抽',
+                String(record.wishTime).slice(0, 19),
+                record.isUp ? 'UP' : '歪'
+            ];
+        });
+        return confirmAiBatch('批量录入确认 · ' + g.fullName,
+            '共 ' + records.length + ' 条五星记录；UP 按常驻名单自动判断，'
+            + '确认后一次性导入，重复记录会自动跳过。',
+            '确认导入', rows, function () {
+                return api('/api/wishes/import?format=json&mode=merge', {
                     method: 'POST',
                     body: records
-                }).then(close).catch(function (err) {
-                    button.disabled = false;
-                    button.textContent = '确认导入';
-                    toast(err && err.message ? err.message : '导入失败', 'error');
+                }).then(function (result) {
+                    toast('批量导入完成：新增 ' + result.imported + ' 条'
+                        + (result.skipped ? '，跳过重复 ' + result.skipped + ' 条' : '')
+                        + (result.filtered ? '，忽略 ' + result.filtered + ' 条' : ''));
+                    if ($('#wish-list')) {
+                        refreshWishList();
+                    }
+                    return result;
                 });
             });
-        }).then(function (result) {
-            if (!result) {
-                return null;
-            }
-            toast('批量导入完成：新增 ' + result.imported + ' 条'
-                + (result.skipped ? '，跳过重复 ' + result.skipped + ' 条' : '')
-                + (result.filtered ? '，忽略 ' + result.filtered + ' 条' : ''));
-            if ($('#wish-list')) {
-                refreshWishList();
-            }
-            return result;
-        });
     }
 
     /* ---------------- 实时抓图（启动器每秒回传原神窗口画面） ---------------- */
@@ -5688,11 +5835,11 @@
                 type: 'number',
                 full: true,
                 min: 1,
-                max: 6,
+                max: 7,
                 default: seed.copies || 1
             }
         ], null, {
-            hint: '类别决定分栏；额外数量会叠加到抽卡记录统计，角色按命座展示（最高 C6），武器按精炼展示（最高 R5）。',
+            hint: seed.hint || '类别决定分栏；额外数量会叠加到抽卡记录统计，角色按命座展示（最高 C6），武器按精炼展示（最高 R5）。',
             submitText: '保存',
             onMount: function (mask) {
                 var categoryEl = $('select[name="category"]', mask);
@@ -5714,8 +5861,8 @@
                     return '请选择角色 / 物品';
                 }
                 var copies = Number(values.copies);
-                if (!isFinite(copies) || copies < 1 || copies > 6) {
-                    return '额外数量需在 1–6 之间';
+                if (!isFinite(copies) || copies < 1 || copies > 7) {
+                    return '额外数量需在 1–7 之间';
                 }
                 return null;
             }

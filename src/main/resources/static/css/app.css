@@ -2952,10 +2952,9 @@ body.game-starrail {
 }
 
 .ai-batch-row {
-    display: grid;
-    grid-template-columns: 28px minmax(72px, 1.2fr) minmax(64px, 1fr) 56px minmax(120px, 1.4fr) auto;
+    display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
     padding: 7px 10px;
     border: 1px solid var(--line);
     border-radius: 8px;
@@ -2964,19 +2963,21 @@ body.game-starrail {
 }
 
 .ai-batch-index {
+    flex: 0 0 24px;
     color: var(--muted);
     font-size: 12px;
     text-align: right;
 }
 
 .ai-batch-name {
+    flex: 1 1 auto;
+    min-width: 72px;
     color: var(--text);
     font-weight: 600;
 }
 
-.ai-batch-pool,
-.ai-batch-pity,
-.ai-batch-time {
+.ai-batch-meta {
+    flex: 0 0 auto;
     color: var(--muted);
     font-size: 12px;
     white-space: nowrap;
