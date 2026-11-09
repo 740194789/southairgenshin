@@ -1,5 +1,6 @@
 server:
-  port: 8080
+  # 25380 起相对不易被占用；启动器会在此基础上自动顺延寻找空闲端口
+  port: 25380
   servlet:
     encoding:
       charset: UTF-8

@@ -438,8 +438,15 @@ namespace SouthAirLauncher
 
     internal class LauncherForm : Form
     {
-        private const int Port = 8080;
-        private const string ServiceUrl = "http://127.0.0.1:8080/";
+        /** 首选端口：避开 8080 这类常被开发工具、其它服务占用的端口 */
+        private const int PreferredPort = 25380;
+        /** 首选端口被占用时向后顺延尝试的个数 */
+        private const int PortSearchSpan = 20;
+        private int port = PreferredPort;
+        private string ServiceUrl
+        {
+            get { return "http://127.0.0.1:" + port + "/"; }
+        }
         private const int MaxTicks = 240; // 400ms * 240 ≈ 96 秒
         private const string RepoLatestRelease =
             "https://api.github.com/repos/740194789/southairgenshin/releases/latest";
@@ -925,7 +932,7 @@ namespace SouthAirLauncher
             versionLabel = new Label();
             versionLabel.AutoSize = false;
             versionLabel.Text = "v" + (localVersion.Length > 0 ? localVersion : "1.5.0")
-                + " · 本地端口 " + Port;
+                + " · 本地端口 " + port;
             versionLabel.ForeColor = UiColors.TextFaint;
             versionLabel.Font = new Font("Microsoft YaHei UI", 8f);
             versionLabel.SetBounds(30, 198, 204, 20);
@@ -1152,9 +1159,11 @@ namespace SouthAirLauncher
                 ShowError("缺少内置 Java 运行环境（jre\\bin\\java.exe），请重新解压完整绿色版。");
                 return;
             }
-            if (PortOpen(Port))
+            port = ResolvePort();
+            if (port <= 0)
             {
-                ShowError("端口 " + Port + " 已被占用，请先关闭其它南空提瓦特小助手或占用该端口的程序。");
+                ShowError("端口 " + PreferredPort + " ~ " + (PreferredPort + PortSearchSpan)
+                    + " 都被占用，请关闭占用这些端口的程序后重试。");
                 return;
             }
 
@@ -1176,7 +1185,7 @@ namespace SouthAirLauncher
                 ProcessStartInfo info = new ProcessStartInfo();
                 info.FileName = javaPath;
                 info.Arguments = "-Xms64m -Xmx512m -Dfile.encoding=UTF-8 -jar \"" + jarPath
-                    + "\" --server.port=" + Port;
+                    + "\" --server.port=" + port;
                 info.WorkingDirectory = baseDir;
                 info.UseShellExecute = false;
                 info.CreateNoWindow = true;
@@ -1237,16 +1246,16 @@ namespace SouthAirLauncher
             {
                 if (ticks % 10 == 0)
                 {
-                    SetStatus("本地服务运行中 · 端口 " + Port, UiColors.Green, false);
+                    SetStatus("本地服务运行中 · 端口 " + port, UiColors.Green, false);
                 }
                 return;
             }
 
-            if (PortOpen(Port))
+            if (PortOpen(port))
             {
                 serviceReady = true;
                 pollTimer.Stop();
-                SetStatus("本地服务运行中 · 端口 " + Port, UiColors.Green, false);
+                SetStatus("本地服务运行中 · 端口 " + port, UiColors.Green, false);
                 AppendLog("本地服务就绪，正在打开内嵌界面。");
                 ShowWeb();
                 return;
@@ -2274,7 +2283,7 @@ namespace SouthAirLauncher
         {
             if (serviceReady)
             {
-                SetStatus("本地服务运行中 · 端口 " + Port, UiColors.Green, false);
+                SetStatus("本地服务运行中 · 端口 " + port, UiColors.Green, false);
             }
             else
             {
@@ -3125,6 +3134,23 @@ namespace SouthAirLauncher
             }
             javaProcess = null;
             serviceReady = false;
+        }
+
+        /** 选一个可用端口：优先 25380，被其它程序占用就顺延找空位，全部占用返回 0 */
+        private static int ResolvePort()
+        {
+            if (!PortOpen(PreferredPort))
+            {
+                return PreferredPort;
+            }
+            for (int candidate = PreferredPort + 1; candidate <= PreferredPort + PortSearchSpan; candidate++)
+            {
+                if (!PortOpen(candidate))
+                {
+                    return candidate;
+                }
+            }
+            return 0;
         }
 
         private static bool PortOpen(int port)
