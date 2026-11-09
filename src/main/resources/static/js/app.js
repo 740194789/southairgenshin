@@ -2970,8 +2970,8 @@
         }
         var attrs = ' name="' + field.key + '" value="' + esc(valueText) + '"';
         if (field.type === 'datetime') {
-            attrs += ' type="text" placeholder="YYYY-MM-DD HH:mm" autocomplete="off"'
-                + ' maxlength="16" data-datetime="1"';
+            attrs += ' type="text" placeholder="YYYY-MM-DD HH:mm 或 HH:mm:ss" autocomplete="off"'
+                + ' maxlength="19" data-datetime="1"';
         } else {
             attrs += ' type="' + (field.type || 'text') + '"';
         }
@@ -3616,21 +3616,35 @@
         return found ? values : null;
     }
 
-    /** 抽卡时间：绝对日期、相对日期、可选时刻 */
+    /** 抽卡时间：绝对日期、相对日期与可选时刻（支持 20:01:05、20时01分05秒） */
     function aiWishTime(text) {
         var now = new Date();
         var h = 12;
         var mi = 0;
-        var dateText = /(\d{1,2})[:：](\d{1,2})/.exec(text);
-        var hourText = /(上午|中午|下午|晚上)?(\d{1,2})点(?:(\d{1,2})分?)?/.exec(text);
-        if (dateText) {
-            h = Number(dateText[1]);
-            mi = Number(dateText[2]);
-        } else if (hourText) {
-            h = Number(hourText[2]);
-            mi = hourText[3] ? Number(hourText[3]) : 0;
-            if (/下午|晚上/.test(hourText[1] || '') && h < 12) {
+        var sec = null;
+        // 24 小时制：20:01 或 20:01:05
+        var clock = /(\d{1,2})\s*[:：]\s*(\d{1,2})(?:\s*[:：]\s*(\d{1,2}))?/.exec(text);
+        // 口语：下午3点 / 20时01分05秒 / 8点20分
+        var spoken = /(上午|中午|下午|傍晚|晚上|凌晨|清晨|早上)?\s*(\d{1,2})\s*[点时](?:\s*(\d{1,2})\s*分?)?(?:\s*(\d{1,2})\s*秒)?/
+            .exec(text);
+        if (clock) {
+            h = Number(clock[1]);
+            mi = Number(clock[2]);
+            if (clock[3] !== undefined) {
+                sec = Number(clock[3]);
+            }
+        } else if (spoken) {
+            var period = spoken[1] || '';
+            h = Number(spoken[2]);
+            mi = spoken[3] ? Number(spoken[3]) : 0;
+            if (spoken[4] !== undefined) {
+                sec = Number(spoken[4]);
+            }
+            if (/下午|傍晚|晚上/.test(period) && h < 12) {
                 h += 12;
+            }
+            if (/凌晨|清晨|早上|上午/.test(period) && h === 12) {
+                h = 0;
             }
         }
         if (h > 23) {
@@ -3638,6 +3652,9 @@
         }
         if (mi > 59) {
             mi = 59;
+        }
+        if (sec !== null && (sec > 59 || isNaN(sec))) {
+            sec = null;
         }
 
         var y = now.getFullYear();
@@ -3662,7 +3679,7 @@
         } else if (/昨天|昨日|昨晚/.test(text)) {
             d -= 1;
         }
-        if (!dateText && !hourText && relative) {
+        if (!clock && !spoken && relative) {
             h = now.getHours();
             mi = now.getMinutes();
         }
@@ -3671,8 +3688,10 @@
         if (built.getTime() > now.getTime() + 24 * 3600 * 1000 && !full) {
             built.setFullYear(built.getFullYear() - 1);
         }
-        return built.getFullYear() + '-' + aiPad(built.getMonth() + 1) + '-' + aiPad(built.getDate())
+        var result = built.getFullYear() + '-' + aiPad(built.getMonth() + 1) + '-' + aiPad(built.getDate())
             + 'T' + aiPad(built.getHours()) + ':' + aiPad(built.getMinutes());
+        // 原文给了秒就一并保留，字段长度按 19 位处理
+        return sec === null ? result : result + ':' + aiPad(sec);
     }
 
     /** 文本里找名称：先整词命中（取最长），再对 3 字以上的名称容错 1 个字 */
@@ -3722,19 +3741,24 @@
         return prev[b.length];
     }
 
+    /** 卡池：按文字里的「角色池 / 武器池 / 混池 / 联动池 / 常驻」判定，说明不清时按物品类型兜底 */
     function aiPool(text, game, isWeapon) {
         var g = GAMES[game];
-        if (/常驻|标准/.test(text)) {
+        if (/常驻|标准池|标准祈愿|普池/.test(text)) {
             return '常驻';
         }
-        if (/武器池|武器祈愿|武器活动|光锥池|光锥活动/.test(text)) {
+        if (game === 'genshin') {
+            if (/集录|混池|混合池|自选池/.test(text)) {
+                return '集录祈愿';
+            }
+        } else if (/联动|Fate|fate|命运之夜|Saber|Archer/.test(text)) {
+            return '联动';
+        }
+        if (/武器池|武器卡池|武器活动|武器祈愿|光锥池|光锥卡池|光锥活动|光锥祈愿/.test(text)) {
             return g.weaponPool;
         }
-        if (game === 'genshin' && /集录|混池/.test(text)) {
-            return '集录祈愿';
-        }
-        if (game === 'starrail' && /联动/.test(text)) {
-            return '联动';
+        if (/角色池|角色卡池|角色活动|角色祈愿|限定池|限定祈愿|UP池|up池/.test(text)) {
+            return g.charPool;
         }
         return isWeapon ? g.weaponPool : g.charPool;
     }
@@ -3834,10 +3858,10 @@
     function openAiInput() {
         var g = gameConfig();
         var examples = state.game === 'genshin'
-            ? ['2024年10月3日抽了66抽抽到了七七', '我现在有600原石',
-                '原石9195，摩拉22219696，纠缠之缘12', '七七2命，天空之刃精2', '昨天10点出了天空之刃']
-            : ['10月3日66抽出了姬子', '我现在有600星琼',
-                '星琼91950，信用点22219696，星轨专票12', '三月七3命，于夜色中精2'];
+            ? ['2025年10月22日20时01分05秒 角色池5抽抽到了莫娜', '2025-10-22 20:01:05 混池 30抽出了天空之刃',
+                '我现在有600原石', '原石9195，摩拉22219696，纠缠之缘12', '七七2命，天空之刃精2']
+            : ['2025年10月22日 20:01:05 角色池66抽出了姬子', '联动池40抽出了Saber',
+                '我现在有600星琼', '星琼91950，信用点22219696，星轨专票12', '三月七3命，于夜色中精2'];
         var parsed = null;
 
         return openForm('AI 录入 · ' + g.fullName, [
@@ -3846,11 +3870,12 @@
                 label: '用一句话说清楚',
                 type: 'textarea',
                 full: true,
-                placeholder: '例如：2024年10月3日抽了66抽抽到了七七'
+                placeholder: '例如：2025年10月22日20时01分05秒 角色池5抽抽到了莫娜'
             }
         ], null, {
             hint: '本地离线解析，不联网、不上传。解析后会打开对应表单，确认无误再保存。'
-                + '能听懂：抽卡记录（日期 / 抽数 / 五星）、账号资源、收藏补充（命座 / 精炼）。',
+                + '能听懂：抽卡记录（日期 / 20:01:05 时刻 / 抽数 / 五星 / 角色池·武器池·混池·联动池·常驻池）、'
+                + '账号资源、收藏补充（命座 / 精炼）。',
             submitText: '解析并填充',
             onMount: function (mask, form) {
                 var area = $('textarea[name="text"]', form);
