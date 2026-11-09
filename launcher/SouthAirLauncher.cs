@@ -1159,6 +1159,8 @@ namespace SouthAirLauncher
                 ShowError("缺少内置 Java 运行环境（jre\\bin\\java.exe），请重新解压完整绿色版。");
                 return;
             }
+            // 先清掉脱离管理的旧服务，否则它会一直占着 H2 数据库导致新进程起不来
+            KillStaleServices();
             port = ResolvePort();
             if (port <= 0)
             {
@@ -2513,6 +2515,8 @@ namespace SouthAirLauncher
             string jarPath = Path.Combine(baseDir, JarFileName);
             string backupPath = jarPath + ".bak";
             KillJava();
+            // 更新前必须确保没有其它实例仍开着旧 jar，否则数据库连接会失败
+            KillStaleServices();
             try
             {
                 if (File.Exists(jarPath))
@@ -3134,6 +3138,56 @@ namespace SouthAirLauncher
             }
             javaProcess = null;
             serviceReady = false;
+        }
+
+        /**
+         * 结束所有用本目录 jar 启动的 java 进程。
+         *
+         * <p>启动器重启或自动更新后可能留下脱离管理的旧服务，它仍占着 H2 数据库（AUTO_SERVER），
+         * 新进程再去连就会报 NoClassDefFoundError 而启动失败。这里只结束命令行包含本目录 jar 路径的进程。</p>
+         */
+        private void KillStaleServices()
+        {
+            string jarPath = Path.Combine(baseDir, JarFileName);
+            try
+            {
+                using (System.Management.ManagementObjectSearcher searcher =
+                    new System.Management.ManagementObjectSearcher(
+                        "SELECT ProcessId, CommandLine FROM Win32_Process WHERE Name='java.exe' OR Name='javaw.exe'"))
+                {
+                    foreach (System.Management.ManagementObject item in searcher.Get())
+                    {
+                        string commandLine = item["CommandLine"] as string;
+                        if (string.IsNullOrEmpty(commandLine)
+                            || commandLine.IndexOf(jarPath, StringComparison.OrdinalIgnoreCase) < 0)
+                        {
+                            continue;
+                        }
+                        int pid = Convert.ToInt32(item["ProcessId"]);
+                        if (javaProcess != null && javaProcess.Id == pid)
+                        {
+                            continue;
+                        }
+                        try
+                        {
+                            using (Process stale = Process.GetProcessById(pid))
+                            {
+                                stale.Kill();
+                                stale.WaitForExit(3000);
+                                AppendLog("已结束残留的本地服务进程：" + pid);
+                            }
+                        }
+                        catch
+                        {
+                            // 进程可能已经退出
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                AppendLog("清理残留本地服务失败：" + ex.Message);
+            }
         }
 
         /** 选一个可用端口：优先 25380，被其它程序占用就顺延找空位，全部占用返回 0 */
