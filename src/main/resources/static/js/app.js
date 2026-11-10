@@ -92,22 +92,61 @@
         starrail: {
             characters: ['姬子', '瓦尔特', '布洛妮娅', '克拉拉', '杰帕德', '彦卿', '白露'],
             weapons: ['银河铁道之夜', '无可取代的东西', '但战斗还未结束', '以世界之名',
-                '制胜的瞬间', '于夜色中', '时节不居'],
-            extraCharacters: ['云璃', '银枝', '银狼', '符玄', '刃', '希儿']
+                '制胜的瞬间', '于夜色中', '时节不居']
         }
     };
 
-    function inferIsUp(game, pool, name, itemType) {
+    /* 崩铁「星缘相邀」：角色 → 加入该名单的版本更新时间（此前只可能是当期 UP） */
+    var XINGYUAN_JOINED = {
+        // 3.2（2025-04-09）星缘相邀上线时的初始可选名单
+        '符玄': '2025-04-09 06:00:00',
+        '刃': '2025-04-09 06:00:00',
+        '希儿': '2025-04-09 06:00:00',
+        // 4.2（2026-04-22）名单扩充加入
+        '云璃': '2026-04-22 06:00:00',
+        '银枝': '2026-04-22 06:00:00',
+        '银狼': '2026-04-22 06:00:00'
+    };
+
+    /** 统一成 yyyy-MM-dd HH:mm:ss，便于与加入时间比较 */
+    function normalizedTime(value) {
+        return String(value || '').replace('T', ' ').slice(0, 19);
+    }
+
+    /** 星缘相邀角色是否算 UP：加入名单之前抽到算 UP，之后算歪；不在名单返回 null */
+    function xingyuanIsUp(name, wishTime) {
+        var joined = XINGYUAN_JOINED[name];
+        if (!joined) {
+            return null;
+        }
+        var time = normalizedTime(wishTime);
+        if (!time) {
+            return false;
+        }
+        return time < joined;
+    }
+
+    function inferIsUp(game, pool, name, itemType, wishTime) {
         var standard = STANDARD_ITEMS[game];
         if (!standard || !name) {
             return false;
         }
         if (pool === '角色活动') {
-            return standard.characters.indexOf(name) < 0
-                && (standard.extraCharacters || []).indexOf(name) < 0;
+            if (game === 'starrail') {
+                if (standard.characters.indexOf(name) >= 0) {
+                    return false;
+                }
+                var xingyuan = xingyuanIsUp(name, wishTime);
+                return xingyuan === null ? true : xingyuan;
+            }
+            return standard.characters.indexOf(name) < 0;
         }
         if (pool === '武器活动' || pool === '光锥活动') {
             return standard.weapons.indexOf(name) < 0;
+        }
+        // 崩铁联动池：五星角色全部视为当期 UP
+        if (pool === '联动') {
+            return true;
         }
         return false;
     }
@@ -3234,7 +3273,7 @@
             /* 类型由所选名称推断，是否 UP 按卡池常驻名单自动判定 */
             data.itemType = inferItemType(state.game, data.itemName)
                 || (item && item.itemType) || gameConfig().itemTypes[0];
-            data.isUp = inferIsUp(state.game, data.pool, data.itemName, data.itemType);
+            data.isUp = inferIsUp(state.game, data.pool, data.itemName, data.itemType, data.wishTime);
             var path = isEdit ? config.endpoint + '/' + item.id : config.endpoint;
             return api(path, { method: isEdit ? 'PUT' : 'POST', body: data }).then(function (saved) {
                 toast(isEdit ? '修改已保存' : '新增成功');
@@ -3814,15 +3853,11 @@
             if (name.length < 3 || best) {
                 return;
             }
-            for (var i = 0; i + name.length - 1 <= text.length; i += 1) {
-                for (var len = name.length - 1; len <= name.length + 1; len += 1) {
-                    if (i + len > text.length) {
-                        continue;
-                    }
-                    if (aiEditDistance(name, text.substr(i, len)) <= 1) {
-                        best = { name: name, index: i };
-                        return;
-                    }
+            // 只允许同长度容错，避免「黑塔」被补成「大黑塔」
+            for (var i = 0; i + name.length <= text.length; i += 1) {
+                if (aiEditDistance(name, text.substr(i, name.length)) <= 1) {
+                    best = { name: name, index: i };
+                    return;
                 }
             }
         });
@@ -3855,13 +3890,13 @@
             if (/集录|混池|混合池|自选池/.test(text)) {
                 return '集录祈愿';
             }
-        } else if (/联动|Fate|fate|命运之夜|Saber|Archer/.test(text)) {
+        } else if (/联动|Fate|fate|Saber|saber|Archer|archer|命运之夜|远坂凛|吉尔伽美什/.test(text)) {
             return '联动';
         }
         if (/武器池|武器卡池|武器活动|武器祈愿|光锥池|光锥卡池|光锥活动|光锥祈愿/.test(text)) {
             return g.weaponPool;
         }
-        if (/角色池|角色卡池|角色活动|角色祈愿|限定池|限定祈愿|UP池|up池/.test(text)) {
+        if (/角色池|角色卡池|角色活动|角色祈愿|限定池|限定祈愿|UP池|up池|星缘相邀/.test(text)) {
             return g.charPool;
         }
         return isWeapon ? g.weaponPool : g.charPool;
@@ -4257,7 +4292,7 @@
                 rarity: 5,
                 itemType: itemType,
                 pool: pool,
-                isUp: inferIsUp(state.game, pool, item.name, itemType),
+                isUp: inferIsUp(state.game, pool, item.name, itemType, item.values.wishTime),
                 pityCount: item.values.pityCount || 1,
                 wishTime: toApiTime(item.values.wishTime)
             };
@@ -5767,10 +5802,10 @@
 
     function collectionDefs(g) {
         return [
-            { key: 'characters4', title: '四星角色', kind: 'character', rarity: 4 },
             { key: 'characters5', title: '五星角色', kind: 'character', rarity: 5 },
             { key: 'weapons5', title: g.itemTypes[1] === '光锥' ? '五星光锥' : '五星武器',
-                kind: 'weapon', rarity: 5 }
+                kind: 'weapon', rarity: 5 },
+            { key: 'characters4', title: '四星角色', kind: 'character', rarity: 4 }
         ];
     }
 
@@ -5995,7 +6030,8 @@
             el.innerHTML =
                 '<div class="page-head">'
                 + '<div><p class="eyebrow">Collection</p><h2>收藏图鉴</h2>'
-                + '<p class="sub">四星角色 · 五星角色 · 五星' + (g.itemTypes[1] === '光锥' ? '光锥' : '武器')
+                + '<p class="sub">五星角色 · 五星' + (g.itemTypes[1] === '光锥' ? '光锥' : '武器')
+                + ' · 四星角色'
                 + ' · 角色最高 C6，武器最高 R5'
                 + (game === 'genshin' ? ' · 支持截图识图' : '') + '</p></div>'
                 + '<div class="head-actions">'
@@ -7251,7 +7287,8 @@
                 return;
             }
             var type = inferItemType(state.game, item.itemName);
-            item.isUp = item.itemName ? inferIsUp(state.game, item.pool, item.itemName, type) : true;
+            item.isUp = item.itemName
+                ? inferIsUp(state.game, item.pool, item.itemName, type, item.time) : true;
         });
     }
 

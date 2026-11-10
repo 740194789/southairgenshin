@@ -50,6 +50,10 @@ public interface WishRecordRepository extends JpaRepository<WishRecord, Long> {
 
     List<WishRecord> findTop5ByUserIdAndGameOrderByWishTimeDesc(Long userId, String game);
 
+    /** 最近出货只展示五星。 */
+    List<WishRecord> findTop5ByUserIdAndGameAndRarityOrderByWishTimeDesc(
+            Long userId, String game, Integer rarity);
+
     List<WishRecord> findByUserIdAndGameOrderByWishTimeAsc(Long userId, String game);
 
     List<WishRecord> findByUserIdAndGameAndPoolAndRarityOrderByWishTimeAscIdAsc(

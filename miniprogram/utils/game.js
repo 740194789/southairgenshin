@@ -94,11 +94,43 @@ function config(key) {
   return GAMES[key] || GAMES.genshin;
 }
 
+/* 崩铁「星缘相邀」可选角色 → 该角色加入名单的版本更新时间（官方公告为准） */
+var XINGYUAN_JOINED = {
+  // 3.2（2025-04-09）上线「星缘相邀」时的初始可选名单
+  '符玄': '2025-04-09 06:00:00',
+  '刃': '2025-04-09 06:00:00',
+  '希儿': '2025-04-09 06:00:00',
+  // 4.2（2026-04-22）名单扩充加入
+  '云璃': '2026-04-22 06:00:00',
+  '银枝': '2026-04-22 06:00:00',
+  '银狼': '2026-04-22 06:00:00'
+};
+var XINGYUAN_CHARACTERS = Object.keys(XINGYUAN_JOINED);
+
+/**
+ * 星缘相邀角色是否算 UP：该角色加入名单之前抽到 → 不歪；之后 → 按歪处理。
+ * 不在名单内返回 null，交由调用方按常驻 / UP 规则判断。
+ */
+function xingyuanIsUp(name, wishTime) {
+  var joined = XINGYUAN_JOINED[name];
+  if (!joined) {
+    return null;
+  }
+  var time = String(wishTime || '');
+  if (!time) {
+    return false;
+  }
+  return time < joined;
+}
+
 module.exports = {
   GAMES: GAMES,
   POOL_LABELS: POOL_LABELS,
   FOUR_STAR_CHARACTERS: FOUR_STAR_CHARACTERS,
+  XINGYUAN_CHARACTERS: XINGYUAN_CHARACTERS,
+  XINGYUAN_JOINED: XINGYUAN_JOINED,
   poolLabel: poolLabel,
   regionOf: regionOf,
+  xingyuanIsUp: xingyuanIsUp,
   config: config
 };

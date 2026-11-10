@@ -76,20 +76,32 @@ public class GachaLinkImporter {
             "制胜的瞬间", "于夜色中", "时节不居"
     ));
 
-    /**
-     * 崩铁 [星缘相邀] 可选角色（官方公告 4.6，共 13 位）。
-     *
-     * <p>角色活动跃迁出五星时：50% 为当期 UP，50% 从「本期 UP + 7 名星缘相邀角色」
-     * 中产出。接口只返回物品名，无法区分，因此按官方可选列表判定：
-     * 命中星缘相邀名单或常驻名单即算歪，其余五星算当期 UP。</p>
-     */
+    /** 崩铁常驻五星角色，角色活动池命中即算歪。 */
     private static final Set<String> STARRAIL_STANDARD_CHARACTERS = new HashSet<>(Arrays.asList(
             "姬子", "瓦尔特", "布洛妮娅", "杰帕德", "克拉拉", "彦卿", "白露"
     ));
 
-    private static final Set<String> STARRAIL_XINGYUAN_CHARACTERS = new HashSet<>(Arrays.asList(
-            "云璃", "银枝", "银狼", "符玄", "刃", "希儿"
-    ));
+    /**
+     * 崩铁 [星缘相邀] 角色 → 加入可选名单的版本更新时间。
+     *
+     * <p>角色活动跃迁出五星时：50% 为当期 UP，50% 从「本期 UP + 7 名星缘相邀角色」
+     * 中产出。接口只返回物品名，无法区分，因此按「该角色加入名单的时间」判定：
+     * 加入之前抽到只可能是当期 UP，之后命中即算歪；其余五星算当期 UP。</p>
+     */
+    private static final Map<String, LocalDateTime> STARRAIL_XINGYUAN_JOINED = new HashMap<>();
+
+    static {
+        // 3.2（2025-04-09）星缘相邀上线时的初始可选名单
+        LocalDateTime joinedAt32 = LocalDateTime.of(2025, 4, 9, 6, 0);
+        STARRAIL_XINGYUAN_JOINED.put("符玄", joinedAt32);
+        STARRAIL_XINGYUAN_JOINED.put("刃", joinedAt32);
+        STARRAIL_XINGYUAN_JOINED.put("希儿", joinedAt32);
+        // 4.2（2026-04-22）名单扩充加入
+        LocalDateTime joinedAt42 = LocalDateTime.of(2026, 4, 22, 6, 0);
+        STARRAIL_XINGYUAN_JOINED.put("云璃", joinedAt42);
+        STARRAIL_XINGYUAN_JOINED.put("银枝", joinedAt42);
+        STARRAIL_XINGYUAN_JOINED.put("银狼", joinedAt42);
+    }
 
     private static final String[][] GENSHIN_TYPES = {
             {"301", "角色活动"}, {"302", "武器活动"}, {"200", "常驻"}, {"400", "集录祈愿"}
@@ -198,16 +210,27 @@ public class GachaLinkImporter {
      *
      * <p>原神角色活动：不在常驻角色名单即当期 UP；武器活动同理按常驻武器判定。</p>
      * <p>崩铁光锥活动：不在常驻光锥名单即当期 UP。</p>
-     * <p>崩铁角色活动：命中常驻或星缘相邀名单算歪，其余算当期 UP。</p>
+     * <p>崩铁角色活动：命中常驻算歪；命中星缘相邀角色则按该角色加入名单的时间判定，
+     * 加入之前算 UP、之后算歪；其余算当期 UP。联动池五星一律算 UP。</p>
      */
     private boolean resolveIsUp(GachaItem item, boolean starrail) {
         if (item.rarity < 5) {
             return false;
         }
+        // 崩铁联动池：五星角色全部为联动限定，一律视为当期 UP
+        if ("联动".equals(item.pool)) {
+            return true;
+        }
         if ("角色活动".equals(item.pool)) {
             if (starrail) {
-                return !STARRAIL_STANDARD_CHARACTERS.contains(item.name)
-                        && !STARRAIL_XINGYUAN_CHARACTERS.contains(item.name);
+                if (STARRAIL_STANDARD_CHARACTERS.contains(item.name)) {
+                    return false;
+                }
+                LocalDateTime joined = STARRAIL_XINGYUAN_JOINED.get(item.name);
+                if (joined != null) {
+                    return item.time != null && item.time.isBefore(joined);
+                }
+                return true;
             }
             return !GENSHIN_STANDARD_CHARACTERS.contains(item.name);
         }

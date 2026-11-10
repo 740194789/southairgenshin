@@ -2,6 +2,7 @@ var app = getApp();
 var store = require('../../utils/store');
 var gameLib = require('../../utils/game');
 var avatars = require('../../utils/avatars');
+var ai = require('../../utils/ai');
 
 var CHAR_NAMES = Object.keys(avatars.genshin || {}).filter(function (name) {
   return name !== '旅行者';
@@ -153,6 +154,10 @@ Page({
     toIndex: 0,
     wlLevels: WL_LEVELS,
     wlIndex: 8,
+    aiVisible: false,
+    aiText: '',
+    aiError: '',
+    aiCount: 0,
     form: {
       primogems: '',
       mora: '',
@@ -417,5 +422,69 @@ Page({
     this.setData({ editing: false });
     this.load(this.data.game);
     wx.showToast({ title: '已保存', icon: 'success' });
+  },
+
+  /* ---------------- AI 自然语言录入（离线解析） ---------------- */
+
+  openAiEntry: function () {
+    this.setData({ aiVisible: true, aiText: '', aiError: '', aiCount: 0 });
+  },
+
+  closeAiEntry: function () {
+    this.setData({ aiVisible: false, aiError: '', aiCount: 0 });
+  },
+
+  onAiInput: function (event) {
+    this.setData({ aiText: event.detail.value, aiError: '', aiCount: 0 });
+  },
+
+  applyAiEntry: function () {
+    var batch = ai.parseLines(this.data.aiText, this.data.game);
+    if (!batch.lines.length) {
+      this.setData({ aiError: '先输入一句话', aiCount: 0 });
+      return;
+    }
+    if (batch.failures.length) {
+      this.setData({
+        aiError: '第 ' + batch.failures.join('、') + ' 行没解析出来，例如「原石9195」「摩拉22219696」',
+        aiCount: 0
+      });
+      return;
+    }
+    if (batch.type !== 'resource') {
+      this.setData({
+        aiError: batch.type === 'wish'
+          ? '抽卡记录请到「抽卡记录」页用 AI 录入'
+          : '收藏补充请到「收藏图鉴」页用 AI 录入',
+        aiCount: 0
+      });
+      return;
+    }
+    var resource = store.getResource(this.data.game);
+    var form = {
+      primogems: String(resource.primogems),
+      mora: String(resource.mora),
+      intertwinedFates: String(resource.intertwinedFates),
+      acquaintedFates: String(resource.acquaintedFates),
+      dailyPrimogems: String(resource.dailyPrimogems || 0),
+      heroWit: String(resource.heroWit || 0),
+      adventurerExp: String(resource.adventurerExp || 0),
+      wandererAdvice: String(resource.wandererAdvice || 0),
+      sanctifyingUnction: String(resource.sanctifyingUnction || 0),
+      sanctifyingEssence: String(resource.sanctifyingEssence || 0)
+    };
+    Object.keys(batch.resources).forEach(function (key) {
+      if (form[key] !== undefined) {
+        form[key] = String(batch.resources[key]);
+      }
+    });
+    this.setData({
+      aiVisible: false,
+      aiError: '',
+      aiCount: 0,
+      editing: true,
+      form: form
+    });
+    wx.showToast({ title: '已解析 ' + batch.lines.length + ' 行', icon: 'none' });
   }
 });

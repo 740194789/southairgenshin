@@ -7,6 +7,13 @@ var PER_PULL = 160;
 var WISH_KEY = 'sg_wishes_';
 var RES_KEY = 'sg_resource_';
 var SEQ_KEY = 'sg_seq_';
+var PITY_KEY = 'sg_pity_';
+
+/* 各卡池保底上限，保存快照时按卡池截断 */
+var PITY_CAPS = {
+  genshin: { '角色活动': 90, '武器活动': 80, '集录祈愿': 90, '常驻': 90 },
+  starrail: { '角色活动': 90, '光锥活动': 80, '联动': 90, '常驻': 90 }
+};
 
 /* ---------------- 基础工具 ---------------- */
 
@@ -106,6 +113,8 @@ function isRecordable(rarity, itemType) {
 
 function normalizeRecord(source, game, id) {
   var rarity = clamp(source.rarity, 1, 5, 3);
+  var pool = String(source.pool || '');
+  var pityCap = pool === '武器活动' || pool === '光锥活动' ? 80 : 90;
   return {
     id: id,
     game: game,
@@ -115,7 +124,7 @@ function normalizeRecord(source, game, id) {
     pool: truncate(source.pool, 16),
     rarity: rarity,
     isUp: source.isUp === true,
-    pityCount: clamp(source.pityCount, 1, 90, 1),
+    pityCount: clamp(source.pityCount, 1, pityCap, 1),
     wishTime: source.wishTime || nowStr(),
     note: truncate(source.note, 255),
     captureTriggered: source.captureTriggered === true
@@ -131,6 +140,38 @@ function getWishes(game) {
 
 function saveWishes(game, list) {
   wx.setStorageSync(WISH_KEY + game, list);
+}
+
+/* ---------------- 保底快照（对齐网页端 t_wish_pity） ---------------- */
+
+/** 链接同步时的各卡池已垫抽数；比最新记录新才用于统计页 */
+function getPitySnapshot(game) {
+  var raw = wx.getStorageSync(PITY_KEY + game);
+  if (!raw || typeof raw !== 'object' || !raw.pools) {
+    return null;
+  }
+  return { pools: raw.pools, updatedAt: String(raw.updatedAt || '') };
+}
+
+function savePitySnapshot(game, pools, updatedAt) {
+  var caps = PITY_CAPS[game] || {};
+  var data = {};
+  Object.keys(pools || {}).forEach(function (pool) {
+    var value = Math.max(0, toInt(pools[pool]));
+    data[pool] = caps[pool] ? Math.min(caps[pool], value) : value;
+  });
+  wx.setStorageSync(PITY_KEY + game, {
+    updatedAt: updatedAt || nowStr(),
+    pools: data
+  });
+}
+
+function clearPitySnapshot(game) {
+  try {
+    wx.removeStorageSync(PITY_KEY + game);
+  } catch (e) {
+    // 无缓存时忽略
+  }
 }
 
 function getResource(game) {
@@ -464,6 +505,7 @@ function overview(game) {
   var defs = POOL_DEFS[game] || POOL_DEFS.genshin;
   var asc = getWishes(game).slice().sort(ascCompare);
   var resource = resourceVO(getResource(game));
+  var snapshot = getPitySnapshot(game);
   var wishCount = asc.length;
   var fiveStarWishes = 0;
   var fourStarWishes = 0;
@@ -505,6 +547,12 @@ function overview(game) {
     if (latest) {
       currentPity = latest.rarity === 5 ? 0 : (latest.pityCount || 0);
     }
+    // 链接同步快照比本地最新记录新时，以游戏内实际已垫为准
+    var snap = snapshot && snapshot.pools ? snapshot.pools[pool] : undefined;
+    if (snap !== undefined
+        && String(snapshot.updatedAt) > String(latest ? latest.wishTime : '')) {
+      currentPity = Math.max(0, Math.min(cap, toInt(snap)));
+    }
 
     var fatePoints = 0;
     if (game !== 'starrail' && pool === '武器活动') {
@@ -544,7 +592,10 @@ function overview(game) {
     }
   });
 
-  var recent = asc.slice().sort(descCompare).slice(0, 5);
+  // 最近出货只展示五星
+  var recent = asc.filter(function (record) {
+    return record.rarity === 5;
+  }).sort(descCompare).slice(0, 5);
 
   var luck = luckStats(asc);
   var result = {
@@ -645,6 +696,9 @@ function captureInfo(asc) {
  */
 function importRecords(game, records, mode, dryRun) {
   var replace = mode === 'replace';
+  if (replace && !dryRun) {
+    clearPitySnapshot(game);
+  }
   var list = replace ? [] : getWishes(game);
   var existing = replace ? [] : list.slice();
   var seen = {};
@@ -738,6 +792,9 @@ function importBackup(game, payload, mode) {
     saveResource(game, payload.resource);
   }
   var wishes = Array.isArray(payload.wishes) ? payload.wishes : [];
+  if (wishes.length) {
+    clearPitySnapshot(game);
+  }
   return importRecords(game, wishes, mode || 'merge');
 }
 
@@ -830,6 +887,7 @@ function importAllBackup(payload, mode) {
     }
     var wishes = Array.isArray(item.wishes) ? item.wishes : [];
     if (wishes.length) {
+      clearPitySnapshot(game);
       var one = importRecords(game, wishes, mode);
       result.imported += one.imported;
       result.skipped += one.skipped;
@@ -882,6 +940,9 @@ module.exports = {
   overview: overview,
   uids: uids,
   importRecords: importRecords,
+  getPitySnapshot: getPitySnapshot,
+  savePitySnapshot: savePitySnapshot,
+  clearPitySnapshot: clearPitySnapshot,
   exportBackup: exportBackup,
   importBackup: importBackup,
   exportAllBackup: exportAllBackup,

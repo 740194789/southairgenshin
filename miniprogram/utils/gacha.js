@@ -1,5 +1,7 @@
 /* 米游社抽卡链接：校验、卡池映射、保底推算与 UP 判定（小程序端） */
 
+var gameLib = require('./game');
+
 var GACHA_HOSTS = [
   'public-operation-hk4e.mihoyo.com',
   'public-operation-hkrpg.mihoyo.com',
@@ -39,7 +41,6 @@ var GENSHIN_STANDARD_WEAPONS = [
 ];
 
 var STARRAIL_STANDARD_CHARACTERS = ['姬子', '瓦尔特', '布洛妮娅', '杰帕德', '克拉拉', '彦卿', '白露'];
-var STARRAIL_XINGYUAN_CHARACTERS = ['云璃', '银枝', '银狼', '符玄', '刃', '希儿'];
 var STARRAIL_STANDARD_LIGHT_CONES = [
   '银河铁道之夜', '无可取代的东西', '但战斗还未结束', '以世界之名',
   '制胜的瞬间', '于夜色中', '时节不居'
@@ -126,8 +127,15 @@ function resolveIsUp(game, item) {
   }
   if (item.pool === '角色活动') {
     if (game === 'starrail') {
-      return !inList(STARRAIL_STANDARD_CHARACTERS, item.name)
-        && !inList(STARRAIL_XINGYUAN_CHARACTERS, item.name);
+      if (inList(STARRAIL_STANDARD_CHARACTERS, item.name)) {
+        return false;
+      }
+      // 星缘相邀：加入时间之前只可能是当期 UP，之后按歪处理
+      var xingyuan = gameLib.xingyuanIsUp(item.name, item.wishTime);
+      if (xingyuan !== null) {
+        return xingyuan;
+      }
+      return true;
     }
     return !inList(GENSHIN_STANDARD_CHARACTERS, item.name);
   }
@@ -136,6 +144,10 @@ function resolveIsUp(game, item) {
   }
   if (item.pool === '光锥活动') {
     return !inList(STARRAIL_STANDARD_LIGHT_CONES, item.name);
+  }
+  // 联动跃迁没有常驻歪池，五星均为联动 UP
+  if (item.pool === '联动') {
+    return true;
   }
   return false;
 }
@@ -150,6 +162,7 @@ function isRecordable(item) {
 /**
  * 把接口原始记录按卡池排序、逐抽累计保底，再按记录规则过滤。
  * 三星与四星武器 / 光锥不计入记录，但会计入保底累计。
+ * 返回 records（可入库记录）与 pity（各卡池同步时的已垫抽数快照）。
  */
 function processItems(game, items) {
   var byPool = {};
@@ -161,6 +174,7 @@ function processItems(game, items) {
   });
 
   var records = [];
+  var pity = {};
   Object.keys(byPool).forEach(function (pool) {
     var list = byPool[pool].slice().sort(function (a, b) {
       var diff = timeValue(a.wishTime) - timeValue(b.wishTime);
@@ -172,7 +186,7 @@ function processItems(game, items) {
     var count = 0;
     list.forEach(function (item) {
       count += 1;
-      var pity = count;
+      var current = count;
       if (item.rarity >= 5) {
         count = 0;
       }
@@ -185,12 +199,13 @@ function processItems(game, items) {
         pool: item.pool,
         rarity: item.rarity,
         isUp: resolveIsUp(game, item),
-        pityCount: pity,
+        pityCount: current,
         wishTime: item.wishTime
       });
     });
+    pity[pool] = count;
   });
-  return records;
+  return { records: records, pity: pity };
 }
 
 module.exports = {

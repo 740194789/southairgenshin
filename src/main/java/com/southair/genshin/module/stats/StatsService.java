@@ -66,7 +66,8 @@ public class StatsService {
         }
         vo.setPoolDistribution(distribution);
 
-        List<WishRecord> recent = wishRepository.findTop5ByUserIdAndGameOrderByWishTimeDesc(userId, gameKey);
+        List<WishRecord> recent = wishRepository.findTop5ByUserIdAndGameAndRarityOrderByWishTimeDesc(
+                userId, gameKey, 5);
         List<WishRecord> recentSorted = new ArrayList<>(recent);
         recentSorted.sort(Collections.reverseOrder(WishRecord::compareChronologically));
         vo.setRecentWishes(recentSorted);

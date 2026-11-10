@@ -78,9 +78,9 @@ function sectionOf(item) {
 
 function buildDefs(game) {
   return [
-    { key: 'characters4', title: '四星角色', kind: 'character' },
     { key: 'characters5', title: '五星角色', kind: 'character' },
-    { key: 'weapons5', title: game === 'starrail' ? '五星光锥' : '五星武器', kind: 'weapon' }
+    { key: 'weapons5', title: game === 'starrail' ? '五星光锥' : '五星武器', kind: 'weapon' },
+    { key: 'characters4', title: '四星角色', kind: 'character' }
   ];
 }
 

@@ -38,6 +38,7 @@
 
   <view class="btn-row">
     <view class="btn btn-primary btn-sm" bindtap="openAdd">录入五星</view>
+    <view class="btn btn-outline btn-sm" bindtap="openAiEntry">AI 录入</view>
     <view class="btn btn-text btn-sm {{rows.length ? '' : 'disabled'}}" bindtap="toggleAll">{{allChecked ? '取消全选' : '全选本页'}}</view>
     <view class="btn btn-outline btn-sm {{rows.length ? '' : 'disabled'}}" bindtap="openBatchEdit">批量编辑本页</view>
     <view class="btn btn-danger btn-sm {{selectedCount ? '' : 'disabled'}}" bindtap="deleteSelected">批量删除{{selectedCount ? '（' + selectedCount + '）' : ''}}</view>
@@ -191,7 +192,39 @@
   </view>
 </view>
 
+<!-- AI 自然语言录入：一行一条，支持多行批量 -->
+<view wx:if="{{aiVisible}}" class="mask">
+  <view class="modal" catchtap="noop">
+    <view class="modal-head">
+      <text class="modal-title">AI 录入 · {{g.fullName}}</text>
+      <view class="modal-close" bindtap="closeAiEntry">×</view>
+    </view>
+    <scroll-view scroll-y class="modal-body">
+      <view class="text-tip">一行一条，例如：7抽莫娜 2025年10月22日 20时01分05秒</view>
+      <textarea class="link-input ai-textarea" value="{{aiText}}" bindinput="onAiInput" maxlength="-1"
+                placeholder="支持多行批量，例：&#10;7抽莫娜 2025年10月22日 20时01分05秒&#10;89抽芙宁娜 角色池 2025年10月22日 20时00分52秒"/>
+      <view wx:if="{{aiError}}" class="ai-error">{{aiError}}</view>
+      <view wx:if="{{aiRows.length}}" class="ai-list">
+        <view class="ai-row" wx:for="{{aiRows}}" wx:key="index">
+          <text class="ai-index">{{item.index}}</text>
+          <text class="ai-name">{{item.name}}</text>
+          <text class="ai-meta">{{item.pool}}</text>
+          <text class="ai-meta">{{item.pity}} 抽</text>
+          <text class="ai-meta">{{item.time}}</text>
+          <text class="ai-tag {{item.up ? 'up' : ''}}">{{item.up ? 'UP' : '歪'}}</text>
+        </view>
+      </view>
+      <view class="foot-tip">本地离线解析，不联网、不上传；多行会先列出结果供核对，确认后一次写入。资源请到「资源」页、收藏补充请到「收藏图鉴」页。</view>
+    </scroll-view>
+    <view class="modal-foot">
+      <view class="btn btn-text" bindtap="closeAiEntry">取消</view>
+      <view wx:if="{{aiReady}}" class="btn btn-primary" bindtap="confirmAiBatch">确认录入</view>
+      <view wx:else class="btn btn-primary" bindtap="parseAiEntry">解析</view>
+    </view>
+  </view>
+</view>
+
 <name-picker visible="{{pickerVisible}}" game="{{game}}" current="{{editor.itemName}}"
-             names="{{editorId ? [] : fiveStarNames}}" showTabs="{{editorId ? true : false}}"
+             names="{{pickerNames}}" showTabs="{{false}}"
              exclude-protagonist="{{true}}"
              bind:select="onEditorName" bind:close="closeNamePicker" />

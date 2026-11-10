@@ -17,6 +17,7 @@
     </view>
     <view class="hero-actions">
       <view class="btn btn-outline btn-sm" bindtap="onRefreshCatalog">{{catalogUpdating ? '更新中…' : '刷新图鉴'}}</view>
+      <view class="btn btn-outline btn-sm" bindtap="openAiEntry">AI 录入</view>
       <view class="btn btn-primary btn-sm" bindtap="openManual">补充已有</view>
     </view>
   </view>
@@ -66,6 +67,36 @@
 
   <view class="foot-tip">手动补充保存在本机缓存，已随全量备份一起导出 / 导入；长按「手动 +N」才会清除，导入新的抽卡记录后会自动更新命座与精炼。</view>
   <view class="foot-tip">图鉴数据：{{catalogUpdatedAt || '内置'}} · 打开收藏页时超过 24 小时自动联网更新角色与五星武器 / 光锥图标，离线时使用内置与上次缓存。</view>
+</view>
+
+<!-- AI 自然语言录入：按命座 / 精炼目标补差，可多行批量 -->
+<view wx:if="{{aiVisible}}" class="mask">
+  <view class="modal" catchtap="noop">
+    <view class="modal-head">
+      <text class="modal-title">AI 录入 · {{g.fullName}}</text>
+      <view class="modal-close" bindtap="closeAiEntry">×</view>
+    </view>
+    <scroll-view scroll-y class="modal-body">
+      <view class="text-tip">一行一项，例如：莫娜 3命 / 满命钟离 / 精5 天空之翼</view>
+      <textarea class="link-input ai-textarea" value="{{aiText}}" bindinput="onAiInput" maxlength="-1"
+                placeholder="支持多行，例：&#10;莫娜 3命&#10;满命钟离&#10;精5 天空之翼"/>
+      <view wx:if="{{aiError}}" class="ai-error">{{aiError}}</view>
+      <view class="ai-list" wx:if="{{aiRows.length}}">
+        <view class="ai-row" wx:for="{{aiRows}}" wx:key="index">
+          <text class="ai-index">{{item.index}}</text>
+          <view class="ai-name">{{item.name}}</view>
+          <view class="ai-meta">{{item.categoryLabel}} · 当前 {{item.copies}} 份 · 目标 {{item.target}}</view>
+          <view class="ai-tag {{item.done ? '' : 'up'}}">{{item.deltaText}}</view>
+        </view>
+      </view>
+      <view class="foot-tip">本地离线解析，不联网、不上传；按「N命 = N+1 份」「精N = N 把」计算与图鉴现有份数的差额，只补不足部分。</view>
+    </scroll-view>
+    <view class="modal-foot">
+      <view class="btn btn-text" bindtap="closeAiEntry">取消</view>
+      <view class="btn btn-outline" bindtap="parseAiEntry">解析预览</view>
+      <view wx:if="{{aiReady}}" class="btn btn-primary" bindtap="confirmAiBatch">确认补充</view>
+    </view>
+  </view>
 </view>
 
 <name-picker visible="{{pickerVisible}}" game="{{game}}" current="{{manualName}}"

@@ -2,6 +2,7 @@ var app = getApp();
 var gameLib = require('../../utils/game');
 var collection = require('../../utils/collection');
 var catalog = require('../../utils/catalog');
+var ai = require('../../utils/ai');
 
 /** 收藏分组与角色 / 武器数量，供加载和联网更新后复用 */
 function sectionsOf(game) {
@@ -39,8 +40,13 @@ Page({
     manualName: '',
     manualIcon: '',
     pickerVisible: false,
-    manualCopies: ['1', '2', '3', '4', '5', '6'],
-    manualCopiesIndex: 0
+    manualCopies: ['1', '2', '3', '4', '5', '6', '7'],
+    manualCopiesIndex: 0,
+    aiVisible: false,
+    aiText: '',
+    aiError: '',
+    aiRows: [],
+    aiReady: false
   },
 
   onLoad: function () {
@@ -68,6 +74,11 @@ Page({
     patch.manualIcon = '';
     patch.pickerVisible = false;
     patch.manualCopiesIndex = 0;
+    patch.aiVisible = false;
+    patch.aiText = '';
+    patch.aiError = '';
+    patch.aiRows = [];
+    patch.aiReady = false;
     patch.manualNames = collection.nameOptions(game, 'characters4');
     patch.manualCategories = [
       { key: 'characters4', label: '四星角色' },
@@ -203,5 +214,107 @@ Page({
         wx.showToast({ title: '已清除', icon: 'none' });
       }
     });
+  },
+
+  noop: function () {
+  },
+
+  /* ---------------- AI 自然语言录入（离线解析，按命座 / 精炼补差） ---------------- */
+
+  openAiEntry: function () {
+    this._aiRows = [];
+    this.setData({ aiVisible: true, aiText: '', aiError: '', aiRows: [], aiReady: false });
+  },
+
+  closeAiEntry: function () {
+    this._aiRows = [];
+    this.setData({ aiVisible: false, aiRows: [], aiError: '', aiReady: false });
+  },
+
+  onAiInput: function (event) {
+    this.setData({ aiText: event.detail.value, aiError: '', aiReady: false });
+  },
+
+  parseAiEntry: function () {
+    var game = this.data.game;
+    var batch = ai.parseLines(this.data.aiText, game);
+    if (!batch.lines.length) {
+      this.setData({ aiError: '先输入一句话', aiReady: false });
+      return;
+    }
+    if (batch.failures.length) {
+      this.setData({
+        aiError: '第 ' + batch.failures.join('、') + ' 行没解析出来，'
+          + '参考「莫娜 3命」「满命钟离」「精5 天空之翼」',
+        aiReady: false
+      });
+      return;
+    }
+    var owned = batch.items.filter(function (item) {
+      return item.type === 'owned';
+    });
+    if (!owned.length) {
+      this.setData({
+        aiError: '没识别到角色 / 武器；抽卡请到「抽卡」页、资源请到「资源」页用 AI 录入',
+        aiReady: false
+      });
+      return;
+    }
+
+    // 当前份数表：抽卡记录 + 手动补充（与图鉴展示口径一致）
+    var current = {};
+    sectionsOf(game).sections.forEach(function (section) {
+      section.items.forEach(function (item) {
+        current[section.key + '|' + item.name] = item.copies;
+      });
+    });
+    var labels = {
+      characters4: '四星角色',
+      characters5: '五星角色',
+      weapons5: game === 'starrail' ? '五星光锥' : '五星武器'
+    };
+
+    var rows = owned.map(function (item, index) {
+      var key = item.values.category + '|' + item.values.name;
+      var copies = current[key] || 0;
+      var delta = Math.max(0, item.values.target - copies);
+      return {
+        index: index + 1,
+        name: item.values.name,
+        category: item.values.category,
+        categoryLabel: labels[item.values.category] || '',
+        target: ai.badge(item.values.category, item.values.target),
+        copies: copies,
+        delta: delta,
+        done: delta === 0,
+        deltaText: delta ? '+ ' + delta : '已达标'
+      };
+    });
+
+    this._aiRows = rows;
+    this.setData({
+      aiError: '',
+      aiReady: rows.some(function (row) { return row.delta > 0; }),
+      aiRows: rows
+    });
+  },
+
+  confirmAiBatch: function () {
+    var rows = this._aiRows || [];
+    var todo = rows.filter(function (row) {
+      return row.delta > 0;
+    });
+    if (!todo.length) {
+      wx.showToast({ title: '都已达标，无需补充', icon: 'none' });
+      return;
+    }
+    var game = this.data.game;
+    todo.forEach(function (row) {
+      collection.addManual(game, row.category, row.name, row.delta);
+    });
+    this._aiRows = [];
+    this.setData({ aiVisible: false, aiRows: [], aiReady: false, aiText: '' });
+    this.load(game);
+    wx.showToast({ title: '已补充 ' + todo.length + ' 个图鉴项', icon: 'none' });
   }
 });

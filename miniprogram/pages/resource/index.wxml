@@ -15,6 +15,7 @@
       <view class="section-sub">{{g.fullName}} · 资源与抽数换算</view>
     </view>
     <view class="head-actions">
+      <view class="btn btn-outline btn-sm" bindtap="openAiEntry">AI 录入</view>
       <view class="btn btn-outline btn-sm" bindtap="openEdit">编辑资源</view>
     </view>
   </view>
@@ -168,6 +169,27 @@
 
 <name-picker visible="{{pickerVisible}}" game="{{game}}" current="{{selectedChar}}" names="{{charNames}}"
   showTabs="{{false}}" excludeProtagonist="{{true}}" bind:select="onPickChar" bind:close="onClosePicker"/>
+
+<!-- AI 自然语言录入：一行一条，可多行合并 -->
+<view wx:if="{{aiVisible}}" class="mask">
+  <view class="modal" catchtap="noop">
+    <view class="modal-head">
+      <text class="modal-title">AI 录入 · {{g.fullName}}</text>
+      <view class="modal-close" bindtap="closeAiEntry">×</view>
+    </view>
+    <scroll-view scroll-y class="modal-body">
+      <view class="text-tip">一行一项，例如：原石9195 / 摩拉22219696 / 纠缠之缘12</view>
+      <textarea class="link-input ai-textarea" value="{{aiText}}" bindinput="onAiInput" maxlength="-1"
+                placeholder="支持多行，例：&#10;原石9195&#10;摩拉22219696&#10;纠缠之缘12"/>
+      <view wx:if="{{aiError}}" class="ai-error">{{aiError}}</view>
+      <view class="foot-tip">本地离线解析，不联网、不上传；解析后会打开资源表单预填，核对后保存。</view>
+    </scroll-view>
+    <view class="modal-foot">
+      <view class="btn btn-text" bindtap="closeAiEntry">取消</view>
+      <view class="btn btn-primary" bindtap="applyAiEntry">解析并填充</view>
+    </view>
+  </view>
+</view>
 
 <view wx:if="{{editing}}" class="mask">
   <view class="modal" catchtap="noop">

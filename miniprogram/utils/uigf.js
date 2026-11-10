@@ -1,5 +1,7 @@
 /* UIGF v4.2（原神）/ SRGF v1.0（星穹铁道）互转，与网页端 UigfService 口径一致 */
 
+var gameLib = require('./game');
+
 var GENSHIN_TYPE_TO_POOL = {
   301: '角色活动',
   302: '武器活动',
@@ -74,14 +76,27 @@ function typeOf(pool, starrail) {
   return map[pool] || (starrail ? '11' : '301');
 }
 
-function inferIsUp(starrail, pool, name, rarity) {
+function inferIsUp(starrail, pool, name, rarity, wishTime) {
   if (Number(rarity) < 5) {
     return false;
   }
+  // 联动跃迁没有常驻歪池，五星均为联动 UP
+  if (pool === '联动') {
+    return true;
+  }
   var std = STANDARD[starrail ? 'starrail' : 'genshin'];
   if (pool === '角色活动') {
-    return std.characters.indexOf(name) < 0
-      && (std.extraCharacters || []).indexOf(name) < 0;
+    if (std.characters.indexOf(name) >= 0) {
+      return false;
+    }
+    if (starrail) {
+      // 星缘相邀：加入时间之前只可能是当期 UP，之后按歪处理
+      var xingyuan = gameLib.xingyuanIsUp(name, wishTime);
+      if (xingyuan !== null) {
+        return xingyuan;
+      }
+    }
+    return true;
   }
   if (pool === '武器活动' || pool === '光锥活动') {
     return std.weapons.indexOf(name) < 0;
@@ -258,7 +273,7 @@ function parse(text, game) {
       pityCount: item.pityOverride > 0 ? item.pityOverride : Math.max(1, item.pity),
       isUp: item.isUpOverride !== null
         ? item.isUpOverride
-        : inferIsUp(item.starrail, item.pool, item.name, item.rarity),
+        : inferIsUp(item.starrail, item.pool, item.name, item.rarity, item.time),
       wishTime: item.time,
       captureTriggered: item.captureOverride === true
     });

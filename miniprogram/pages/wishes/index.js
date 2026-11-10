@@ -5,6 +5,7 @@ var csv = require('../../utils/csv');
 var gacha = require('../../utils/gacha');
 var avatars = require('../../utils/avatars');
 var weaponIcons = require('../../utils/weaponIcons');
+var ai = require('../../utils/ai');
 
 var PAGE_SIZE = 10;
 var FIVE_STAR = 5;
@@ -66,14 +67,27 @@ function itemIcon(game, name) {
   return avatarMap[name] || weaponMap[name] || '';
 }
 
-function inferIsUp(game, pool, name) {
+function inferIsUp(game, pool, name, wishTime) {
   var standard = STANDARD_ITEMS[game];
   if (!standard || !name) {
     return false;
   }
+  // 联动跃迁没有常驻歪池，五星均为联动 UP
+  if (pool === '联动') {
+    return true;
+  }
   if (pool === '角色活动') {
-    return standard.characters.indexOf(name) < 0
-      && (standard.extraCharacters || []).indexOf(name) < 0;
+    if (standard.characters.indexOf(name) >= 0) {
+      return false;
+    }
+    if (game === 'starrail') {
+      // 星缘相邀：加入时间之前只可能是当期 UP，之后按歪处理
+      var xingyuan = gameLib.xingyuanIsUp(name, wishTime);
+      if (xingyuan !== null) {
+        return xingyuan;
+      }
+    }
+    return true;
   }
   if (pool === '武器活动' || pool === '光锥活动') {
     return standard.weapons.indexOf(name) < 0;
@@ -138,7 +152,46 @@ function editorDefaults(poolIndex) {
     capture: false,
     pity: '1',
     date: parts.date,
-    time: parts.time
+    time: parts.time,
+    second: '00'
+  };
+}
+
+/** 混池 / 常驻 / 联动：角色与武器都可能出，选名称时不自动改卡池 */
+function isMixedPool(g, pool) {
+  return pool === '常驻' || pool === '集录祈愿' || pool === '联动';
+}
+
+/** 按卡池过滤可选名称：武器池只给武器，角色池只给角色，混池给全部 */
+function namesForPool(game, source, pool) {
+  var g = gameLib.config(game);
+  var weapons = ai.nameLists(game).weapons;
+  if (pool === g.weaponPool) {
+    return source.filter(function (name) {
+      return weapons.indexOf(name) >= 0;
+    });
+  }
+  if (pool === g.charPool) {
+    return source.filter(function (name) {
+      return weapons.indexOf(name) < 0;
+    });
+  }
+  return source.slice();
+}
+
+/** AI 解析结果 → 本地记录结构 */
+function recordOf(values) {
+  var time = String(values.time || '12:00');
+  var full = time.length === 5 ? time + ':00' : time;
+  return {
+    itemName: values.itemName,
+    itemType: values.itemType,
+    pool: values.pool,
+    rarity: values.rarity || FIVE_STAR,
+    isUp: values.isUp === true,
+    pityCount: values.pityCount || 1,
+    wishTime: values.date + ' ' + full,
+    captureTriggered: false
   };
 }
 
@@ -168,8 +221,14 @@ Page({
     editorVisible: false,
     editorId: null,
     editor: editorDefaults(0),
+    pickerNames: [],
     linkVisible: false,
-    linkUrl: ''
+    linkUrl: '',
+    aiVisible: false,
+    aiText: '',
+    aiError: '',
+    aiRows: [],
+    aiReady: false
   },
 
   onLoad: function () {
@@ -487,7 +546,8 @@ Page({
         capture: record.captureTriggered === true,
         pity: String(record.pityCount || 1),
         date: wishTime.slice(0, 10),
-        time: wishTime.slice(11, 16)
+        time: wishTime.slice(11, 16),
+        second: wishTime.length >= 19 ? wishTime.slice(17, 19) : '00'
       }
     });
   },
@@ -579,16 +639,36 @@ Page({
   onEditorName: function (event) {
     var detail = event.detail || {};
     var name = detail.name || '';
-    this.setData({
+    var g = this.data.g;
+    var patch = {
       pickerVisible: false,
       'editor.itemName': name,
       'editor.icon': detail.icon || itemIcon(this.data.game, name),
       'editor.itemType': inferItemType(this.data.game, name)
-    });
+    };
+    // 选到武器自动切武器池、选到角色自动切角色池；混池 / 常驻 / 联动保持不动
+    var pool = g.pools[this.data.editor.poolIndex] || g.pools[0];
+    if (name && !isMixedPool(g, pool)) {
+      var isWeapon = ai.nameLists(this.data.game).weapons.indexOf(name) >= 0;
+      var targetIndex = g.pools.indexOf(isWeapon ? g.weaponPool : g.charPool);
+      if (targetIndex >= 0) {
+        patch['editor.poolIndex'] = targetIndex;
+      }
+    }
+    this.setData(patch);
   },
 
   openNamePicker: function () {
-    this.setData({ pickerVisible: true });
+    var g = this.data.g;
+    var pool = g.pools[this.data.editor.poolIndex] || g.pools[0];
+    var lists = ai.nameLists(this.data.game);
+    // 编辑已有记录时用全量名单，避免四星 / 历史名称被过滤掉
+    var source = this.data.editorId ? lists.characters.concat(lists.weapons)
+      : fiveStarNames(this.data.game);
+    this.setData({
+      pickerNames: namesForPool(this.data.game, source, pool),
+      pickerVisible: true
+    });
   },
 
   closeNamePicker: function () {
@@ -596,7 +676,19 @@ Page({
   },
 
   onEditorPool: function (event) {
-    this.setData({ 'editor.poolIndex': Number(event.detail.value) });
+    var poolIndex = Number(event.detail.value);
+    var g = this.data.g;
+    var pool = g.pools[poolIndex] || g.pools[0];
+    var lists = ai.nameLists(this.data.game);
+    var source = this.data.editorId ? lists.characters.concat(lists.weapons)
+      : fiveStarNames(this.data.game);
+    var patch = { 'editor.poolIndex': poolIndex };
+    var current = this.data.editor.itemName;
+    if (current && namesForPool(this.data.game, source, pool).indexOf(current) < 0) {
+      patch['editor.itemName'] = '';
+      patch['editor.icon'] = '';
+    }
+    this.setData(patch);
   },
 
   onEditorCapture: function (event) {
@@ -612,7 +704,8 @@ Page({
   },
 
   onEditorTime: function (event) {
-    this.setData({ 'editor.time': event.detail.value });
+    // 手动选择分钟时秒数归零
+    this.setData({ 'editor.time': event.detail.value, 'editor.second': '00' });
   },
 
   saveEditor: function () {
@@ -625,17 +718,19 @@ Page({
       wx.showToast({ title: '请选择角色 / 物品', icon: 'none' });
       return;
     }
-    var pity = Math.max(1, Math.min(90, Number(editor.pity) || 1));
     var pool = g.pools[editor.poolIndex] || g.pools[0];
+    var pityCap = pool === g.weaponPool ? 80 : 90;
+    var pity = Math.max(1, Math.min(pityCap, Number(editor.pity) || 1));
     var itemType = inferItemType(this.data.game, name) || g.itemTypes[0];
+    var wishTime = editor.date + ' ' + editor.time + ':' + (editor.second || '00');
     var data = {
       itemName: name,
       rarity: rarity,
       itemType: itemType,
       pool: pool,
-      isUp: inferIsUp(this.data.game, pool, name),
+      isUp: inferIsUp(this.data.game, pool, name, wishTime),
       pityCount: pity,
-      wishTime: editor.date + ' ' + editor.time + ':00',
+      wishTime: wishTime,
       captureTriggered: this.data.game === 'genshin' && editor.capture === true
     };
     if (editing) {
@@ -646,6 +741,103 @@ Page({
     this.setData({ editorVisible: false });
     this.load();
     wx.showToast({ title: editing ? '修改已保存' : '新增成功', icon: 'success' });
+  },
+
+  /* ---------------- AI 自然语言录入（离线解析） ---------------- */
+
+  openAiEntry: function () {
+    this._aiItems = [];
+    this.setData({ aiVisible: true, aiText: '', aiError: '', aiRows: [], aiReady: false });
+  },
+
+  closeAiEntry: function () {
+    this._aiItems = [];
+    this.setData({ aiVisible: false, aiRows: [], aiError: '', aiReady: false });
+  },
+
+  onAiInput: function (event) {
+    this.setData({ aiText: event.detail.value, aiError: '', aiReady: false });
+  },
+
+  parseAiEntry: function () {
+    var game = this.data.game;
+    var batch = ai.parseLines(this.data.aiText, game);
+    if (!batch.lines.length) {
+      this.setData({ aiError: '先输入一句话', aiReady: false });
+      return;
+    }
+    if (batch.failures.length) {
+      this.setData({
+        aiError: '第 ' + batch.failures.join('、') + ' 行没解析出来，'
+          + '参考「7抽莫娜 2025年10月22日 20时01分05秒」',
+        aiReady: false
+      });
+      return;
+    }
+    if (batch.type === 'owned') {
+      this.setData({ aiError: '收藏补充请到「收藏图鉴」页用 AI 录入', aiReady: false });
+      return;
+    }
+    if (batch.type !== 'wish') {
+      this.setData({ aiError: '账号资源请到「资源」页用 AI 录入', aiReady: false });
+      return;
+    }
+    // 单条：直接打开录入弹窗并预填
+    if (batch.items.length === 1) {
+      var values = batch.items[0].values;
+      var poolIndex = this.data.g.pools.indexOf(values.pool);
+      this._aiItems = [];
+      this.setData({
+        aiVisible: false,
+        aiReady: false,
+        editorVisible: true,
+        editorId: null,
+        editor: {
+          itemName: values.itemName,
+          icon: itemIcon(game, values.itemName),
+          itemType: values.itemType,
+          rarity: FIVE_STAR,
+          poolIndex: poolIndex < 0 ? 0 : poolIndex,
+          capture: false,
+          pity: String(values.pityCount || 1),
+          date: values.date,
+          time: values.time.slice(0, 5),
+          second: values.time.length > 5 ? values.time.slice(6, 8) : '00'
+        }
+      });
+      return;
+    }
+    // 多条：列出核对列表
+    this._aiItems = batch.items;
+    this.setData({
+      aiError: '',
+      aiReady: true,
+      aiRows: batch.items.map(function (item, index) {
+        return {
+          index: index + 1,
+          name: item.name,
+          pool: gameLib.poolLabel(item.values.pool),
+          pity: item.values.pityCount || 1,
+          time: item.values.date + ' ' + item.values.time,
+          up: item.values.isUp === true
+        };
+      })
+    });
+  },
+
+  confirmAiBatch: function () {
+    var items = this._aiItems || [];
+    if (!items.length) {
+      return;
+    }
+    var game = this.data.game;
+    items.forEach(function (item) {
+      store.addWish(game, recordOf(item.values));
+    });
+    this._aiItems = [];
+    this.setData({ aiVisible: false, aiRows: [], aiReady: false, aiText: '' });
+    this.load();
+    wx.showToast({ title: '已批量录入 ' + items.length + ' 条', icon: 'none' });
   },
 
   /* ---------------- 链接导入 ---------------- */
@@ -752,13 +944,13 @@ Page({
 
     function finish() {
       wx.hideLoading();
-      var records = gacha.processItems(game, items);
-      if (!records.length) {
+      var batch = gacha.processItems(game, items);
+      if (!batch.records.length) {
         fail('链接中没有可导入的抽卡记录');
         return;
       }
       that.setData({ linkVisible: false });
-      that.chooseImportMode(records);
+      that.chooseImportMode(batch.records, batch.pity);
     }
 
     function nextPool() {
@@ -812,7 +1004,7 @@ Page({
 
   /* ---------------- 导入结果 ---------------- */
 
-  chooseImportMode: function (records) {
+  chooseImportMode: function (records, pity) {
     var that = this;
     wx.showActionSheet({
       itemList: ['合并导入（按名称+卡池+时间去重）', '覆盖导入（清空当前游戏记录）'],
@@ -827,18 +1019,21 @@ Page({
               if (!confirm.confirm) {
                 return;
               }
-              that.applyImport(records, mode);
+              that.applyImport(records, mode, pity);
             }
           });
           return;
         }
-        that.applyImport(records, mode);
+        that.applyImport(records, mode, pity);
       }
     });
   },
 
-  applyImport: function (records, mode) {
+  applyImport: function (records, mode, pity) {
     var result = store.importRecords(this.data.game, records, mode);
+    if (pity) {
+      store.savePitySnapshot(this.data.game, pity);
+    }
     this.setData({ page: 1, selected: [], selectedCount: 0, allChecked: false });
     this.load();
     wx.showToast({
