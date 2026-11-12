@@ -113,7 +113,8 @@ public class ResourceScanController {
         command.add("cmd.exe");
         command.add("/c");
         command.add("start");
-        command.add("资源识图");
+        // 必须是带引号的空标题：不带引号时 start 会把第一个参数当作要运行的程序
+        command.add("\"\"");
         command.add("/D");
         command.add(dir.getAbsolutePath());
         command.add(batch.getAbsolutePath());
