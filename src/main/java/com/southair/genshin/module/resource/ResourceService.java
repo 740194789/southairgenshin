@@ -76,6 +76,8 @@ public class ResourceService {
         if (request.getPrimogems() != null || request.getDailyPrimogems() != null) {
             entity.setLastAccrualDate(LocalDate.now().toString());
         }
+        // 记录修改时间，云同步合并时据此判断本地与云端谁更新
+        entity.setEditedAt(System.currentTimeMillis());
         repository.save(entity);
         return ResourceVO.of(entity, PRIMOGEMS_PER_PULL);
     }
@@ -107,6 +109,8 @@ public class ResourceService {
         long daily = nvl(entity.getDailyPrimogems());
         if (daily > 0) {
             entity.setPrimogems(nvl(entity.getPrimogems()) + daily * days);
+            // 自动累积也算本地更新，避免云同步用旧快照把它覆盖掉
+            entity.setEditedAt(System.currentTimeMillis());
         }
         entity.setLastAccrualDate(today.toString());
         repository.save(entity);

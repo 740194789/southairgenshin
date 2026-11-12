@@ -6334,6 +6334,65 @@
         });
     }
 
+    /** 只上传：先读一次云端更新时间做并发校验，再用本机数据覆盖云端。 */
+    function runCloudPush(serviceUrl, code) {
+        function attempt(allowRetry) {
+            return api('/api/cloud-sync/pull', {
+                method: 'POST',
+                body: { serviceUrl: serviceUrl, code: code }
+            }).then(function (remote) {
+                return fetchFullBackup().then(function (backup) {
+                    return api('/api/cloud-sync/push', {
+                        method: 'POST',
+                        body: {
+                            serviceUrl: serviceUrl,
+                            code: code,
+                            payload: backup,
+                            prevUpdatedAt: (remote && remote.updatedAt) || 0
+                        }
+                    });
+                });
+            }).catch(function (err) {
+                if (err && err.code === 409 && allowRetry) {
+                    return attempt(false);
+                }
+                throw err;
+            });
+        }
+        return attempt(true).then(function (pushed) {
+            localStorage.setItem(CLOUD_META_KEY, JSON.stringify({
+                lastSyncAt: Date.now(),
+                updatedAt: (pushed && pushed.updatedAt) || 0
+            }));
+            return pushed;
+        });
+    }
+
+    function runUploadCloud() {
+        var code = cloudCode();
+        if (!code) {
+            toast('请先生成或绑定同步码', 'error');
+            return Promise.resolve(null);
+        }
+        if (cloudSyncing) {
+            return Promise.resolve(null);
+        }
+        cloudSyncing = true;
+        updateCloudStatus('正在上传本地数据…');
+        return runCloudPush(cloudServiceUrl(), code).then(function (pushed) {
+            cloudSyncing = false;
+            updateCloudStatus(cloudStatusText());
+            toast('已用本地数据覆盖云端');
+            switchView('settings');
+            return pushed;
+        }).catch(function (err) {
+            cloudSyncing = false;
+            var message = (err && err.message) || '上传失败';
+            updateCloudStatus('上传失败：' + message);
+            throw err;
+        });
+    }
+
     function runCloudSync(silent) {
         var code = cloudCode();
         if (!code) {
@@ -6352,10 +6411,10 @@
             updateCloudStatus(cloudStatusText());
             if (!silent) {
                 var imported = result && result.imported;
-                toast('云同步完成' + (imported
-                    ? '：新增抽卡 ' + imported.wishes + ' 条'
-                        + (imported.resourceUpdated ? '，资源已更新' : '')
-                    : '，本地数据已加密上传'));
+                toast(imported
+                    ? '同步完成：新增抽卡 ' + imported.wishes + ' 条'
+                        + (imported.resourceUpdated ? '，资源已按较新一份合并' : '')
+                    : '同步完成：本机数据已加密上传');
                 switchView('settings');
             }
             return result;
@@ -6405,6 +6464,8 @@
             + '<h3>云同步 · 电脑端 ↔ 小程序<span class="pool-tag">端到端加密</span></h3>'
             + '<p class="panel-desc">抽卡记录与账号资源会先在本机加密再上传，云端只保存密文；'
             + '不会上传登录账号、昵称、设备信息或同步码本身。同步码只显示在本机与小程序里，请自行保管。</p>'
+            + '<p class="panel-desc">「立即同步」＝先拉取云端并合并，再把合并结果上传（资源取修改时间较新的那份）；'
+            + '想直接用本机数据覆盖云端时，点「上传本地覆盖云端」。</p>'
             + '<div class="profile-fields">'
             + '<label class="field"><span>云端服务地址</span>'
             + '<input id="sync-service" type="text" value="' + esc(cloudServiceUrl()) + '" '
@@ -6417,6 +6478,7 @@
             + '<button class="btn btn-outline" id="sync-create" type="button">生成同步码</button>'
             + '<button class="btn btn-outline" id="sync-bind" type="button">保存并绑定</button>'
             + '<button class="btn btn-primary" id="sync-now" type="button">立即同步</button>'
+            + '<button class="btn btn-outline" id="sync-push" type="button">上传本地覆盖云端</button>'
             + '<button class="btn btn-outline" id="sync-unbind" type="button">解绑本机</button>'
             + '<button class="btn btn-outline" id="sync-delete" type="button">删除云端密文</button>'
             + '</div>'
@@ -6525,6 +6587,21 @@
             syncNowBtn.addEventListener('click', function () {
                 guard(function () {
                     return runCloudSync(false);
+                });
+            });
+        }
+        var syncPushBtn = $('#sync-push');
+        if (syncPushBtn) {
+            syncPushBtn.addEventListener('click', function () {
+                if (!cloudCode()) {
+                    toast('请先生成或绑定同步码');
+                    return;
+                }
+                if (!window.confirm('会用本机数据覆盖云端备份，其它设备下次同步会拉取这份数据。确定上传吗？')) {
+                    return;
+                }
+                guard(function () {
+                    return runUploadCloud();
                 });
             });
         }

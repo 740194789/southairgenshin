@@ -190,6 +190,12 @@ public class BackupService {
             created.setGame(game);
             return created;
         });
+        // 两边都有修改时间时，保留更新的那一份，避免同步把本地刚改的数据覆盖掉
+        Long sourceAt = source.getEditedAt();
+        Long targetAt = target.getEditedAt();
+        if (target.getId() != null && sourceAt != null && targetAt != null && targetAt > sourceAt) {
+            return;
+        }
         target.setPrimogems(clampLong(source.getPrimogems(), 0L, MAX_PRIMOGEMS, 0L));
         target.setMora(clampLong(source.getMora(), 0L, MAX_PRIMOGEMS, 0L));
         target.setIntertwinedFates(clampLong(source.getIntertwinedFates(), 0L, MAX_FATES, 0L));
