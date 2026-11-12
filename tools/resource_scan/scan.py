@@ -227,6 +227,75 @@ def choose_page_for_calibration(config):
 # ---------------------------------------------------------------- 截屏
 
 
+def minimize_console():
+    """最小化本脚本的控制台窗口，避免它挡住游戏画面被截进去。"""
+    try:
+        import ctypes
+
+        hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+        if hwnd:
+            ctypes.windll.user32.ShowWindow(hwnd, 6)  # SW_MINIMIZE
+    except Exception:
+        return
+
+
+def restore_console():
+    """截屏完成后恢复控制台，方便查看识别结果与提示。"""
+    try:
+        import ctypes
+
+        hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+        if hwnd:
+            ctypes.windll.user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+            ctypes.windll.user32.SetForegroundWindow(hwnd)
+    except Exception:
+        return
+
+
+def activate_game_window(window_title=""):
+    """把游戏窗口恢复并置前；没配置标题时尝试常见原神窗口名。"""
+    candidates = [window_title] if window_title else ["原神", "Genshin Impact", "云·原神"]
+    try:
+        import pygetwindow as gw
+    except ImportError:
+        return False
+    for candidate in candidates:
+        if not candidate:
+            continue
+        try:
+            windows = [w for w in gw.getWindowsWithTitle(candidate) if w.visible]
+        except Exception:
+            continue
+        if not windows:
+            continue
+        win = windows[0]
+        try:
+            if win.isMinimized:
+                win.restore()
+            win.activate()
+            return True
+        except Exception:
+            try:
+                import ctypes
+
+                hwnd = win._hWnd
+                ctypes.windll.user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+                ctypes.windll.user32.SetForegroundWindow(hwnd)
+                return True
+            except Exception:
+                continue
+    return False
+
+
+def prepare_capture(window_title=""):
+    """截屏前整理窗口：先最小化控制台，再尽量把游戏窗口放到最前。"""
+    import time
+
+    minimize_console()
+    activated = activate_game_window(window_title)
+    time.sleep(0.6 if activated else 0.3)
+
+
 def capture_game_image(window_title=""):
     """截取游戏窗口；找不到窗口或依赖缺失时退回全屏。"""
     from PIL import Image
@@ -709,7 +778,9 @@ def main():
         image = Image.open(args.image)
     else:
         title = config.get("window_title") or ""
+        prepare_capture(title)
         image = capture_game_image(title)
+        restore_console()
 
     page = None
     if args.calibrate:
@@ -752,7 +823,9 @@ def main():
     while True:
         if not args.image:
             title = config.get("window_title") or ""
+            prepare_capture(title)
             image = capture_game_image(title)
+            restore_console()
         print("\n当前页面：%s" % (page.get("name") or page.get("id")))
         results = scan_image(image, page)
         print()
