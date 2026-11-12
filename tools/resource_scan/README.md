@@ -9,9 +9,15 @@
 
 ## 环境
 
-1. 安装 Python 3.9+（勾选 Add to PATH）。
-2. 安装 Tesseract OCR（Windows 推荐 UB Mannheim 版），并加入 PATH。
-3. 双击 `run.bat`，首次运行会自动创建 `.venv` 并安装依赖。
+程序已内置便携 Python 运行时与全部依赖，双击 `run.bat` 即可运行，无需另外安装 Python。
+
+`run.bat` 的查找顺序：
+
+1. 本目录下的 `python\python.exe`（随程序分发的运行时，开箱即用）。
+2. 没有内置运行时时，退回 `.venv`：首次运行会自动创建并安装 `requirements.txt` 依赖，此时需要本机已安装 Python 3.9+ 并加入 PATH。
+
+Tesseract 会优先使用环境变量 `SA_TESSERACT_CMD`，其次使用程序目录自带
+（`tools/resource_scan` 上两级的 `tesseract\tesseract.exe`），最后才查找 PATH；语言数据目录同理。
 
 ## 按页面分别校准
 
@@ -81,4 +87,5 @@ run.bat --push --token <登录token> --url http://localhost:8080
 - `calibrate.py`：按页面校准与模板生成
 - `config.json`：窗口标题、页面列表（每页一套区域）、上次使用的页面
 - `templates/`：数字模板（校准后按页面生成，`templates/<页面id>/0-9.png`，缺失数字回退到全局模板）
-- `run.bat`：创建虚拟环境、安装依赖、启动
+- `run.bat`：优先用内置 Python 启动，没有内置运行时时退回虚拟环境
+- `python/`：随程序分发的便携 Python 运行时（不入库，由打包时放入）

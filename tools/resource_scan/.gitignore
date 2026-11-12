@@ -2,3 +2,5 @@
 __pycache__/
 *.pyc
 templates/
+# 随程序分发的便携 Python 运行时（体积大，不入库）
+python/

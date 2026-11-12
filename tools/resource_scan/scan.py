@@ -280,12 +280,34 @@ def crop_region(image, region):
 # ---------------------------------------------------------------- 引擎 1：Tesseract
 
 
+def _configure_tesseract(pytesseract):
+    """定位 Tesseract：优先环境变量，其次程序自带的 tesseract 目录。"""
+    import os
+    import shutil
+    candidates = []
+    env_cmd = os.environ.get("SA_TESSERACT_CMD")
+    if env_cmd:
+        candidates.append(env_cmd)
+    candidates.append(str(BASE_DIR.parent.parent / "tesseract" / "tesseract.exe"))
+    found = shutil.which("tesseract")
+    if found:
+        candidates.append(found)
+    for candidate in candidates:
+        if candidate and os.path.isfile(candidate):
+            pytesseract.pytesseract.tesseract_cmd = candidate
+            break
+    tessdata = BASE_DIR.parent.parent / "tesseract" / "tessdata"
+    if not os.environ.get("TESSDATA_PREFIX") and tessdata.is_dir():
+        os.environ["TESSDATA_PREFIX"] = str(tessdata)
+
+
 def recognize_tesseract(image):
     """返回 (数值或 None, 说明)。"""
     try:
         import pytesseract
     except ImportError:
         return None, "未安装 pytesseract"
+    _configure_tesseract(pytesseract)
     try:
         text = pytesseract.image_to_string(
             image,
