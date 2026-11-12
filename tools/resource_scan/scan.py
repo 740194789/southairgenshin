@@ -370,25 +370,94 @@ def _configure_tesseract(pytesseract):
         os.environ["TESSDATA_PREFIX"] = str(tessdata)
 
 
+def _border_brightness(gray):
+    """取边框像素平均值，用来判断是浅色字还是深色字。"""
+    width, height = gray.size
+    pixels = gray.load()
+    values = []
+    step = max(1, width // 20)
+    for x in range(0, width, step):
+        values.append(pixels[x, 0])
+        values.append(pixels[x, height - 1])
+    step = max(1, height // 20)
+    for y in range(0, height, step):
+        values.append(pixels[0, y])
+        values.append(pixels[width - 1, y])
+    return sum(values) / len(values) if values else 128
+
+
+def prepare_ocr_image(image):
+    """OCR 前的预处理：放大、统一成白底黑字、加白边。"""
+    from PIL import Image, ImageOps
+
+    gray = ImageOps.grayscale(image)
+    if gray.width < 8 or gray.height < 8:
+        return gray
+    if _border_brightness(gray) < 110:
+        gray = ImageOps.invert(gray)
+    gray = gray.resize((gray.width * 3, gray.height * 3), Image.LANCZOS)
+    gray = ImageOps.autocontrast(gray, cutoff=1)
+    padding = max(8, int(gray.height * 0.2))
+    canvas = Image.new("L", (gray.width + padding * 2, gray.height + padding * 2), 255)
+    canvas.paste(gray, (padding, padding))
+    return canvas
+
+
+def _ocr_once(pytesseract, image, psm):
+    """单次 OCR，返回 (数值或 None, 平均置信度 0~100)。"""
+    data = pytesseract.image_to_data(
+        image,
+        lang="eng",
+        config="--oem 3 --psm %d -c tessedit_char_whitelist=0123456789" % psm,
+        output_type=pytesseract.Output.DICT,
+    )
+    texts = data.get("text") or []
+    digits = ""
+    confidences = []
+    for index, token in enumerate(texts):
+        token_digits = re.sub(r"\D", "", str(token or ""))
+        if not token_digits:
+            continue
+        digits += token_digits
+        try:
+            confidence = float(data["conf"][index])
+        except (KeyError, TypeError, ValueError):
+            confidence = -1.0
+        if confidence >= 0:
+            confidences.append(confidence)
+    if not digits:
+        return None, 0.0
+    average = sum(confidences) / len(confidences) if confidences else 0.0
+    return int(digits), average
+
+
 def recognize_tesseract(image):
-    """返回 (数值或 None, 说明)。"""
+    """返回 (数值或 None, 置信度 0~100, 说明)。多种 PSM 投票，降低偶发误读。"""
     try:
         import pytesseract
     except ImportError:
-        return None, "未安装 pytesseract"
+        return None, 0.0, "未安装 pytesseract"
     _configure_tesseract(pytesseract)
-    try:
-        text = pytesseract.image_to_string(
-            image,
-            lang="eng",
-            config="--psm 7 -c tessedit_char_whitelist=0123456789",
-        )
-    except Exception as exc:  # 包括 Tesseract 未安装
-        return None, str(exc).strip().splitlines()[0] if str(exc).strip() else "Tesseract 调用失败"
-    digits = re.sub(r"\D", "", text or "")
-    if not digits:
-        return None, "未识别到数字"
-    return int(digits), ""
+    prepared = prepare_ocr_image(image)
+    votes = {}
+    for psm in (7, 8, 10):
+        try:
+            value, confidence = _ocr_once(pytesseract, prepared, psm)
+        except Exception as exc:  # 包括 Tesseract 未安装
+            message = str(exc).strip().splitlines()
+            return None, 0.0, message[0] if message else "Tesseract 调用失败"
+        if value is None:
+            continue
+        votes.setdefault(value, []).append(confidence)
+    if not votes:
+        return None, 0.0, "未识别到数字"
+    # 票数多的优先，票数相同再看最高置信度
+    value = max(votes.items(), key=lambda item: (len(item[1]), max(item[1])))[0]
+    confidence = max(votes[value])
+    note = "OCR 置信度 %.0f%%" % confidence
+    if len(votes) > 1:
+        note += "（%d 种读法）" % len(votes)
+    return value, confidence, note
 
 
 # ---------------------------------------------------------------- 引擎 2：数字模板
@@ -488,21 +557,55 @@ def connected_components(mask):
 
 
 def digit_boxes(mask):
-    """过滤噪声块并按 x 排序，返回数字块的外接框。"""
+    """返回 (数字块列表, 可疑块数量)；可疑块多为粘连数字或图标边缘。"""
     if mask is None:
-        return []
+        return [], 0
     height, width = mask.shape
     boxes = []
     for left, top, right, bottom, count in connected_components(mask):
         box_height = bottom - top
         box_width = right - left
-        if box_height < height * 0.30 or count < 8:
+        if count < 8:
             continue
         if box_width > width * 0.75:
             continue
         boxes.append((left, top, right, bottom))
     boxes.sort(key=lambda item: item[0])
-    return boxes
+    if not boxes:
+        return [], 0
+    heights = sorted(bottom - top for _, top, _, bottom in boxes)
+    median = heights[len(heights) // 2]
+    kept = []
+    suspicious = 0
+    for box in boxes:
+        left, top, right, bottom = box
+        box_width = right - left
+        box_height = bottom - top
+        if box_height < median * 0.55:
+            continue
+        if box_width > box_height * 1.2:
+            # 高度像数字但明显更宽，通常是两个数字粘连
+            suspicious += 1
+            continue
+        kept.append(box)
+    if not kept:
+        return [], suspicious
+    kept_heights = sorted(bottom - top for _, top, _, bottom in kept)
+    # 数字块整体太矮，说明框选区域里没有数字
+    if kept_heights[len(kept_heights) // 2] < height * 0.18:
+        return [], suspicious
+    return kept, suspicious
+
+
+def match_score(sample, template):
+    """形状相似度：IoU 为主、均方误差为辅，越小越像。"""
+    np = _import_numpy()
+    sample_mask = sample > 0.5
+    template_mask = template > 0.5
+    union = np.logical_or(sample_mask, template_mask).sum()
+    iou = float(np.logical_and(sample_mask, template_mask).sum()) / union if union else 0.0
+    mse = float(np.mean((sample - template) ** 2))
+    return 0.55 * (1.0 - iou) + 0.45 * mse
 
 
 def normalize_digit(mask, box):
@@ -550,42 +653,56 @@ def load_templates(page_id=None):
 
 
 def recognize_templates(image, templates=None):
-    """返回 (数值或 None, 说明)。"""
+    """返回 (数值或 None, 平均误差, 说明)；误差越小越可信。"""
     np = _import_numpy()
     if np is None:
-        return None, "未安装 numpy"
+        return None, 1.0, "未安装 numpy"
     if templates is None:
         templates = load_templates()
     if not templates:
-        return None, "缺少数字模板，请先校准"
+        return None, 1.0, "缺少数字模板，请先校准"
 
     gray = image.convert("L")
     mask = binarize(gray)
-    boxes = digit_boxes(mask)
+    boxes, suspicious = digit_boxes(mask)
+    if suspicious:
+        return None, 1.0, "检测到 %d 处数字粘连，模板不可靠" % suspicious
     if not boxes:
-        return None, "未找到数字"
+        return None, 1.0, "未找到数字"
 
     digits = []
     scores = []
+    ambiguous = 0
     for box in boxes:
         sample = normalize_digit(mask, box)
         if sample is None:
             continue
         best_digit = None
         best_score = None
+        second_score = None
         for digit, template in templates.items():
-            score = float(np.mean((sample - template) ** 2))
+            score = match_score(sample, template)
             if best_score is None or score < best_score:
+                second_score = best_score
                 best_score = score
                 best_digit = digit
-        if best_digit is not None:
-            digits.append(best_digit)
-            scores.append(best_score)
+            elif second_score is None or score < second_score:
+                second_score = score
+        if best_digit is None:
+            continue
+        # 两个候选几乎一样像时，说明该位不可靠，宁可整段不返回
+        if second_score is not None and second_score - best_score < 0.015:
+            ambiguous += 1
+        digits.append(best_digit)
+        scores.append(best_score)
     if not digits:
-        return None, "模板匹配失败"
+        return None, 1.0, "模板匹配失败"
     average = sum(scores) / len(scores)
     note = "模板误差 %.3f" % average
-    return int("".join(digits)), note
+    if ambiguous:
+        note += "（%d 位歧义）" % ambiguous
+        return None, average, note
+    return int("".join(digits)), average, note
 
 
 # ---------------------------------------------------------------- 模板生成
@@ -613,7 +730,10 @@ def build_templates_from_calibration(image, regions, values, page_id=None):
             continue
         crop = crop_region(image, region)
         mask = binarize(crop.convert("L"))
-        boxes = digit_boxes(mask)
+        boxes, suspicious = digit_boxes(mask)
+        if suspicious:
+            print("  跳过 %s：检测到数字粘连，请把区域框得更紧一些。" % label)
+            continue
         if len(boxes) != len(digits):
             print("  跳过 %s：切出 %d 个数字块，真实值有 %d 位。" % (label, len(boxes), len(digits)))
             continue
@@ -635,6 +755,18 @@ def build_templates_from_calibration(image, regions, values, page_id=None):
 # ---------------------------------------------------------------- 识别流程
 
 
+MAX_VALUE = 999999999
+
+
+def _sane_value(value):
+    """过滤明显不合理的读数（负数、超过 9 位）。"""
+    if value is None:
+        return None
+    if value < 0 or value > MAX_VALUE:
+        return None
+    return value
+
+
 def scan_image(image, page):
     regions = (page or {}).get("regions") or {}
     templates = load_templates((page or {}).get("id"))
@@ -646,23 +778,35 @@ def scan_image(image, page):
                             "template": None, "value": None, "status": "未校准"})
             continue
         crop = crop_region(image, region)
-        tesseract_value, tesseract_note = recognize_tesseract(crop)
-        template_value, template_note = recognize_templates(crop, templates)
+        tesseract_value, tesseract_confidence, tesseract_note = recognize_tesseract(crop)
+        template_value, template_score, template_note = recognize_templates(crop, templates)
+        tesseract_value = _sane_value(tesseract_value)
+        template_value = _sane_value(template_value)
+        note = ""
         if tesseract_value is not None and tesseract_value == template_value:
             value = tesseract_value
             status = "一致"
+            note = tesseract_note
         elif tesseract_value is not None and template_value is not None:
-            value = tesseract_value
+            # 模板误差越小越可信；OCR 置信度低时优先采用模板
+            prefer_template = ((template_score <= 0.09 and tesseract_confidence < 85)
+                               or (tesseract_confidence < 45 and template_score <= 0.16))
+            value = template_value if prefer_template else tesseract_value
             status = "需确认"
+            note = ("取模板（%s；%s）" % (template_note, tesseract_note)
+                    if prefer_template else ("取 OCR（%s；%s）" % (tesseract_note, template_note)))
         elif tesseract_value is not None:
             value = tesseract_value
             status = "仅 OCR"
+            note = tesseract_note
         elif template_value is not None:
             value = template_value
             status = "仅模板"
+            note = template_note
         else:
             value = None
             status = "缺失"
+            note = tesseract_note or template_note
         results.append({
             "key": key,
             "label": label,
@@ -670,7 +814,7 @@ def scan_image(image, page):
             "template": template_value,
             "value": value,
             "status": status,
-            "note": tesseract_note or template_note,
+            "note": note,
         })
     return results
 
@@ -687,6 +831,9 @@ def print_results(results):
             "-" if item["value"] is None else item["value"],
             item["status"],
         ))
+    for item in results:
+        if item.get("note") and item["status"] != "一致":
+            print("  · %s：%s" % (item["label"], item["note"]))
 
 
 def result_text(results):
