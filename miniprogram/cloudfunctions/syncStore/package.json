@@ -1,0 +1,10 @@
+{
+  "name": "syncStore",
+  "version": "1.0.0",
+  "description": "加密云同步中转：只保存客户端加密后的密文",
+  "main": "index.js",
+  "private": true,
+  "dependencies": {
+    "wx-server-sdk": "~2.6.3"
+  }
+}

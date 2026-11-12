@@ -12,7 +12,8 @@ App({
     catalog.applyCached('starrail');
     if (wx.cloud) {
       try {
-        wx.cloud.init({ env: 'qq740194789-d5ghcyv7x748499f9', traceUser: true });
+        // traceUser 关闭：不把用户身份信息记到云端访问日志里，云同步只按同步码哈希存取密文
+        wx.cloud.init({ env: 'qq740194789-d5ghcyv7x748499f9', traceUser: false });
       } catch (e) {
         /* 未开通云开发时忽略，链接导入会给出提示 */
       }

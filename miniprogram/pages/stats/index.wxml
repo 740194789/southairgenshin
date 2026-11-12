@@ -357,5 +357,34 @@
       </view>
       <view class="foot-tip">离线版数据只存在本机缓存；卸载、清理缓存或换机会丢失。账号资源可直接在「资源」页修改。</view>
     </view>
+
+    <view class="panel">
+      <view class="panel-title">云同步 · 小程序 ↔ 电脑端<text class="pool-tag inline">端到端加密</text></view>
+      <view class="panel-desc">抽卡记录与账号资源会先在本机加密再上传，云端只保存密文；不记录账号、昵称、设备或同步码本身。</view>
+      <block wx:if="{{cloudSync.bound}}">
+        <view class="sync-row">
+          <text class="sync-label">同步码</text>
+          <text class="sync-code">{{cloudSync.pretty}}</text>
+          <view class="btn btn-outline btn-sm" bindtap="onCopySyncCode">复制</view>
+        </view>
+        <view class="sync-line">上次同步：{{cloudSync.lastSyncText}}</view>
+        <view class="toolbar">
+          <view class="btn btn-primary" bindtap="onSyncNow">立即同步</view>
+          <view class="btn btn-outline" bindtap="onUnbindSync">解绑本机</view>
+          <view class="btn btn-outline" bindtap="onDeleteRemoteSync">删除云端数据</view>
+        </view>
+        <view class="sync-auto">
+          <text>打开本页时自动同步</text>
+          <switch checked="{{cloudSync.auto}}" color="#f07a81" bindchange="onToggleSyncAuto"/>
+        </view>
+      </block>
+      <block wx:else>
+        <view class="toolbar">
+          <view class="btn btn-primary" bindtap="onGenerateSyncCode">生成同步码</view>
+          <view class="btn btn-outline" bindtap="onBindSyncCode">绑定已有同步码</view>
+        </view>
+      </block>
+      <view class="foot-tip">电脑端在「设置 · 云同步」里输入同一个同步码即可互通。忘记同步码时，重新生成即可，旧云端密文不会再被使用。</view>
+    </view>
   </view>
 </view>

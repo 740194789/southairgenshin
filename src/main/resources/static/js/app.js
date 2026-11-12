@@ -9,6 +9,14 @@
     var USER_KEY = 'sg_user';
     var GAME_KEY = 'sg_game';
 
+    /* 云同步：只在本机保存服务地址、同步码与同步时间 */
+    var CLOUD_SERVICE_KEY = 'sg_cloud_service';
+    var CLOUD_CODE_KEY = 'sg_cloud_code';
+    var CLOUD_META_KEY = 'sg_cloud_meta';
+    var CLOUD_AUTO_KEY = 'sg_cloud_auto';
+    var CLOUD_DEFAULT_SERVICE = 'https://qq740194789-d5ghcyv7x748499f9.service.tcloudbase.com/syncStore';
+    var cloudSyncing = false;
+
     /* 两套游戏的卡池、货币与文案配置 */
     var GAMES = {
         genshin: {
@@ -514,10 +522,14 @@
                     throw new Error((payload && payload.message) || '登录已失效，请重新登录');
                 }
                 if (!res.ok) {
-                    throw new Error((payload && payload.message) || ('请求失败（' + res.status + '）'));
+                    var error = new Error((payload && payload.message) || ('请求失败（' + res.status + '）'));
+                    error.code = (payload && payload.code) || res.status;
+                    throw error;
                 }
                 if (payload && payload.code !== 0) {
-                    throw new Error(payload.message || '请求失败');
+                    var failure = new Error(payload.message || '请求失败');
+                    failure.code = payload.code;
+                    throw failure;
                 }
                 return payload ? payload.data : null;
             });
@@ -6109,6 +6121,206 @@
     }
 
 
+    /* ---------------- 云同步（电脑端 ↔ 小程序） ---------------- */
+
+    function cloudServiceUrl() {
+        var saved = localStorage.getItem(CLOUD_SERVICE_KEY);
+        return (saved && saved.trim()) || CLOUD_DEFAULT_SERVICE;
+    }
+
+    function cloudCode() {
+        var saved = localStorage.getItem(CLOUD_CODE_KEY) || '';
+        return saved.toUpperCase().replace(/[^0-9A-Z]/g, '');
+    }
+
+    function prettySyncCode(code) {
+        var text = String(code || '').toUpperCase().replace(/[^0-9A-Z]/g, '');
+        var groups = [];
+        for (var i = 0; i < text.length; i += 4) {
+            groups.push(text.substring(i, i + 4));
+        }
+        return groups.join('-');
+    }
+
+    function cloudMeta() {
+        try {
+            var raw = JSON.parse(localStorage.getItem(CLOUD_META_KEY) || '{}');
+            return raw && typeof raw === 'object' ? raw : {};
+        } catch (e) {
+            return {};
+        }
+    }
+
+    function cloudAutoEnabled() {
+        return localStorage.getItem(CLOUD_AUTO_KEY) === '1';
+    }
+
+    function cloudStatusText() {
+        if (!cloudCode()) {
+            return '尚未绑定同步码：先点「生成同步码」，再到小程序「资源 · 云同步」里绑定同一串码。';
+        }
+        var meta = cloudMeta();
+        if (!meta.lastSyncAt) {
+            return '已绑定同步码，还没有同步过数据。';
+        }
+        return '上次同步：' + new Date(meta.lastSyncAt).toLocaleString();
+    }
+
+    function updateCloudStatus(text) {
+        var el = $('#sync-status');
+        if (el) {
+            el.textContent = text;
+        }
+    }
+
+    /** 导出当前账号的全量数据，并附加仅存在本机的收藏补充 */
+    function fetchFullBackup() {
+        return fetch(withGame('/api/backup/export-all'), {
+            headers: state.token ? { Authorization: 'Bearer ' + state.token } : {}
+        }).then(function (res) {
+            if (res.status === 401) {
+                logout(true);
+                throw new Error('登录已失效，请重新登录');
+            }
+            if (!res.ok) {
+                throw new Error('导出失败（' + res.status + '）');
+            }
+            return res.json();
+        }).then(function (data) {
+            data.owned = ownedSnapshot();
+            return data;
+        });
+    }
+
+    function createCloudCode() {
+        var serviceUrl = $('#sync-service') ? $('#sync-service').value.trim() : cloudServiceUrl();
+        if (!serviceUrl) {
+            throw new Error('请填写云端服务地址');
+        }
+        return api('/api/cloud-sync/create', {
+            method: 'POST',
+            body: { serviceUrl: serviceUrl }
+        }).then(function (data) {
+            localStorage.setItem(CLOUD_SERVICE_KEY, serviceUrl);
+            localStorage.setItem(CLOUD_CODE_KEY, data.code);
+            localStorage.removeItem(CLOUD_META_KEY);
+            toast('同步码已生成，请复制到小程序里绑定');
+            switchView('settings');
+            return data;
+        });
+    }
+
+    function bindCloudCode() {
+        var serviceInput = $('#sync-service');
+        var codeInput = $('#sync-code');
+        var serviceUrl = serviceInput ? serviceInput.value.trim() : cloudServiceUrl();
+        var normalized = String(codeInput ? codeInput.value : '')
+            .toUpperCase().replace(/[^0-9A-Z]/g, '');
+        if (normalized.length < 20 || normalized.length > 64) {
+            throw new Error('同步码应为 20–64 位字母数字');
+        }
+        return api('/api/cloud-sync/pull', {
+            method: 'POST',
+            body: { serviceUrl: serviceUrl, code: normalized }
+        }).then(function () {
+            localStorage.setItem(CLOUD_SERVICE_KEY, serviceUrl);
+            localStorage.setItem(CLOUD_CODE_KEY, normalized);
+            localStorage.removeItem(CLOUD_META_KEY);
+            toast('已绑定同步码，点「立即同步」开始互通');
+            switchView('settings');
+            return null;
+        });
+    }
+
+    /** 一次完整同步：拉取 → 合并导入 → 重新导出 → 加密上传 */
+    function cloudSyncRound(serviceUrl, code, allowRetry) {
+        return api('/api/cloud-sync/pull', {
+            method: 'POST',
+            body: { serviceUrl: serviceUrl, code: code }
+        }).then(function (remote) {
+            var pulled = Promise.resolve(null);
+            if (remote && remote.payload) {
+                pulled = api('/api/backup/import-all?mode=merge', {
+                    method: 'POST',
+                    body: remote.payload
+                }).then(function (result) {
+                    restoreOwnedSnapshot(remote.payload.owned, 'merge');
+                    return result;
+                });
+            }
+            return pulled.then(function (result) {
+                return fetchFullBackup().then(function (backup) {
+                    return api('/api/cloud-sync/push', {
+                        method: 'POST',
+                        body: {
+                            serviceUrl: serviceUrl,
+                            code: code,
+                            payload: backup,
+                            prevUpdatedAt: (remote && remote.updatedAt) || 0
+                        }
+                    }).then(function (pushed) {
+                        var meta = { lastSyncAt: Date.now(), updatedAt: pushed.updatedAt || 0 };
+                        localStorage.setItem(CLOUD_META_KEY, JSON.stringify(meta));
+                        return { imported: result, updatedAt: meta.updatedAt };
+                    });
+                });
+            });
+        }).catch(function (err) {
+            // 另一台设备刚推过：重新拉取合并后再推一次
+            if (err && err.code === 409 && allowRetry) {
+                return cloudSyncRound(serviceUrl, code, false);
+            }
+            throw err;
+        });
+    }
+
+    function runCloudSync(silent) {
+        var code = cloudCode();
+        if (!code) {
+            if (!silent) {
+                toast('请先生成或绑定同步码', 'error');
+            }
+            return Promise.resolve(null);
+        }
+        if (cloudSyncing) {
+            return Promise.resolve(null);
+        }
+        cloudSyncing = true;
+        updateCloudStatus('正在同步…');
+        return cloudSyncRound(cloudServiceUrl(), code, true).then(function (result) {
+            cloudSyncing = false;
+            updateCloudStatus(cloudStatusText());
+            if (!silent) {
+                var imported = result && result.imported;
+                toast('云同步完成' + (imported
+                    ? '：新增抽卡 ' + imported.wishes + ' 条'
+                        + (imported.resourceUpdated ? '，资源已更新' : '')
+                    : '，本地数据已加密上传'));
+                switchView('settings');
+            }
+            return result;
+        }).catch(function (err) {
+            cloudSyncing = false;
+            var message = (err && err.message) || '同步失败';
+            updateCloudStatus('同步失败：' + message);
+            if (silent) {
+                return null;
+            }
+            throw err;
+        });
+    }
+
+    function maybeAutoCloudSync() {
+        if (!cloudAutoEnabled() || !cloudCode() || cloudSyncing) {
+            return;
+        }
+        var meta = cloudMeta();
+        if (meta.lastSyncAt && Date.now() - meta.lastSyncAt < 5 * 60 * 1000) {
+            return;
+        }
+        runCloudSync(true);
+    }
+
     function loadSettings() {
         var el = $('#view-settings');
         var name = (state.user && (state.user.nickname || state.user.username)) || '旅行者';
@@ -6127,6 +6339,31 @@
             + '<button class="btn btn-outline" id="settings-import-all" type="button">导入全部数据</button>'
             + '<input id="settings-all-file" type="file" accept=".json,application/json" hidden/>'
             + '</div>'
+            + '</section>'
+
+            + '<section class="panel">'
+            + '<h3>云同步 · 电脑端 ↔ 小程序<span class="pool-tag">端到端加密</span></h3>'
+            + '<p class="panel-desc">抽卡记录与账号资源会先在本机加密再上传，云端只保存密文；'
+            + '不会上传登录账号、昵称、设备信息或同步码本身。同步码只显示在本机与小程序里，请自行保管。</p>'
+            + '<div class="profile-fields">'
+            + '<label class="field"><span>云端服务地址</span>'
+            + '<input id="sync-service" type="text" value="' + esc(cloudServiceUrl()) + '" '
+            + 'placeholder="https://xxx.service.tcloudbase.com/syncStore"/></label>'
+            + '<label class="field"><span>同步码</span>'
+            + '<input id="sync-code" type="text" value="' + esc(prettySyncCode(cloudCode())) + '" '
+            + 'placeholder="生成新同步码，或粘贴小程序里的同步码"/></label>'
+            + '</div>'
+            + '<div class="panel-actions">'
+            + '<button class="btn btn-outline" id="sync-create" type="button">生成同步码</button>'
+            + '<button class="btn btn-outline" id="sync-bind" type="button">保存并绑定</button>'
+            + '<button class="btn btn-primary" id="sync-now" type="button">立即同步</button>'
+            + '<button class="btn btn-outline" id="sync-unbind" type="button">解绑本机</button>'
+            + '<button class="btn btn-outline" id="sync-delete" type="button">删除云端密文</button>'
+            + '</div>'
+            + '<p class="panel-desc" id="sync-status" style="margin-top:12px">' + esc(cloudStatusText()) + '</p>'
+            + '<label class="field" style="flex-direction:row;align-items:center;gap:8px">'
+            + '<input id="sync-auto" type="checkbox" ' + (cloudAutoEnabled() ? 'checked' : '') + ' style="width:auto"/>'
+            + '<span>打开设置页时自动同步（距上次超过 5 分钟才执行）</span></label>'
             + '</section>'
 
             + '<div class="panel-grid">'
@@ -6169,6 +6406,7 @@
             + '</section>';
 
         bindSettings();
+        maybeAutoCloudSync();
     }
 
     function bindSettings() {
@@ -6205,6 +6443,81 @@
             allFile.click();
         });
         allFile.addEventListener('change', onAllBackupFileSelected);
+
+        var syncCreateBtn = $('#sync-create');
+        if (syncCreateBtn) {
+            syncCreateBtn.addEventListener('click', function () {
+                guard(function () {
+                    return createCloudCode();
+                });
+            });
+        }
+        var syncBindBtn = $('#sync-bind');
+        if (syncBindBtn) {
+            syncBindBtn.addEventListener('click', function () {
+                guard(function () {
+                    return bindCloudCode();
+                });
+            });
+        }
+        var syncNowBtn = $('#sync-now');
+        if (syncNowBtn) {
+            syncNowBtn.addEventListener('click', function () {
+                guard(function () {
+                    return runCloudSync(false);
+                });
+            });
+        }
+        var syncUnbindBtn = $('#sync-unbind');
+        if (syncUnbindBtn) {
+            syncUnbindBtn.addEventListener('click', function () {
+                if (!cloudCode()) {
+                    toast('本机还没有绑定同步码');
+                    return;
+                }
+                if (!window.confirm('解绑只清除本机保存的同步码，云端密文仍保留，之后可用同一同步码重新绑定。确定解绑吗？')) {
+                    return;
+                }
+                localStorage.removeItem(CLOUD_CODE_KEY);
+                localStorage.removeItem(CLOUD_META_KEY);
+                toast('已解绑本机云同步');
+                switchView('settings');
+            });
+        }
+        var syncAutoBox = $('#sync-auto');
+        if (syncAutoBox) {
+            syncAutoBox.addEventListener('change', function () {
+                if (syncAutoBox.checked) {
+                    localStorage.setItem(CLOUD_AUTO_KEY, '1');
+                    maybeAutoCloudSync();
+                } else {
+                    localStorage.removeItem(CLOUD_AUTO_KEY);
+                }
+            });
+        }
+        var syncDeleteBtn = $('#sync-delete');
+        if (syncDeleteBtn) {
+            syncDeleteBtn.addEventListener('click', function () {
+                if (!cloudCode()) {
+                    toast('本机还没有绑定同步码');
+                    return;
+                }
+                if (!window.confirm('将删除云端的加密副本并解绑本机，其他设备需要重新生成同步码。确定删除吗？')) {
+                    return;
+                }
+                guard(function () {
+                    return api('/api/cloud-sync/delete', {
+                        method: 'POST',
+                        body: { serviceUrl: cloudServiceUrl(), code: cloudCode() }
+                    }).then(function () {
+                        localStorage.removeItem(CLOUD_CODE_KEY);
+                        localStorage.removeItem(CLOUD_META_KEY);
+                        toast('云端数据已删除');
+                        switchView('settings');
+                    });
+                });
+            });
+        }
 
         ['genshin', 'starrail'].forEach(function (game) {
             var btn = $('#catalog-refresh-' + game);

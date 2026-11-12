@@ -6,6 +6,7 @@ var uigf = require('../../utils/uigf');
 var avatars = require('../../utils/avatars');
 var weaponIcons = require('../../utils/weaponIcons');
 var calendarLib = require('../../utils/calendar');
+var cloudSync = require('../../utils/cloudSync');
 
 /** 记录对应的头像 / 图标，缺失时返回空字符串 */
 function itemIcon(game, item) {
@@ -521,7 +522,8 @@ Page({
     chartReal: false,
     chartPool: 'all',
     chartPools: [{ key: 'all', label: '全部' }],
-    chart: { points: [], summary: '' }
+    chart: { points: [], summary: '' },
+    cloudSync: { bound: false, pretty: '', auto: false, lastSyncText: '还没有同步过', syncing: false }
   },
 
   onLoad: function () {
@@ -531,6 +533,7 @@ Page({
 
   onShow: function () {
     this.load(app.globalData.game);
+    this.maybeAutoSync();
   },
 
   load: function (game) {
@@ -669,6 +672,7 @@ Page({
       chartPools: chartPools,
       chart: chart
     });
+    this.refreshCloudSync();
   },
 
   onRecentIconError: function (event) {
@@ -957,6 +961,181 @@ Page({
         + (result.skipped ? '，跳过 ' + result.skipped + ' 条' : '')
         + (result.filtered ? '，忽略 ' + result.filtered + ' 条' : ''),
       icon: 'none'
+    });
+  },
+
+  /* ---------------- 云同步（小程序 ↔ 电脑端） ---------------- */
+
+  refreshCloudSync: function () {
+    var info = cloudSync.status();
+    this.setData({
+      cloudSync: {
+        bound: info.bound,
+        pretty: info.pretty,
+        auto: info.auto,
+        lastSyncText: info.lastSyncAt ? store.nowStr(new Date(info.lastSyncAt)) : '还没有同步过',
+        syncing: false
+      }
+    });
+  },
+
+  /** 开启自动同步后，回到本页且距上次同步超过 5 分钟时静默同步一次 */
+  maybeAutoSync: function () {
+    var info = cloudSync.status();
+    if (!info.auto || !info.bound || this.autoSyncing) {
+      return;
+    }
+    if (info.lastSyncAt && Date.now() - info.lastSyncAt < 5 * 60 * 1000) {
+      return;
+    }
+    var that = this;
+    this.autoSyncing = true;
+    cloudSync.syncNow().then(function () {
+      that.refreshCloudSync();
+      that.load(app.globalData.game);
+      wx.showToast({ title: '云同步已完成', icon: 'none' });
+    }).catch(function () {
+      // 自动同步失败时保持安静，用户可手动点「立即同步」查看原因
+    }).then(function () {
+      that.autoSyncing = false;
+    });
+  },
+
+  onGenerateSyncCode: function () {
+    var that = this;
+    wx.showModal({
+      title: '生成同步码',
+      content: '同步码由云端随机生成，相当于一把钥匙。云端只保存加密数据，日志与提示里都不会出现同步码。',
+      confirmText: '生成',
+      success: function (modal) {
+        if (!modal.confirm) {
+          return;
+        }
+        wx.showLoading({ title: '生成中', mask: true });
+        cloudSync.createCode().then(function (code) {
+          wx.hideLoading();
+          that.refreshCloudSync();
+          wx.showModal({
+            title: '同步码已生成',
+            content: cloudSync.prettyCode(code) + '\n\n请抄写保存，并在电脑端「设置 · 云同步」中输入。',
+            showCancel: false,
+            confirmText: '复制',
+            success: function () {
+              wx.setClipboardData({ data: cloudSync.prettyCode(code) });
+            }
+          });
+        }).catch(function (err) {
+          wx.hideLoading();
+          wx.showToast({ title: (err && err.message) || '生成失败', icon: 'none' });
+        });
+      }
+    });
+  },
+
+  onBindSyncCode: function () {
+    var that = this;
+    wx.showModal({
+      title: '绑定同步码',
+      editable: true,
+      placeholderText: '输入另一台设备显示的同步码',
+      success: function (modal) {
+        if (!modal.confirm) {
+          return;
+        }
+        wx.showLoading({ title: '校验中', mask: true });
+        cloudSync.bindCode(modal.content || '').then(function () {
+          wx.hideLoading();
+          that.refreshCloudSync();
+          wx.showToast({ title: '绑定成功，可以同步了', icon: 'none' });
+        }).catch(function (err) {
+          wx.hideLoading();
+          wx.showToast({ title: (err && err.message) || '绑定失败', icon: 'none' });
+        });
+      }
+    });
+  },
+
+  onCopySyncCode: function () {
+    if (!this.data.cloudSync.bound) {
+      return;
+    }
+    wx.setClipboardData({ data: this.data.cloudSync.pretty });
+  },
+
+  onSyncNow: function () {
+    if (!this.data.cloudSync.bound) {
+      wx.showToast({ title: '请先生成或绑定同步码', icon: 'none' });
+      return;
+    }
+    if (this.data.cloudSync.syncing) {
+      return;
+    }
+    var that = this;
+    this.setData({ 'cloudSync.syncing': true });
+    wx.showLoading({ title: '同步中', mask: true });
+    cloudSync.syncNow().then(function (result) {
+      wx.hideLoading();
+      that.refreshCloudSync();
+      that.load(app.globalData.game);
+      var parts = [result.pulled ? '从云端合并 ' + result.imported + ' 条' : '云端暂无数据'];
+      if (result.skipped) {
+        parts.push('跳过重复 ' + result.skipped + ' 条');
+      }
+      parts.push('本地数据已加密上传');
+      wx.showModal({
+        title: '同步完成',
+        content: parts.join('，') + '。',
+        showCancel: false
+      });
+    }).catch(function (err) {
+      wx.hideLoading();
+      that.setData({ 'cloudSync.syncing': false });
+      wx.showToast({ title: (err && err.message) || '同步失败', icon: 'none' });
+    });
+  },
+
+  onUnbindSync: function () {
+    var that = this;
+    wx.showModal({
+      title: '解绑云同步',
+      content: '解绑只清除本机保存的同步码，云端密文仍保留；之后可以用同一个同步码重新绑定。',
+      confirmText: '解绑',
+      success: function (modal) {
+        if (modal.confirm) {
+          cloudSync.unbind();
+          that.refreshCloudSync();
+        }
+      }
+    });
+  },
+
+  onToggleSyncAuto: function (event) {
+    var value = event.detail.value === true;
+    cloudSync.setAuto(value);
+    this.setData({ 'cloudSync.auto': value });
+  },
+
+  onDeleteRemoteSync: function () {
+    var that = this;
+    wx.showModal({
+      title: '删除云端数据',
+      content: '将删除云端的加密副本并解绑本机；其他设备需要重新生成同步码。确定删除吗？',
+      confirmText: '删除',
+      confirmColor: '#d9534f',
+      success: function (modal) {
+        if (!modal.confirm) {
+          return;
+        }
+        wx.showLoading({ title: '删除中', mask: true });
+        cloudSync.deleteRemote().then(function () {
+          wx.hideLoading();
+          that.refreshCloudSync();
+          wx.showToast({ title: '云端数据已删除', icon: 'none' });
+        }).catch(function (err) {
+          wx.hideLoading();
+          wx.showToast({ title: (err && err.message) || '删除失败', icon: 'none' });
+        });
+      }
     });
   }
 });
