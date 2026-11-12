@@ -5097,14 +5097,15 @@
             var cached = safeParse(localStorage.getItem(CATALOG_KEY + game));
             if (cached && typeof cached === 'object') {
                 window.SG_AVATARS = window.SG_AVATARS || {};
-                window.SG_AVATARS[game] = Object.assign({}, window.SG_AVATARS[game] || {}, cached);
+                // 内置映射优先：缓存里的在线地址可能已失效（如新角色 / 新光锥）
+                window.SG_AVATARS[game] = Object.assign({}, cached, window.SG_AVATARS[game] || {});
             }
             var cachedWeapons = safeParse(localStorage.getItem(CATALOG_WEAPON_KEY + game));
             if (cachedWeapons && typeof cachedWeapons === 'object') {
                 CATALOG_WEAPONS[game] = cachedWeapons;
                 window.SG_WEAPON_ICONS = window.SG_WEAPON_ICONS || {};
                 window.SG_WEAPON_ICONS[game] = Object.assign({},
-                    window.SG_WEAPON_ICONS[game] || {}, cachedWeapons);
+                    cachedWeapons, window.SG_WEAPON_ICONS[game] || {});
             }
             var cachedRanks = safeParse(localStorage.getItem(CATALOG_RANK_KEY + game));
             if (cachedRanks && typeof cachedRanks === 'object') {
@@ -5262,12 +5263,13 @@
                 throw new Error('图鉴数据为空');
             }
             window.SG_AVATARS = window.SG_AVATARS || {};
-            window.SG_AVATARS[game] = Object.assign({}, window.SG_AVATARS[game] || {}, avatars);
+            // 在线图鉴只补充缺失项，内置 / 已确认可用的图标优先
+            window.SG_AVATARS[game] = Object.assign({}, avatars, window.SG_AVATARS[game] || {});
             if (Object.keys(weapons).length) {
                 CATALOG_WEAPONS[game] = Object.assign({}, CATALOG_WEAPONS[game] || {}, weapons);
                 window.SG_WEAPON_ICONS = window.SG_WEAPON_ICONS || {};
                 window.SG_WEAPON_ICONS[game] = Object.assign({},
-                    window.SG_WEAPON_ICONS[game] || {}, weapons);
+                    weapons, window.SG_WEAPON_ICONS[game] || {});
             }
             if (Object.keys(ranks).length) {
                 CATALOG_RANKS[game] = Object.assign({}, CATALOG_RANKS[game] || {}, ranks);
