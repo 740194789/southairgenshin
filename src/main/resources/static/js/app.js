@@ -2487,6 +2487,9 @@
             '<div class="page-head">'
             + '<div><p class="eyebrow">Wish Records</p><h2>抽卡记录</h2><p class="sub">五星出货记录 · 记录抽到五星用了多少抽 · 支持链接导入</p></div>'
             + '<div class="head-actions">'
+            + (isDesktopApp()
+                ? '<button class="btn btn-outline" id="wish-proxy-capture" type="button">代理模式抓链接</button>'
+                : '')
             + '<button class="btn btn-primary" id="wish-enter" type="button">+ 录入记录</button>'
             + '</div>'
             + '</div>'
@@ -2533,6 +2536,16 @@
                 ]);
             });
         });
+
+        var proxyCapture = $('#wish-proxy-capture');
+        if (proxyCapture) {
+            gachaProxyPageButton = proxyCapture;
+            proxyCapture.addEventListener('click', function () {
+                guard(function () {
+                    return startGachaProxyCapture();
+                });
+            });
+        }
 
         $('#wish-only-five').addEventListener('change', function (event) {
             state.wishOnlyFive = event.target.checked;
@@ -3444,7 +3457,7 @@
     }
 
     /* 抽卡链接导入：后端代理读取抽卡记录接口，避开浏览器跨域限制 */
-    function importFromLink() {
+    function importFromLink(prefillUrl) {
         var g = gameConfig();
         return openForm('从抽卡链接导入 · ' + g.fullName, [
             {
@@ -3454,7 +3467,7 @@
                 full: true,
                 placeholder: '粘贴抽卡记录网页链接或 getGachaLog 接口链接'
             }
-        ], null, {
+        ], prefillUrl ? { url: prefillUrl } : null, {
             hint: '游戏内打开「抽卡记录 > 历史记录」复制链接即可，网页链接与接口链接都支持，有效期约 24 小时，'
                 + '链接含账号凭证请勿分享。五星歪没歪会自动判定：'
                 + '角色活动池按常驻名单（崩铁还包含星缘相邀可选名单）判歪，其它五星算 UP。',
@@ -3488,13 +3501,19 @@
                 var message = String(err && err.message ? err.message : '');
                 // authkey 已过期：提示重新获取，而不是只弹一句失败
                 if (/authkey|抽卡记录/i.test(message)) {
+                    var actions = [];
+                    if (isDesktopApp()) {
+                        actions.push({ key: 'proxy', label: '启动代理模式抓链接', primary: true });
+                    }
+                    actions.push({ key: 'retry', label: isDesktopApp() ? '手动粘贴链接' : '重新获取链接', primary: !isDesktopApp() });
                     openChoice('抽卡链接已失效', message
-                        + '。建议重新获取：先打开游戏内「抽卡记录」页面，再点「从本机自动读取」'
-                        + '（日志和缓存都没有时会自动启用代理模式抓取新链接）。',
-                        [
-                            { key: 'retry', label: '重新获取链接', primary: true },
-                            { key: 'cancel', label: '取消' }
-                        ]).then(function (choice) {
+                        + (isDesktopApp()
+                            ? '。可以直接启动代理模式抓取新链接：在游戏内重新打开「抽卡记录」页面即可。'
+                            : '。建议重新获取：先打开游戏内「抽卡记录」页面，再点「从本机自动读取」。'),
+                        actions).then(function (choice) {
+                        if (choice === 'proxy') {
+                            return startGachaProxyCapture();
+                        }
                         if (choice === 'retry') {
                             return importFromLink();
                         }
@@ -3509,6 +3528,38 @@
 
     /* 桌面启动器：从本机日志 / webCaches / 代理获取带 authkey 的抽卡链接 */
     var gachaAutoTarget = null;
+    var gachaProxyPageButton = null;
+
+    function isDesktopApp() {
+        return !!(window.chrome && window.chrome.webview);
+    }
+
+    /** 抽卡页「代理模式抓链接」：启动启动器代理，抓到链接后自动打开导入弹窗 */
+    function startGachaProxyCapture() {
+        if (!isDesktopApp()) {
+            return Promise.resolve(null);
+        }
+        return openChoice('代理模式抓取抽卡链接',
+            '将临时把系统代理指向本程序，请在游戏内重新打开「抽卡记录」页面；'
+            + '抓到链接后会自动关闭代理并恢复原来的系统代理设置。',
+            [{ key: 'start', label: '开始抓取', primary: true }]
+        ).then(function (choice) {
+            if (choice !== 'start') {
+                return null;
+            }
+            window.chrome.webview.postMessage({ action: 'gachaProxyStart' });
+            toast('代理模式已开启，请在游戏内打开「抽卡记录」页面（最多等待 2 分钟）');
+            return null;
+        });
+    }
+
+    function setGachaProxyButton(waiting) {
+        if (!gachaProxyPageButton || !gachaProxyPageButton.isConnected) {
+            return;
+        }
+        gachaProxyPageButton.disabled = waiting;
+        gachaProxyPageButton.textContent = waiting ? '等待游戏打开抽卡记录…' : '代理模式抓链接';
+    }
 
     function bindGachaAuto(mask, form) {
         if (!(window.chrome && window.chrome.webview)) {
@@ -4661,12 +4712,15 @@
         window.chrome.webview.addEventListener('message', function (event) {
             var message = event.data || {};
             if (message.action === 'gachaUrlResult' && message.url) {
-                if (!gachaAutoTarget || !gachaAutoTarget.mask.isConnected) {
+                if (gachaAutoTarget && gachaAutoTarget.mask.isConnected) {
+                    gachaAutoTarget.input.value = message.url;
+                    resetGachaButton();
+                    toast('已从' + (message.sourceText || '本机') + '获取抽卡链接，请点击「读取并导入」');
                     return;
                 }
-                gachaAutoTarget.input.value = message.url;
-                resetGachaButton();
-                toast('已从' + (message.sourceText || '本机') + '获取抽卡链接，请点击「读取并导入」');
+                setGachaProxyButton(false);
+                toast('已通过' + (message.sourceText || '本机') + '获取抽卡链接，请点击「读取并导入」');
+                importFromLink(message.url);
                 return;
             }
             if (message.action === 'gachaUrlProxyPrompt') {
@@ -4689,6 +4743,7 @@
                 return;
             }
             if (message.action === 'gachaUrlProxyStarted') {
+                setGachaProxyButton(true);
                 if (gachaAutoTarget && gachaAutoTarget.mask.isConnected) {
                     gachaAutoTarget.button.disabled = true;
                     gachaAutoTarget.button.textContent = '等待游戏打开抽卡记录…';
@@ -4696,10 +4751,12 @@
                 return;
             }
             if (message.action === 'gachaProxyStopped') {
+                setGachaProxyButton(false);
                 resetGachaButton();
                 return;
             }
             if (message.action === 'gachaUrlError') {
+                setGachaProxyButton(false);
                 resetGachaButton();
                 toast(message.message || '没有获取到抽卡链接', 'error');
                 return;
