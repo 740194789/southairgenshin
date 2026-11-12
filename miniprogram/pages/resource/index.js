@@ -163,6 +163,7 @@ Page({
       mora: '',
       intertwinedFates: '',
       acquaintedFates: '',
+      genesisCrystals: '',
       dailyPrimogems: '',
       heroWit: '',
       adventurerExp: '',
@@ -195,6 +196,7 @@ Page({
     res.moraText = store.fmt(res.mora);
     res.intertwinedFatesText = store.fmt(res.intertwinedFates);
     res.acquaintedFatesText = store.fmt(res.acquaintedFates);
+    res.genesisCrystalsText = store.fmt(res.genesisCrystals);
     res.pullsFromPrimogemsText = store.fmt(res.pullsFromPrimogems);
     res.primogemsRemainderText = store.fmt(res.primogemsRemainder);
     res.primogemsFromFatesText = store.fmt(res.primogemsFromFates);
@@ -381,6 +383,7 @@ Page({
         mora: String(resource.mora),
         intertwinedFates: String(resource.intertwinedFates),
         acquaintedFates: String(resource.acquaintedFates),
+        genesisCrystals: String(resource.genesisCrystals || 0),
         dailyPrimogems: String(resource.dailyPrimogems || 0),
         heroWit: String(resource.heroWit || 0),
         adventurerExp: String(resource.adventurerExp || 0),
@@ -412,6 +415,7 @@ Page({
       mora: form.mora,
       intertwinedFates: form.intertwinedFates,
       acquaintedFates: form.acquaintedFates,
+      genesisCrystals: form.genesisCrystals,
       dailyPrimogems: form.dailyPrimogems,
       heroWit: form.heroWit,
       adventurerExp: form.adventurerExp,
@@ -466,6 +470,7 @@ Page({
       mora: String(resource.mora),
       intertwinedFates: String(resource.intertwinedFates),
       acquaintedFates: String(resource.acquaintedFates),
+      genesisCrystals: String(resource.genesisCrystals || 0),
       dailyPrimogems: String(resource.dailyPrimogems || 0),
       heroWit: String(resource.heroWit || 0),
       adventurerExp: String(resource.adventurerExp || 0),

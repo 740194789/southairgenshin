@@ -194,6 +194,7 @@ public class BackupService {
         target.setMora(clampLong(source.getMora(), 0L, MAX_PRIMOGEMS, 0L));
         target.setIntertwinedFates(clampLong(source.getIntertwinedFates(), 0L, MAX_FATES, 0L));
         target.setAcquaintedFates(clampLong(source.getAcquaintedFates(), 0L, MAX_FATES, 0L));
+        target.setGenesisCrystals(clampLong(source.getGenesisCrystals(), 0L, MAX_PRIMOGEMS, 0L));
         target.setDailyPrimogems(clampLong(source.getDailyPrimogems(), 0L, 999999L, 0L));
         target.setLastAccrualDate(LocalDate.now().toString());
         resourceRepository.save(target);

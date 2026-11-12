@@ -25,6 +25,7 @@ public class OcrResourceParser {
             {"mora", "摩拉"},
             {"intertwinedFates", "纠缠之缘", "纠缠"},
             {"acquaintedFates", "相遇之缘", "相遇"},
+            {"genesisCrystals", "创世结晶", "创世"},
             {"heroWit", "大英雄的经验", "大英雄"},
             {"adventurerExp", "冒险家的经验", "冒险家的"},
             {"wandererAdvice", "流浪者的经验", "流浪者的"},

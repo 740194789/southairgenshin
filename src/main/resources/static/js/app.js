@@ -32,6 +32,7 @@
             credit: '摩拉',
             fateLimited: '纠缠之缘',
             fateStandard: '相遇之缘',
+            genesisCrystal: '创世结晶',
             threeStarType: '武器',
             charPool: '角色活动',
             weaponPool: '武器活动'
@@ -49,6 +50,7 @@
             credit: '信用点',
             fateLimited: '星轨专票',
             fateStandard: '星轨通票',
+            genesisCrystal: '古老梦华',
             threeStarType: '光锥',
             charPool: '角色活动',
             weaponPool: '光锥活动'
@@ -812,7 +814,8 @@
         gem: '<path d="M12 2.8l5.3 3.7 2 6.6L12 21.2 4.7 13.1l2-6.6z"/><path d="M12 2.8v18.4"/><path d="M6.7 6.5h10.6"/>',
         coin: '<circle cx="12" cy="12" r="7.6"/><circle cx="12" cy="12" r="3.4"/><path d="M12 4.4v2.6M12 17v2.6M4.4 12h2.6M17 12h2.6"/>',
         fate: '<circle cx="12" cy="12" r="7.8"/><path d="M12 5.8l1.6 3.6 3.9.5-2.9 2.7.8 3.8-3.4-1.9-3.4 1.9.8-3.8-2.9-2.7 3.9-.5z"/>',
-        fateStandard: '<path d="M12 3.2l1.9 5.9 5.9 1.9-5.9 1.9L12 18.8l-1.9-5.9L4.2 11l5.9-1.9z"/><path d="M12 18.8v2.6"/>'
+        fateStandard: '<path d="M12 3.2l1.9 5.9 5.9 1.9-5.9 1.9L12 18.8l-1.9-5.9L4.2 11l5.9-1.9z"/><path d="M12 18.8v2.6"/>',
+        crystal: '<path d="M12 2.6l5.8 6.1-2.3 10.6L12 21.4l-3.5-2.1L6.2 8.7z"/><path d="M6.2 8.7h11.6M12 2.6v18.8M8.5 8.7L12 21.4l3.5-12.7"/>'
     };
 
     function tileGlyph(key) {
@@ -2015,6 +2018,7 @@
                 + resourceTile('coin', g.credit, resource.mora, '游戏内通用货币')
                 + resourceTile('fate', g.fateLimited, limited, '限定池 · 1 枚 = 1 抽')
                 + resourceTile('fateStandard', g.fateStandard, standard, '常驻池 · 不计入合计')
+                + resourceTile('crystal', g.genesisCrystal, resource.genesisCrystals || 0, '可兑换 ' + g.currency)
                 + '</div>'
 
                 + (state.game === 'genshin'
@@ -2054,6 +2058,11 @@
                             run: function () {
                                 return openResourceOcr(resource);
                             }
+                        });
+                        actions.push({
+                            key: 'scan',
+                            label: '电脑识图工具',
+                            run: launchResourceScan
                         });
                     }
                     actions.push({
@@ -3630,6 +3639,7 @@
             { key: 'mora', label: g.credit, type: 'number', min: 0, max: 999999999, step: '1', default: resource.mora },
             { key: 'intertwinedFates', label: g.fateLimited + '（抽）', type: 'number', min: 0, max: 99999, step: '1', default: resource.intertwinedFates },
             { key: 'acquaintedFates', label: g.fateStandard + '（抽）', type: 'number', min: 0, max: 99999, step: '1', default: resource.acquaintedFates },
+            { key: 'genesisCrystals', label: g.genesisCrystal, type: 'number', min: 0, max: 999999999, step: '1', default: resource.genesisCrystals || 0 },
             { key: 'dailyPrimogems', label: '每天自动增加 ' + g.currency, type: 'number', min: 0, max: 999999, step: '10', default: resource.dailyPrimogems || 0 }
         ];
         if (state.game === 'genshin') {
@@ -3679,6 +3689,7 @@
         { key: 'mora', words: ['摩拉', '信用点'] },
         { key: 'intertwinedFates', words: ['纠缠之缘', '纠缠', '星轨专票', '专票'] },
         { key: 'acquaintedFates', words: ['相遇之缘', '相遇', '星轨通票', '通票'] },
+        { key: 'genesisCrystals', words: ['创世结晶', '创世', '结晶'] },
         { key: 'heroWit', words: ['大英雄的经验', '大英雄', '经验书', '紫书'] },
         { key: 'adventurerExp', words: ['冒险家的经验', '冒险家', '蓝书'] },
         { key: 'wandererAdvice', words: ['流浪者的经验', '流浪者', '绿书'] },
@@ -4530,11 +4541,28 @@
 
     /* ---------------- 资源截图识别 ---------------- */
 
+    /** 启动电脑端识图小工具；首次使用（还没有校准区域）优先进校准 */
+    function launchResourceScan() {
+        return api('/api/resource-scan/launch', { method: 'POST' })
+            .then(function (result) {
+                if (result && result.mode === 'calibrate') {
+                    toast('首次使用：已打开识图校准，请按控制台提示框选资源数字', 'success');
+                } else {
+                    toast('已打开识图工具，请按控制台提示识别', 'success');
+                }
+                return result;
+            })
+            .catch(function (error) {
+                toast((error && error.message) || '启动识图工具失败', 'error');
+            });
+    }
+
     var RESOURCE_OCR_LABELS = {
         primogems: '原石',
         mora: '摩拉',
         intertwinedFates: '纠缠之缘',
         acquaintedFates: '相遇之缘',
+        genesisCrystals: '创世结晶',
         heroWit: '大英雄的经验',
         adventurerExp: '冒险家的经验',
         wandererAdvice: '流浪者的经验',
@@ -4545,7 +4573,7 @@
     function openResourceOcr(resource) {
         return openLiveCapture({
             title: '识图填充 · 原神资源',
-            hint: '打开背包「贵重道具」看原石/摩拉/纠缠/相遇，「养成道具」看三本经验书，或「圣遗物」页底部看祝圣油膏/祝圣精华；按图案识别，不限排序，再点「识别当前画面」。识别结果只作为候选，需确认后保存。'
+            hint: '打开背包「贵重道具」看原石/摩拉/纠缠/相遇/创世结晶，「养成道具」看三本经验书，或「圣遗物」页底部看祝圣油膏/祝圣精华；按图案识别，不限排序，再点「识别当前画面」。识别结果只作为候选，需确认后保存。'
         }).then(function (file) {
             if (!file) {
                 return null;

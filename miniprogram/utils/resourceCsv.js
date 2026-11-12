@@ -1,7 +1,7 @@
 /* 账号资源 CSV 读写，与网页端 /api/resources 的格式保持一致 */
 
 var BOM = '\uFEFF';
-var HEADERS = ['原石/星琼', '摩拉/信用点', '纠缠之缘/星轨专票', '相遇之缘/星轨通票'];
+var HEADERS = ['原石/星琼', '摩拉/信用点', '纠缠之缘/星轨专票', '相遇之缘/星轨通票', '创世结晶/古老梦华'];
 
 function header() {
   return BOM + HEADERS.join(',') + '\r\n';
@@ -13,7 +13,8 @@ function write(res) {
     source.primogems === undefined || source.primogems === null ? '' : source.primogems,
     source.mora === undefined || source.mora === null ? '' : source.mora,
     source.intertwinedFates === undefined || source.intertwinedFates === null ? '' : source.intertwinedFates,
-    source.acquaintedFates === undefined || source.acquaintedFates === null ? '' : source.acquaintedFates
+    source.acquaintedFates === undefined || source.acquaintedFates === null ? '' : source.acquaintedFates,
+    source.genesisCrystals === undefined || source.genesisCrystals === null ? '' : source.genesisCrystals
   ];
   return header() + row.join(',') + '\r\n';
 }
@@ -26,7 +27,8 @@ function parse(text) {
     primogems: null,
     mora: null,
     intertwinedFates: null,
-    acquaintedFates: null
+    acquaintedFates: null,
+    genesisCrystals: null
   };
   if (!text) {
     return result;
@@ -43,7 +45,7 @@ function parse(text) {
   }
 
   var headerCells = lines[0].split(',');
-  var index = { primogems: -1, mora: -1, intertwinedFates: -1, acquaintedFates: -1 };
+  var index = { primogems: -1, mora: -1, intertwinedFates: -1, acquaintedFates: -1, genesisCrystals: -1 };
   headerCells.forEach(function (cell, i) {
     var name = String(cell).trim().toLowerCase();
     if (index.primogems < 0 && (name.indexOf('原石') >= 0 || name.indexOf('星琼') >= 0 || name.indexOf('primogems') >= 0)) {
@@ -56,11 +58,15 @@ function parse(text) {
     } else if (index.acquaintedFates < 0
         && (name.indexOf('相遇') >= 0 || name.indexOf('通票') >= 0 || name.indexOf('acquainted') >= 0)) {
       index.acquaintedFates = i;
+    } else if (index.genesisCrystals < 0
+        && (name.indexOf('创世') >= 0 || name.indexOf('结晶') >= 0 || name.indexOf('genesis') >= 0)) {
+      index.genesisCrystals = i;
     }
   });
 
   var mapped = index.primogems >= 0 || index.mora >= 0
-    || index.intertwinedFates >= 0 || index.acquaintedFates >= 0;
+    || index.intertwinedFates >= 0 || index.acquaintedFates >= 0
+    || index.genesisCrystals >= 0;
   var dataLine = 0;
   if (mapped) {
     if (lines.length < 2) {
@@ -68,11 +74,11 @@ function parse(text) {
     }
     dataLine = 1;
   } else {
-    // 手机粘贴时可以不写表头：按「原石, 摩拉, 纠缠, 相遇」顺序解析。
-    index = { primogems: 0, mora: 1, intertwinedFates: 2, acquaintedFates: 3 };
+    // 手机粘贴时可以不写表头：按「原石, 摩拉, 纠缠, 相遇, 创世结晶」顺序解析。
+    index = { primogems: 0, mora: 1, intertwinedFates: 2, acquaintedFates: 3, genesisCrystals: 4 };
   }
   var row = lines[dataLine].split(',');
-  ['primogems', 'mora', 'intertwinedFates', 'acquaintedFates'].forEach(function (key) {
+  ['primogems', 'mora', 'intertwinedFates', 'acquaintedFates', 'genesisCrystals'].forEach(function (key) {
     var at = index[key];
     if (at < 0 || at >= row.length) {
       return;

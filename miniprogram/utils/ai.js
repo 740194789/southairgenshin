@@ -24,6 +24,7 @@ var RESOURCE_WORDS = [
   { key: 'mora', words: ['摩拉', '信用点'] },
   { key: 'intertwinedFates', words: ['纠缠之缘', '纠缠', '星轨专票', '专票'] },
   { key: 'acquaintedFates', words: ['相遇之缘', '相遇', '星轨通票', '通票'] },
+  { key: 'genesisCrystals', words: ['创世结晶', '创世', '结晶'] },
   { key: 'heroWit', words: ['大英雄的经验', '大英雄', '经验书', '紫书'] },
   { key: 'adventurerExp', words: ['冒险家的经验', '冒险家', '蓝书'] },
   { key: 'wandererAdvice', words: ['流浪者的经验', '流浪者', '绿书'] },

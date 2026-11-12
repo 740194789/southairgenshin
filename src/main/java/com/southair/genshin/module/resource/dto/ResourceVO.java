@@ -19,6 +19,7 @@ public class ResourceVO implements Serializable {
     private long mora;
     private long intertwinedFates;
     private long acquaintedFates;
+    private long genesisCrystals;
 
     /** 每天自动累积的原石 / 星琼 */
     private long dailyPrimogems;
@@ -59,6 +60,7 @@ public class ResourceVO implements Serializable {
         vo.mora = nvl(entity.getMora());
         vo.intertwinedFates = nvl(entity.getIntertwinedFates());
         vo.acquaintedFates = nvl(entity.getAcquaintedFates());
+        vo.genesisCrystals = nvl(entity.getGenesisCrystals());
         vo.dailyPrimogems = nvl(entity.getDailyPrimogems());
         vo.heroWit = nvl(entity.getHeroWit());
         vo.adventurerExp = nvl(entity.getAdventurerExp());
@@ -117,6 +119,14 @@ public class ResourceVO implements Serializable {
 
     public void setAcquaintedFates(long acquaintedFates) {
         this.acquaintedFates = acquaintedFates;
+    }
+
+    public long getGenesisCrystals() {
+        return genesisCrystals;
+    }
+
+    public void setGenesisCrystals(long genesisCrystals) {
+        this.genesisCrystals = genesisCrystals;
     }
 
     public int getPrimogemsPerPull() {

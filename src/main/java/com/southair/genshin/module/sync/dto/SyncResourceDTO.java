@@ -13,6 +13,7 @@ public class SyncResourceDTO implements Serializable {
     private Long mora;
     private Long intertwinedFates;
     private Long acquaintedFates;
+    private Long genesisCrystals;
     private Long editedAt;
 
     private Long heroWit;
@@ -51,6 +52,14 @@ public class SyncResourceDTO implements Serializable {
 
     public void setAcquaintedFates(Long acquaintedFates) {
         this.acquaintedFates = acquaintedFates;
+    }
+
+    public Long getGenesisCrystals() {
+        return genesisCrystals;
+    }
+
+    public void setGenesisCrystals(Long genesisCrystals) {
+        this.genesisCrystals = genesisCrystals;
     }
 
     public Long getEditedAt() {

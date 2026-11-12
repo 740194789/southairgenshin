@@ -114,6 +114,9 @@ public class SyncService {
         if (incoming.getAcquaintedFates() != null) {
             entity.setAcquaintedFates(Math.max(0L, incoming.getAcquaintedFates()));
         }
+        if (incoming.getGenesisCrystals() != null) {
+            entity.setGenesisCrystals(Math.max(0L, incoming.getGenesisCrystals()));
+        }
         if (incoming.getHeroWit() != null) {
             entity.setHeroWit(Math.max(0L, incoming.getHeroWit()));
         }
@@ -248,6 +251,7 @@ public class SyncService {
             dto.setMora(0L);
             dto.setIntertwinedFates(0L);
             dto.setAcquaintedFates(0L);
+            dto.setGenesisCrystals(0L);
             dto.setEditedAt(0L);
             return dto;
         }
@@ -255,6 +259,7 @@ public class SyncService {
         dto.setMora(nvl(entity.getMora()));
         dto.setIntertwinedFates(nvl(entity.getIntertwinedFates()));
         dto.setAcquaintedFates(nvl(entity.getAcquaintedFates()));
+        dto.setGenesisCrystals(nvl(entity.getGenesisCrystals()));
         dto.setHeroWit(nvl(entity.getHeroWit()));
         dto.setAdventurerExp(nvl(entity.getAdventurerExp()));
         dto.setWandererAdvice(nvl(entity.getWandererAdvice()));

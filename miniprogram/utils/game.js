@@ -14,6 +14,7 @@ var GAMES = {
     credit: '摩拉',
     fateLimited: '纠缠之缘',
     fateStandard: '相遇之缘',
+    genesisCrystal: '创世结晶',
     threeStarType: '武器',
     charPool: '角色活动',
     weaponPool: '武器活动'
@@ -31,6 +32,7 @@ var GAMES = {
     credit: '信用点',
     fateLimited: '星轨专票',
     fateStandard: '星轨通票',
+    genesisCrystal: '古老梦华',
     threeStarType: '光锥',
     charPool: '角色活动',
     weaponPool: '光锥活动'

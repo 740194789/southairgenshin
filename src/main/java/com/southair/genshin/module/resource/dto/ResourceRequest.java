@@ -24,6 +24,10 @@ public class ResourceRequest {
     @Max(value = 99999, message = "相遇之缘数量过大")
     private Long acquaintedFates;
 
+    @Min(value = 0, message = "创世结晶不能为负数")
+    @Max(value = 999999999L, message = "创世结晶数量过大")
+    private Long genesisCrystals;
+
     @Min(value = 0, message = "每日原石不能为负数")
     @Max(value = 999999, message = "每日原石数值过大")
     private Long dailyPrimogems;
@@ -78,6 +82,14 @@ public class ResourceRequest {
 
     public void setAcquaintedFates(Long acquaintedFates) {
         this.acquaintedFates = acquaintedFates;
+    }
+
+    public Long getGenesisCrystals() {
+        return genesisCrystals;
+    }
+
+    public void setGenesisCrystals(Long genesisCrystals) {
+        this.genesisCrystals = genesisCrystals;
     }
 
     public Long getDailyPrimogems() {

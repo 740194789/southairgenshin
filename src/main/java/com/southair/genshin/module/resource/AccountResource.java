@@ -12,7 +12,7 @@ import javax.persistence.Table;
 import javax.persistence.UniqueConstraint;
 
 /**
- * 账号资源：原石、摩拉、纠缠之缘、相遇之缘。
+ * 账号资源：原石、摩拉、纠缠之缘、相遇之缘、创世结晶。
  *
  * <p>每个用户在每个游戏下仅一条记录。</p>
  */
@@ -51,6 +51,10 @@ public class AccountResource extends BaseEntity {
     /** 相遇之缘 / 星轨通票（常驻池抽数） */
     @Column(name = "acquainted_fates", nullable = false)
     private Long acquaintedFates = 0L;
+
+    /** 创世结晶 / 古老梦华（可兑换原石 / 星琼） */
+    @Column(name = "genesis_crystals", nullable = false)
+    private Long genesisCrystals = 0L;
 
     /** 每天自动累积的原石 / 星琼（旧数据为 null，按 0 处理） */
     @Column(name = "daily_primogems")
@@ -138,6 +142,14 @@ public class AccountResource extends BaseEntity {
 
     public void setAcquaintedFates(Long acquaintedFates) {
         this.acquaintedFates = acquaintedFates;
+    }
+
+    public Long getGenesisCrystals() {
+        return genesisCrystals;
+    }
+
+    public void setGenesisCrystals(Long genesisCrystals) {
+        this.genesisCrystals = genesisCrystals;
     }
 
     public Long getEditedAt() {

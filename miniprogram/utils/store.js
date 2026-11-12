@@ -184,6 +184,7 @@ function getResource(game) {
     mora: Math.max(0, toInt(res.mora)),
     intertwinedFates: Math.max(0, toInt(res.intertwinedFates)),
     acquaintedFates: Math.max(0, toInt(res.acquaintedFates)),
+    genesisCrystals: Math.max(0, toInt(res.genesisCrystals)),
     dailyPrimogems: Math.max(0, toInt(res.dailyPrimogems)),
     heroWit: Math.max(0, toInt(res.heroWit)),
     adventurerExp: Math.max(0, toInt(res.adventurerExp)),
@@ -220,6 +221,7 @@ function saveResource(game, res) {
     mora: Math.max(0, toInt(res.mora)),
     intertwinedFates: Math.max(0, toInt(res.intertwinedFates)),
     acquaintedFates: Math.max(0, toInt(res.acquaintedFates)),
+    genesisCrystals: Math.max(0, toInt(res.genesisCrystals)),
     dailyPrimogems: clamp(res.dailyPrimogems, 0, 999999, 0),
     heroWit: Math.max(0, toInt(res.heroWit)),
     adventurerExp: Math.max(0, toInt(res.adventurerExp)),
@@ -232,7 +234,7 @@ function saveResource(game, res) {
 
 function updateResource(game, patch) {
   var next = getResource(game);
-  ['primogems', 'mora', 'intertwinedFates', 'acquaintedFates',
+  ['primogems', 'mora', 'intertwinedFates', 'acquaintedFates', 'genesisCrystals',
     'heroWit', 'adventurerExp', 'wandererAdvice',
     'sanctifyingUnction', 'sanctifyingEssence'].forEach(function (key) {
     if (patch[key] !== undefined) {
@@ -399,6 +401,7 @@ function resourceVO(res) {
     mora: res.mora,
     intertwinedFates: res.intertwinedFates,
     acquaintedFates: res.acquaintedFates,
+    genesisCrystals: res.genesisCrystals || 0,
     primogemsPerPull: unit,
     pullsFromPrimogems: pulls,
     primogemsRemainder: res.primogems % unit,
@@ -915,7 +918,7 @@ function uids(game) {
 
 function importResource(game, resource) {
   var patch = {};
-  ['primogems', 'mora', 'intertwinedFates', 'acquaintedFates'].forEach(function (key) {
+  ['primogems', 'mora', 'intertwinedFates', 'acquaintedFates', 'genesisCrystals'].forEach(function (key) {
     if (resource && resource[key] !== undefined && resource[key] !== null) {
       patch[key] = resource[key];
     }

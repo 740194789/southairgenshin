@@ -41,6 +41,11 @@
       <view class="stat-value">{{res.acquaintedFatesText}}</view>
       <view class="stat-extra">常驻池抽数 · 不计入可抽数</view>
     </view>
+    <view class="stat-card">
+      <view class="stat-label">{{g.genesisCrystal}}</view>
+      <view class="stat-value">{{res.genesisCrystalsText}}</view>
+      <view class="stat-extra">可兑换 {{g.currency}}</view>
+    </view>
   </view>
 
   <view class="resource-tools" wx:if="{{game === 'genshin'}}">
@@ -213,6 +218,10 @@
       <view class="form-row">
         <text class="form-label">{{g.fateStandard}}</text>
         <input class="form-input" type="number" value="{{form.acquaintedFates}}" data-key="acquaintedFates" bindinput="onInput" placeholder="0"/>
+      </view>
+      <view class="form-row">
+        <text class="form-label">{{g.genesisCrystal}}</text>
+        <input class="form-input" type="number" value="{{form.genesisCrystals}}" data-key="genesisCrystals" bindinput="onInput" placeholder="0"/>
       </view>
       <view class="form-row">
         <text class="form-label">每天自动增加 {{g.currency}}</text>

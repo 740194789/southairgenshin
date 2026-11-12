@@ -51,6 +51,9 @@ public class ResourceService {
         if (request.getAcquaintedFates() != null) {
             entity.setAcquaintedFates(request.getAcquaintedFates());
         }
+        if (request.getGenesisCrystals() != null) {
+            entity.setGenesisCrystals(request.getGenesisCrystals());
+        }
         if (request.getDailyPrimogems() != null) {
             entity.setDailyPrimogems(request.getDailyPrimogems());
         }
@@ -118,6 +121,7 @@ public class ResourceService {
             resource.setMora(0L);
             resource.setIntertwinedFates(0L);
             resource.setAcquaintedFates(0L);
+            resource.setGenesisCrystals(0L);
             resource.setDailyPrimogems(0L);
             resource.setLastAccrualDate(LocalDate.now().toString());
             return repository.save(resource);
