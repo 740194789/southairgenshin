@@ -2,6 +2,7 @@ package com.southair.genshin.module.resource;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.southair.genshin.common.BaseEntity;
+import org.hibernate.annotations.ColumnDefault;
 
 import javax.persistence.Column;
 import javax.persistence.Entity;
@@ -54,6 +55,7 @@ public class AccountResource extends BaseEntity {
 
     /** 创世结晶 / 古老梦华（可兑换原石 / 星琼） */
     @Column(name = "genesis_crystals", nullable = false)
+    @ColumnDefault("0")
     private Long genesisCrystals = 0L;
 
     /** 每天自动累积的原石 / 星琼（旧数据为 null，按 0 处理） */
