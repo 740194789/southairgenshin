@@ -377,6 +377,32 @@ function syncNow() {
   return attempt(code, true);
 }
 
+/** 只上传：用本机数据覆盖云端（先读云端更新时间做并发校验） */
+function uploadLocal() {
+  var code = getCode();
+  if (!code) {
+    return Promise.reject(new Error('请先生成或绑定同步码'));
+  }
+  function push(allowRetry) {
+    return callCloud({ action: 'pull', code: code }).then(function (res) {
+      if (!res.exists) {
+        throw new Error('同步码不存在或已被删除');
+      }
+      return pushOnce(code, res.updatedAt || 0).then(function (pushed) {
+        saveMeta({ updatedAt: pushed.updatedAt || 0, lastSyncAt: Date.now() });
+        return { updatedAt: pushed.updatedAt || 0 };
+      }, function (err) {
+        // 另一台设备刚好推过：重新读取更新时间后再覆盖一次
+        if (err && err.code === 'conflict' && allowRetry) {
+          return push(false);
+        }
+        throw err;
+      });
+    });
+  }
+  return push(true);
+}
+
 /** 解绑本机（云端密文保留，可用同步码重新绑定） */
 function unbind() {
   clearLocal();
@@ -410,6 +436,7 @@ module.exports = {
   createCode: createCode,
   bindCode: bindCode,
   syncNow: syncNow,
+  uploadLocal: uploadLocal,
   unbind: unbind,
   deleteRemote: deleteRemote,
   status: status,

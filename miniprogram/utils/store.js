@@ -191,7 +191,8 @@ function getResource(game) {
     wandererAdvice: Math.max(0, toInt(res.wandererAdvice)),
     sanctifyingUnction: Math.max(0, toInt(res.sanctifyingUnction)),
     sanctifyingEssence: Math.max(0, toInt(res.sanctifyingEssence)),
-    lastAccrualDate: String(res.lastAccrualDate || '')
+    lastAccrualDate: String(res.lastAccrualDate || ''),
+    editedAt: Number(res.editedAt) || 0
   });
 }
 
@@ -209,6 +210,8 @@ function accrueResource(game, res) {
   var daily = Math.max(0, toInt(res.dailyPrimogems));
   if (daily > 0) {
     res.primogems += daily * days;
+    // 自动累积也算本地更新，避免同步时被云端旧快照覆盖
+    res.editedAt = Date.now();
   }
   res.lastAccrualDate = today;
   saveResource(game, res);
@@ -228,7 +231,8 @@ function saveResource(game, res) {
     wandererAdvice: Math.max(0, toInt(res.wandererAdvice)),
     sanctifyingUnction: Math.max(0, toInt(res.sanctifyingUnction)),
     sanctifyingEssence: Math.max(0, toInt(res.sanctifyingEssence)),
-    lastAccrualDate: String(res.lastAccrualDate || '')
+    lastAccrualDate: String(res.lastAccrualDate || ''),
+    editedAt: Number(res.editedAt) || 0
   });
 }
 
@@ -248,6 +252,7 @@ function updateResource(game, patch) {
   if (patch.primogems !== undefined || patch.dailyPrimogems !== undefined) {
     next.lastAccrualDate = dateStr();
   }
+  next.editedAt = Date.now();
   saveResource(game, next);
   return next;
 }
@@ -886,7 +891,8 @@ function importAllBackup(payload, mode) {
       return;
     }
     if (item.resource && typeof item.resource === 'object') {
-      saveResource(game, item.resource);
+      // 走 importResource 才会按修改时间判断，避免云端旧快照覆盖本机
+      importResource(game, item.resource);
     }
     var wishes = Array.isArray(item.wishes) ? item.wishes : [];
     if (wishes.length) {
@@ -917,14 +923,25 @@ function uids(game) {
 }
 
 function importResource(game, resource) {
+  var current = getResource(game);
+  var incomingAt = Number(resource && resource.editedAt) || 0;
+  var currentAt = Number(current.editedAt) || 0;
+  // 两边都有修改时间时保留更新的那份，避免云端旧快照覆盖本机刚改的数据
+  if (currentAt && incomingAt && currentAt > incomingAt) {
+    return current;
+  }
   var patch = {};
   ['primogems', 'mora', 'intertwinedFates', 'acquaintedFates', 'genesisCrystals'].forEach(function (key) {
     if (resource && resource[key] !== undefined && resource[key] !== null) {
       patch[key] = resource[key];
     }
   });
-  updateResource(game, patch);
-  return getResource(game);
+  var next = updateResource(game, patch);
+  if (incomingAt) {
+    next.editedAt = incomingAt;
+    saveResource(game, next);
+  }
+  return next;
 }
 
 module.exports = {

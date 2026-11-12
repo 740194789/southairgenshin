@@ -1094,6 +1094,39 @@ Page({
     });
   },
 
+  /** 只用本机数据覆盖云端：先读云端更新时间做并发校验，不导入云端数据 */
+  onUploadToCloud: function () {
+    if (!this.data.cloudSync.bound) {
+      wx.showToast({ title: '请先生成或绑定同步码', icon: 'none' });
+      return;
+    }
+    if (this.data.cloudSync.syncing) {
+      return;
+    }
+    var that = this;
+    wx.showModal({
+      title: '上传覆盖云端',
+      content: '会用本机数据覆盖云端备份，其它设备下次同步会拉取这份数据。确定上传吗？',
+      confirmText: '上传',
+      success: function (modal) {
+        if (!modal.confirm) {
+          return;
+        }
+        that.setData({ 'cloudSync.syncing': true });
+        wx.showLoading({ title: '上传中', mask: true });
+        cloudSync.uploadLocal().then(function () {
+          wx.hideLoading();
+          that.refreshCloudSync();
+          wx.showToast({ title: '已用本地数据覆盖云端', icon: 'none' });
+        }).catch(function (err) {
+          wx.hideLoading();
+          that.setData({ 'cloudSync.syncing': false });
+          wx.showToast({ title: (err && err.message) || '上传失败', icon: 'none' });
+        });
+      }
+    });
+  },
+
   onUnbindSync: function () {
     var that = this;
     wx.showModal({
