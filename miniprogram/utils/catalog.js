@@ -22,6 +22,9 @@ var SOURCES = {
   }
 };
 
+/* 崩铁图标同样走 StarRailRes（与数据源同一仓库，新角色 / 新光锥不会缺图） */
+var STARRAIL_ASSETS = 'https://fastly.jsdelivr.net/gh/Mar-7th/StarRailRes@master/';
+
 function pad2(n) {
   return (n < 10 ? '0' : '') + n;
 }
@@ -89,7 +92,7 @@ function parseStarRailCharacters(root) {
     var item = root[id] || {};
     var name = String(item.name || '').trim();
     if (name && !map[name]) {
-      map[name] = 'https://enka.network/ui/hsr/SpriteOutput/AvatarRoundIcon/' + id + '.png';
+      map[name] = STARRAIL_ASSETS + 'icon/character/' + id + '.png';
     }
   });
   return map;
@@ -103,9 +106,9 @@ function parseStarRailWeapons(root) {
       return;
     }
     var name = String(item.name || '').trim();
-    var icon = String(item.icon || '').trim();
+    var icon = String(item.icon || '').trim().replace(/^\/+/, '');
     if (name && icon && !map[name]) {
-      map[name] = 'https://vizualabstract.github.io/StarRailStaticAPI/assets/' + icon;
+      map[name] = STARRAIL_ASSETS + icon;
     }
   });
   return map;

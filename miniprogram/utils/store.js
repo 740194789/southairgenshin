@@ -135,7 +135,42 @@ function normalizeRecord(source, game, id) {
 
 function getWishes(game) {
   var list = wx.getStorageSync(WISH_KEY + game);
-  return Array.isArray(list) ? list : [];
+  if (!Array.isArray(list)) {
+    return [];
+  }
+  return fixKnownRarities(game, list);
+}
+
+var rarityFixed = {};
+
+/** 修正历史误记为五星的四星角色（如瓦列里），每个游戏只写回一次。 */
+function fixKnownRarities(game, list) {
+  if (rarityFixed[game]) {
+    return list;
+  }
+  rarityFixed[game] = true;
+  var four = gameLib.FOUR_STAR_CHARACTERS[game] || [];
+  if (!four.length) {
+    return list;
+  }
+  var changed = false;
+  var next = list.map(function (item) {
+    if (item && Number(item.rarity) === 5 && item.itemType === '角色'
+      && four.indexOf(String(item.itemName || '').trim()) >= 0) {
+      changed = true;
+      var copy = {};
+      Object.keys(item).forEach(function (key) {
+        copy[key] = item[key];
+      });
+      copy.rarity = 4;
+      return copy;
+    }
+    return item;
+  });
+  if (changed) {
+    wx.setStorageSync(WISH_KEY + game, next);
+  }
+  return next;
 }
 
 function saveWishes(game, list) {
