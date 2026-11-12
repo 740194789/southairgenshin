@@ -199,12 +199,25 @@ def choose_page_for_calibration(config):
         name = input("还没有页面配置，请输入新页面名称（如 背包-贵重道具）：").strip()
         return create_page(config, name or "默认页面")
     if len(pages) == 1:
-        print("当前页面：%s" % (pages[0].get("name") or pages[0].get("id")))
-        raw = input("回车 = 重新校准该页面，0 = 新建页面：").strip()
-        if raw == "0":
-            name = input("新页面名称：").strip()
-            return create_page(config, name or "新页面")
-        return pages[0]
+        print("当前页面：%s（已校准 %d 项）"
+              % (pages[0].get("name") or pages[0].get("id"),
+                 len(pages[0].get("regions") or {})))
+        while True:
+            raw = input(
+                "回车 = 重新校准该页面；直接输入新页面名称 = 新建页面："
+            ).strip()
+            if raw == "":
+                return pages[0]
+            if raw == "0":
+                name = input("新页面名称：").strip()
+                return create_page(config, name or "新页面")
+            page = find_page(config, raw)
+            if page is not None:
+                print("使用已有页面：%s" % (page.get("name") or page.get("id")))
+                return page
+            # 输入的不是已有页面，就按新页面名称创建，避免误改当前页面
+            print("新建页面：%s" % raw)
+            return create_page(config, raw)
 
     print("\n已有页面：")
     for index, item in enumerate(pages, 1):
@@ -212,7 +225,12 @@ def choose_page_for_calibration(config):
               % (index, item.get("name") or item.get("id"), len(item.get("regions") or {})))
     print("  0. 新建页面")
     while True:
-        raw = input("选择要校准的页面编号：").strip()
+        raw = input(
+            "选择要校准的页面编号；直接输入新页面名称 = 新建页面："
+        ).strip()
+        if raw == "":
+            fallback = default_page(config)
+            return fallback or pages[0]
         if raw == "0":
             name = input("新页面名称：").strip()
             return create_page(config, name or "新页面")
@@ -220,8 +238,10 @@ def choose_page_for_calibration(config):
             return pages[int(raw) - 1]
         page = find_page(config, raw)
         if page is not None:
+            print("使用已有页面：%s" % (page.get("name") or page.get("id")))
             return page
-        print("请输入列表中的编号。")
+        print("新建页面：%s" % raw)
+        return create_page(config, raw)
 
 
 # ---------------------------------------------------------------- 截屏
@@ -991,7 +1011,7 @@ def main():
             break
         try:
             command = input(
-                "\n回车 = 再识别一次，p = 切换页面，c = 重新校准当前页面，q = 退出："
+                "\n回车 = 再识别一次，p = 切换页面，c = 校准/新增页面，q = 退出："
             ).strip().lower()
         except (EOFError, KeyboardInterrupt):
             break
@@ -1005,9 +1025,12 @@ def main():
         if command == "c":
             import calibrate
 
-            calibrate.run(image, config, page)
+            target = choose_page_for_calibration(config)
+            page_id = calibrate.run(image, config, target)
             config = load_config()
-            page = find_page(config, config.get("last_page") or "") or page
+            page = (find_page(config, page_id)
+                    or find_page(config, config.get("last_page") or "")
+                    or page)
     return 0
 
 
