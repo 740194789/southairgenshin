@@ -4544,17 +4544,49 @@
     /** 启动电脑端识图小工具；首次使用（还没有校准区域）优先进校准 */
     function launchResourceScan() {
         return api('/api/resource-scan/launch', { method: 'POST' })
-            .then(function (result) {
-                if (result && result.mode === 'calibrate') {
-                    toast('首次使用：已打开识图校准，请按控制台提示框选资源数字', 'success');
-                } else {
-                    toast('已打开识图工具，请按控制台提示识别', 'success');
-                }
-                return result;
-            })
+            .then(handleResourceScanResult)
             .catch(function (error) {
                 toast((error && error.message) || '启动识图工具失败', 'error');
             });
+    }
+
+    function handleResourceScanResult(result) {
+        if (result && result.mode === 'downloading') {
+            toast('正在下载识图运行环境，完成后会自动打开', 'success');
+            return waitForResourceScan(0);
+        }
+        if (result && result.mode === 'calibrate') {
+            toast('首次使用：已打开识图校准，请按控制台提示框选资源数字', 'success');
+        } else {
+            toast('已打开识图工具，请按控制台提示识别', 'success');
+        }
+        return result;
+    }
+
+    /** 等待后端下载并解压识图运行环境，就绪后自动启动工具。 */
+    function waitForResourceScan(elapsed) {
+        if (elapsed > 600) {
+            toast('识图运行环境下载超时，请稍后重试', 'error');
+            return null;
+        }
+        return api('/api/resource-scan/status').then(function (status) {
+            if (status && status.downloadError) {
+                toast('识图运行环境下载失败：' + status.downloadError, 'error');
+                return null;
+            }
+            if (status && status.ready) {
+                return api('/api/resource-scan/launch', { method: 'POST' })
+                    .then(handleResourceScanResult);
+            }
+            if (elapsed > 0 && elapsed % 4 === 0) {
+                toast('正在下载识图运行环境… ' + elapsed + ' 秒', 'success');
+            }
+            return new Promise(function (resolve) {
+                setTimeout(resolve, 2000);
+            }).then(function () {
+                return waitForResourceScan(elapsed + 2);
+            });
+        });
     }
 
     var RESOURCE_OCR_LABELS = {

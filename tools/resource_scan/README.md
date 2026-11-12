@@ -62,7 +62,9 @@ run.bat --dry-run          # 只打印，不写剪贴板
 
 - 首次点击：检测到还没有校准区域，自动打开校准窗口。
 - 之后点击：直接打开识图工具。
-- 后端只负责启动 `tools/resource_scan/run.bat`，不传任意命令；脚本可放在程序目录下的 `tools/resource_scan`，或通过 `app.resource-scan.dir` 指定位置。
+- 如果程序目录下没有识图环境（例如只更新了 jar），后端会自动从最新 Release 下载
+  `resource-scan.zip` 并解压到 `tools/resource_scan`，界面会提示下载进度，完成后自动打开。
+- 后端只负责启动 `tools/resource_scan/run.bat`，不传任意命令；脚本可放在程序目录下的 `tools/resource_scan`，或通过 `app.resource-scan.dir` 指定位置，下载地址可用 `app.resource-scan.download-url` 覆盖。
 
 ## 双引擎与置信度
 

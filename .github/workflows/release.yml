@@ -25,11 +25,34 @@ jobs:
       - name: Build jar
         run: mvn -B -DskipTests package
 
+      - name: Build resource scanner bundle
+        run: |
+          set -e
+          curl -fsSL --retry 3 -o winpython.zip \
+            https://github.com/winpython/winpython/releases/download/2026-04/WinPython64-3.13.18.0dot.zip
+          unzip -q winpython.zip -d winpython
+          rm -rf tools/resource_scan/python tools/resource_scan/templates
+          mkdir -p tools/resource_scan/python
+          cp -r winpython/WPy64-313180/python/. tools/resource_scan/python/
+          rm -rf tools/resource_scan/python/Lib/test tools/resource_scan/python/include \
+                 tools/resource_scan/python/libs tools/resource_scan/python/Scripts
+          python3 -m pip download --dest wheels --only-binary=:all: \
+            --platform win_amd64 --python-version 3.13 --implementation cp \
+            pillow numpy pytesseract mss
+          python3 -m pip wheel --no-deps --wheel-dir wheels pygetwindow pyrect
+          mkdir -p tools/resource_scan/python/Lib/site-packages
+          for wheel in wheels/*.whl; do
+            unzip -q -o "$wheel" -d tools/resource_scan/python/Lib/site-packages
+          done
+          cd tools
+          zip -qr ../resource-scan.zip resource_scan
+          ls -lh ../resource-scan.zip
+
       - name: Prepare asset
         run: |
           cp target/southair-genshin.jar SouthAirGenshin.jar
           cp launcher/release/SouthAirLauncher.exe SouthAirLauncher.exe
-          ls -lh SouthAirGenshin.jar SouthAirLauncher.exe
+          ls -lh SouthAirGenshin.jar SouthAirLauncher.exe resource-scan.zip
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
@@ -42,7 +65,9 @@ jobs:
 
             启动器的「检查更新」会自动下载 `SouthAirGenshin.jar` 与 `SouthAirLauncher.exe`
             并完成替换（jar 立即生效，启动器本体重新打开后生效），无需手动操作。
+            `resource-scan.zip` 为电脑识图工具运行环境，程序会在首次点击「电脑识图工具」时自动下载解压。
           files: |
             SouthAirGenshin.jar
             SouthAirLauncher.exe
+            resource-scan.zip
           fail_on_unmatched_files: true
