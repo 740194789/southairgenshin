@@ -194,6 +194,8 @@ function processItems(game, items) {
         return;
       }
       records.push({
+        // 游戏内抽卡编号作为唯一指针，重新导入时据此判重（即使手动改过抽数）
+        clientUid: item.id ? 'gacha-' + item.id : '',
         itemName: item.name,
         itemType: item.itemType,
         pool: item.pool,

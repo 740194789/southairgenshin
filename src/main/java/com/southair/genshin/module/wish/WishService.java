@@ -310,10 +310,17 @@ public class WishService {
         result.setTotal(records.size());
 
         Map<String, Integer> existingCounts = new HashMap<>();
+        /* 指针 → 该记录的当前去重键：链接导入的 gacha-<id>、UIGF 的 uigf-<id> 或手动记录的 UUID */
+        Map<String, String> existingPointers = new HashMap<>();
         if (!replace) {
             for (WishRecord saved : existing) {
-                existingCounts.merge(recordKey(saved.getUid(), saved.getItemName(), saved.getPool(),
-                        saved.getWishTime()), 1, Integer::sum);
+                String savedKey = recordKey(saved.getUid(), saved.getItemName(), saved.getPool(),
+                        saved.getWishTime());
+                existingCounts.merge(savedKey, 1, Integer::sum);
+                String pointer = truncate(trim(saved.getClientUid()), 64);
+                if (StringUtils.hasText(pointer)) {
+                    existingPointers.put(pointer, savedKey);
+                }
             }
         }
 
@@ -332,8 +339,20 @@ public class WishService {
             String uid = truncate(trim(source.getUid()), 32);
             LocalDateTime wishTime = source.getWishTime() == null ? LocalDateTime.now() : source.getWishTime();
             String key = recordKey(uid, itemName, pool, wishTime);
+            String pointer = truncate(trim(source.getClientUid()), 64);
 
             int seenCount = seen.containsKey(key) ? seen.get(key) : 0;
+            if (!replace && StringUtils.hasText(pointer)) {
+                String existingKey = existingPointers.get(pointer);
+                if (existingKey != null) {
+                    /* 同一条原始记录再次出现：用户即使改过抽数 / 名称 / 时间，也按指针判重，不再重复导入 */
+                    if (existingKey.equals(key)) {
+                        seen.put(key, seenCount + 1);
+                    }
+                    result.setSkipped(result.getSkipped() + 1);
+                    continue;
+                }
+            }
             int available = existingCounts.containsKey(key) ? existingCounts.get(key) : 0;
             if (!replace && available > seenCount) {
                 result.setSkipped(result.getSkipped() + 1);
@@ -344,9 +363,14 @@ public class WishService {
             if (save) {
                 WishRecord saved = repository.save(
                         toRecord(userId, gameKey, source, itemName, pool, rarity, wishTime));
+                if (StringUtils.hasText(saved.getClientUid())) {
+                    existingPointers.put(saved.getClientUid().trim(), key);
+                }
                 // 导入的记录重新出现时，清除同 clientUid 的旧墓碑
                 tombstoneRepository.deleteByUserIdAndGameAndClientUid(
                         userId, gameKey, saved.getClientUid());
+            } else if (StringUtils.hasText(pointer)) {
+                existingPointers.put(pointer, key);
             }
             result.setImported(result.getImported() + 1);
             seen.put(key, seenCount + 1);

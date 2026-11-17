@@ -291,7 +291,7 @@ public class UigfService {
             record.setIsUp(item.isUpOverride != null ? item.isUpOverride : inferIsUp(item, starrail));
             record.setCaptureTriggered(item.captureOverride != null ? item.captureOverride : false);
             record.setWishTime(item.time);
-            record.setClientUid(StringUtils.hasText(item.itemId) ? "uigf-" + item.itemId : null);
+            record.setClientUid(pointerOf(item.itemId));
             record.setEditedAt(System.currentTimeMillis());
             records.add(record);
         }
@@ -299,6 +299,21 @@ public class UigfService {
             throw new BusinessException("文件中的记录都被规则过滤（只保留四星角色与五星物品）");
         }
         return new Batch(records, list.size(), invalid, filtered);
+    }
+
+    /**
+     * 文件中的 id 已经是指针（本程序导出过）时原样保留，
+     * 否则补 uigf- 前缀，避免与游戏内抽卡编号混淆。
+     */
+    private String pointerOf(String id) {
+        String value = id == null ? "" : id.trim();
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        String pointer = value.startsWith("gacha-") || value.startsWith("uigf-")
+                || value.startsWith("local-") || value.matches("[0-9a-fA-F-]{32,36}")
+                ? value : "uigf-" + value;
+        return pointer.length() <= 64 ? pointer : pointer.substring(0, 64);
     }
 
     /** 按 UID + 卡池累计抽数，命中五星时记录本次保底并清零。 */

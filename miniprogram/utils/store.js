@@ -8,6 +8,7 @@ var WISH_KEY = 'sg_wishes_';
 var RES_KEY = 'sg_resource_';
 var SEQ_KEY = 'sg_seq_';
 var PITY_KEY = 'sg_pity_';
+var DEVICE_KEY = 'sg_device_id';
 
 /* 各卡池保底上限，保存快照时按卡池截断 */
 var PITY_CAPS = {
@@ -111,12 +112,28 @@ function isRecordable(rarity, itemType) {
   return r === 4 && String(itemType || '').trim() === '角色';
 }
 
+/** 本机标识：每台设备生成一次，用于拼出跨端不冲突的本地记录指针 */
+function deviceId() {
+  var id = wx.getStorageSync(DEVICE_KEY);
+  if (!id) {
+    id = 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    wx.setStorageSync(DEVICE_KEY, id);
+  }
+  return id;
+}
+
+/** 每条记录的唯一指针：本地录入为 local-<设备>-<序号>，链接导入为 gacha-<游戏内编号> */
+function newClientUid(id) {
+  return 'local-' + deviceId() + '-' + id;
+}
+
 function normalizeRecord(source, game, id) {
   var rarity = clamp(source.rarity, 1, 5, 3);
   var pool = String(source.pool || '');
   var pityCap = pool === '武器活动' || pool === '光锥活动' ? 80 : 90;
   return {
     id: id,
+    clientUid: truncate(source.clientUid, 64) || newClientUid(id),
     game: game,
     uid: truncate(source.uid, 32),
     itemName: normalizeItemName(source.itemName, rarity),
@@ -138,10 +155,36 @@ function getWishes(game) {
   if (!Array.isArray(list)) {
     return [];
   }
-  return fixKnownRarities(game, list);
+  return ensurePointers(game, fixKnownRarities(game, list));
 }
 
 var rarityFixed = {};
+var pointerReady = {};
+
+/** 给老数据补记录指针：保证每条记录都有唯一标识，重导入时才能按指针判重。 */
+function ensurePointers(game, list) {
+  if (pointerReady[game]) {
+    return list;
+  }
+  pointerReady[game] = true;
+  var changed = false;
+  var next = list.map(function (item) {
+    if (!item || item.clientUid) {
+      return item;
+    }
+    changed = true;
+    var copy = {};
+    Object.keys(item).forEach(function (key) {
+      copy[key] = item[key];
+    });
+    copy.clientUid = newClientUid(item.id);
+    return copy;
+  });
+  if (changed) {
+    wx.setStorageSync(WISH_KEY + game, next);
+  }
+  return next;
+}
 
 /** 修正历史误记为五星的四星角色（如瓦列里），每个游戏只写回一次。 */
 function fixKnownRarities(game, list) {
@@ -335,6 +378,7 @@ function updateWish(game, id, data) {
     return null;
   }
   var merged = normalizeRecord({
+    clientUid: list[index].clientUid,
     uid: list[index].uid,
     itemName: data.itemName,
     itemType: data.itemType,
@@ -734,7 +778,8 @@ function captureInfo(asc) {
 /* ---------------- 导入 / 导出 ---------------- */
 
 /**
- * 导入抽卡记录：merge 模式按「UID + 名称 + 卡池 + 时间」去重；replace 模式清空后导入。
+ * 导入抽卡记录：merge 模式先按记录指针（clientUid）判重，指针不一致时再按
+ * 「UID + 名称 + 卡池 + 时间」去重；replace 模式清空后导入。
  * dryRun 只统计新增 / 跳过 / 忽略条数，不分配 ID、不写缓存，用于导入预演。
  */
 function importRecords(game, records, mode, dryRun) {
@@ -744,6 +789,14 @@ function importRecords(game, records, mode, dryRun) {
   }
   var list = replace ? [] : getWishes(game);
   var existing = replace ? [] : list.slice();
+  var existingPointers = {};
+  if (!replace) {
+    existing.forEach(function (record) {
+      if (record && record.clientUid) {
+        existingPointers[String(record.clientUid)] = recordKeyOf(record);
+      }
+    });
+  }
   var seen = {};
   var imported = 0;
   var skipped = 0;
@@ -765,13 +818,22 @@ function importRecords(game, records, mode, dryRun) {
     var pool = truncate(source.pool, 16);
     var wishTime = source.wishTime || nowStr();
     var key = uid + '\u0001' + itemName + '\u0001' + pool + '\u0001' + wishTime;
+    var clientUid = truncate(source.clientUid, 64);
     var seenCount = seen[key] || 0;
+
+    if (!replace && clientUid && existingPointers[clientUid] !== undefined) {
+      // 同一条原始记录再次出现：即使用户改过抽数 / 名称 / 时间，也按指针判重
+      if (existingPointers[clientUid] === key) {
+        seen[key] = seenCount + 1;
+      }
+      skipped++;
+      return;
+    }
 
     if (!replace) {
       var sameCount = 0;
       existing.forEach(function (record) {
-        if ((record.uid || '') === uid && record.itemName === itemName
-            && (record.pool || '') === pool && record.wishTime === wishTime) {
+        if (recordKeyOf(record) === key) {
           sameCount++;
         }
       });
@@ -784,11 +846,15 @@ function importRecords(game, records, mode, dryRun) {
 
     if (dryRun) {
       imported++;
+      if (clientUid) {
+        existingPointers[clientUid] = key;
+      }
       seen[key] = seenCount + 1;
       return;
     }
 
-    list.push(normalizeRecord({
+    var saved = normalizeRecord({
+      clientUid: clientUid,
       uid: uid,
       itemName: source.itemName,
       itemType: source.itemType,
@@ -799,7 +865,11 @@ function importRecords(game, records, mode, dryRun) {
       wishTime: wishTime,
       note: source.note,
       captureTriggered: source.captureTriggered === true
-    }, game, ids[idIndex++]));
+    }, game, ids[idIndex++]);
+    list.push(saved);
+    if (saved.clientUid) {
+      existingPointers[saved.clientUid] = key;
+    }
     imported++;
     seen[key] = seenCount + 1;
   });
@@ -813,6 +883,12 @@ function importRecords(game, records, mode, dryRun) {
     skipped: skipped,
     filtered: filtered
   };
+}
+
+/** 记录当前字段拼出的去重键，用于比对指针命中的记录是否仍是同一条数据。 */
+function recordKeyOf(record) {
+  return (record.uid || '') + '\u0001' + (record.itemName || '') + '\u0001'
+    + (record.pool || '') + '\u0001' + (record.wishTime || '');
 }
 
 function exportBackup(game) {

@@ -10,6 +10,7 @@ import com.southair.genshin.module.wish.WishRecordRepository;
 import com.southair.genshin.module.wish.WishService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -17,6 +18,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * 数据备份：导出 / 导入（资源快照 + 抽卡记录）。
@@ -147,9 +149,16 @@ public class BackupService {
         }
 
         Map<String, Integer> existingCounts = new HashMap<>();
+        /* 指针 → 记录当前去重键：备份里带着 clientUid，重新导入同一份备份时按指针判重 */
+        Map<String, String> existingPointers = new HashMap<>();
         if (!replace) {
             for (WishRecord saved : wishRepository.findByUserIdAndGameOrderByWishTimeAsc(userId, gameKey)) {
-                existingCounts.merge(backupKey(saved), 1, Integer::sum);
+                String savedKey = backupKey(saved);
+                existingCounts.merge(savedKey, 1, Integer::sum);
+                String pointer = pointerOf(saved.getClientUid());
+                if (pointer != null) {
+                    existingPointers.put(pointer, savedKey);
+                }
             }
         }
 
@@ -168,13 +177,30 @@ public class BackupService {
             String pool = trim(source.getPool());
             String uid = trim(source.getUid());
             String key = backupKey(uid, itemName, pool, wishTime);
+            String pointer = pointerOf(source.getClientUid());
             int seenCount = seen.containsKey(key) ? seen.get(key) : 0;
+
+            if (!replace && pointer != null) {
+                String existingKey = existingPointers.get(pointer);
+                if (existingKey != null) {
+                    // 同一条原始记录：用户改过抽数 / 名称 / 时间后，旧备份也不会再插一条
+                    if (existingKey.equals(key)) {
+                        seen.put(key, seenCount + 1);
+                    }
+                    skipped++;
+                    continue;
+                }
+            }
             if (!replace && existingCounts.getOrDefault(key, 0) > seenCount) {
                 skipped++;
                 seen.put(key, seenCount + 1);
                 continue;
             }
-            wishRepository.save(toWish(userId, gameKey, source, itemName, rarity, wishTime));
+            WishRecord saved = toWish(userId, gameKey, source, itemName, rarity, wishTime);
+            wishRepository.save(saved);
+            if (saved.getClientUid() != null) {
+                existingPointers.put(saved.getClientUid(), key);
+            }
             result.setWishes(result.getWishes() + 1);
             seen.put(key, seenCount + 1);
         }
@@ -221,7 +247,19 @@ public class BackupService {
         target.setNote(truncate(trim(source.getNote()), 255));
         target.setCaptureTriggered(Boolean.TRUE.equals(source.getCaptureTriggered()));
         target.setUid(truncate(trim(source.getUid()), 32));
+        String pointer = pointerOf(source.getClientUid());
+        target.setClientUid(pointer != null ? pointer : UUID.randomUUID().toString());
+        target.setEditedAt(source.getEditedAt() != null
+                ? source.getEditedAt() : System.currentTimeMillis());
         return target;
+    }
+
+    /** 备份里的 clientUid 即记录指针：原样保留，保证再次导入时能识别同一条记录。 */
+    private String pointerOf(String clientUid) {
+        if (!StringUtils.hasText(clientUid)) {
+            return null;
+        }
+        return truncate(clientUid.trim(), 64);
     }
 
     private String backupKey(WishRecord record) {
