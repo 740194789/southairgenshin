@@ -288,8 +288,8 @@ function accrueResource(game, res) {
   var daily = Math.max(0, toInt(res.dailyPrimogems));
   if (daily > 0) {
     res.primogems += daily * days;
-    // 自动累积也算本地更新，避免同步时被云端旧快照覆盖
-    res.editedAt = Date.now();
+    // 自动累积不算手动修改，不更新 editedAt：否则只是打开过页面就会被当成最新，
+    // 同步时用旧数据覆盖另一台设备刚改过的资源
   }
   res.lastAccrualDate = today;
   saveResource(game, res);
@@ -1034,24 +1034,31 @@ function uids(game) {
 }
 
 function importResource(game, resource) {
+  if (!resource || typeof resource !== 'object') {
+    return getResource(game);
+  }
   var current = getResource(game);
-  var incomingAt = Number(resource && resource.editedAt) || 0;
+  var incomingAt = Number(resource.editedAt) || 0;
   var currentAt = Number(current.editedAt) || 0;
-  // 两边都有修改时间时保留更新的那份，避免云端旧快照覆盖本机刚改的数据
+  // 两边都有手动修改时间时保留更新的那份，避免云端旧快照覆盖本机刚改的数据
   if (currentAt && incomingAt && currentAt > incomingAt) {
     return current;
   }
+  // 资源是一个整体：全部字段一起合并，只同步一部分会让另一端其余数值变旧
   var patch = {};
-  ['primogems', 'mora', 'intertwinedFates', 'acquaintedFates', 'genesisCrystals'].forEach(function (key) {
-    if (resource && resource[key] !== undefined && resource[key] !== null) {
+  ['primogems', 'mora', 'intertwinedFates', 'acquaintedFates', 'genesisCrystals',
+    'dailyPrimogems', 'heroWit', 'adventurerExp', 'wandererAdvice',
+    'sanctifyingUnction', 'sanctifyingEssence'].forEach(function (key) {
+    if (resource[key] !== undefined && resource[key] !== null) {
       patch[key] = resource[key];
     }
   });
   var next = updateResource(game, patch);
-  if (incomingAt) {
-    next.editedAt = incomingAt;
-    saveResource(game, next);
-  }
+  // 导入不是手动修改：保留来源的累积基准日与修改时间，避免本机被误判为最新
+  next.lastAccrualDate = resource.lastAccrualDate
+    ? String(resource.lastAccrualDate) : dateStr();
+  next.editedAt = incomingAt || currentAt;
+  saveResource(game, next);
   return next;
 }
 

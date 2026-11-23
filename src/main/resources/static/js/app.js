@@ -6240,7 +6240,7 @@
     }
 
     /** 导出当前账号的全量数据，并附加仅存在本机的收藏补充 */
-    function fetchFullBackup() {
+    function fetchFullBackup(forceResourceNewest) {
         return fetch(withGame('/api/backup/export-all'), {
             headers: state.token ? { Authorization: 'Bearer ' + state.token } : {}
         }).then(function (res) {
@@ -6254,6 +6254,16 @@
             return res.json();
         }).then(function (data) {
             data.owned = ownedSnapshot();
+            if (forceResourceNewest) {
+                // 覆盖上传：把资源标记为刚修改，另一端才会判定本机这份是最新
+                var stamp = Date.now();
+                Object.keys(data.games || {}).forEach(function (game) {
+                    var resource = data.games[game] && data.games[game].resource;
+                    if (resource) {
+                        resource.editedAt = stamp;
+                    }
+                });
+            }
             return data;
         });
     }
@@ -6347,7 +6357,7 @@
                 method: 'POST',
                 body: { serviceUrl: serviceUrl, code: code }
             }).then(function (remote) {
-                return fetchFullBackup().then(function (backup) {
+                return fetchFullBackup(true).then(function (backup) {
                     return api('/api/cloud-sync/push', {
                         method: 'POST',
                         body: {

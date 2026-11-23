@@ -109,8 +109,8 @@ public class ResourceService {
         long daily = nvl(entity.getDailyPrimogems());
         if (daily > 0) {
             entity.setPrimogems(nvl(entity.getPrimogems()) + daily * days);
-            // 自动累积也算本地更新，避免云同步用旧快照把它覆盖掉
-            entity.setEditedAt(System.currentTimeMillis());
+            // 自动累积不算手动修改，不更新 editedAt：否则一台设备只是打开过页面，
+            // 就会被误判为「最新」，同步时用它那份旧数据覆盖另一台设备刚改过的资源
         }
         entity.setLastAccrualDate(today.toString());
         repository.save(entity);

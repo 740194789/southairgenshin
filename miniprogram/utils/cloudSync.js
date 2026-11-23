@@ -332,9 +332,21 @@ function pullOnce(code) {
   });
 }
 
-function pushOnce(code, updatedAt) {
+function pushOnce(code, updatedAt, forceResourceNewest) {
   return Promise.resolve().then(function () {
-    var text = JSON.stringify(store.exportAllBackup());
+    var payload = store.exportAllBackup();
+    if (forceResourceNewest) {
+      // 覆盖上传：把资源标记为刚修改，另一端才会判定本机这份是最新
+      var stamp = Date.now();
+      var games = payload.games || {};
+      Object.keys(games).forEach(function (game) {
+        if (games[game] && games[game].resource) {
+          games[game].resource.editedAt = stamp;
+        }
+      });
+      payload.checksum = checksum.compute(payload);
+    }
+    var text = JSON.stringify(payload);
     if (text.length > MAX_TEXT) {
       throw new Error('本地数据过大，暂时无法同步');
     }
@@ -388,7 +400,7 @@ function uploadLocal() {
       if (!res.exists) {
         throw new Error('同步码不存在或已被删除');
       }
-      return pushOnce(code, res.updatedAt || 0).then(function (pushed) {
+      return pushOnce(code, res.updatedAt || 0, true).then(function (pushed) {
         saveMeta({ updatedAt: pushed.updatedAt || 0, lastSyncAt: Date.now() });
         return { updatedAt: pushed.updatedAt || 0 };
       }, function (err) {

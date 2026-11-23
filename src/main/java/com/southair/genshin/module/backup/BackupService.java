@@ -228,7 +228,16 @@ public class BackupService {
         target.setAcquaintedFates(clampLong(source.getAcquaintedFates(), 0L, MAX_FATES, 0L));
         target.setGenesisCrystals(clampLong(source.getGenesisCrystals(), 0L, MAX_PRIMOGEMS, 0L));
         target.setDailyPrimogems(clampLong(source.getDailyPrimogems(), 0L, 999999L, 0L));
-        target.setLastAccrualDate(LocalDate.now().toString());
+        target.setHeroWit(clampLong(source.getHeroWit(), 0L, MAX_PRIMOGEMS, 0L));
+        target.setAdventurerExp(clampLong(source.getAdventurerExp(), 0L, MAX_PRIMOGEMS, 0L));
+        target.setWandererAdvice(clampLong(source.getWandererAdvice(), 0L, MAX_PRIMOGEMS, 0L));
+        target.setSanctifyingUnction(clampLong(source.getSanctifyingUnction(), 0L, MAX_PRIMOGEMS, 0L));
+        target.setSanctifyingEssence(clampLong(source.getSanctifyingEssence(), 0L, MAX_PRIMOGEMS, 0L));
+        // 沿用来源的累积基准日，下次读取时按差额补算，避免丢失两端之间的每日原石
+        target.setLastAccrualDate(StringUtils.hasText(source.getLastAccrualDate())
+                ? source.getLastAccrualDate() : LocalDate.now().toString());
+        // 导入不是手动修改：保留来源的手动修改时间，避免本机因此被误判为最新
+        target.setEditedAt(sourceAt != null ? sourceAt : targetAt);
         resourceRepository.save(target);
     }
 
