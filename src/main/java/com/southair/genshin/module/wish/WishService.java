@@ -25,6 +25,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 @Service
@@ -377,8 +378,31 @@ public class WishService {
         }
         if (save) {
             savePitySnapshot(userId, gameKey, pitySnapshot, replace);
+            if (!GameType.isStarRail(gameKey)) {
+                recomputeCapturingRadiance(userId, gameKey);
+            }
         }
         return result;
+    }
+
+    /**
+     * 按角色活动池五星序列自动判定「捕获明光」触发，并写回 captureTriggered。
+     * 链接 / UIGF / 备份导入都会走到这里，不再依赖手动勾选。
+     */
+    private void recomputeCapturingRadiance(Long userId, String game) {
+        List<WishRecord> fives = new ArrayList<>(repository
+                .findByUserIdAndGameAndPoolAndRarityOrderByWishTimeAscIdAsc(
+                        userId, game, "角色活动", 5));
+        fives.sort(WishRecord::compareChronologically);
+        CapturingRadiance.Result radiance = CapturingRadiance.compute(fives);
+        for (int i = 0; i < fives.size(); i++) {
+            WishRecord record = fives.get(i);
+            boolean triggered = radiance.isTriggered(i);
+            if (!Objects.equals(record.getCaptureTriggered(), triggered)) {
+                record.setCaptureTriggered(triggered);
+                repository.save(record);
+            }
+        }
     }
 
     /**

@@ -513,7 +513,6 @@ Page({
     pools: [],
     pityPools: [],
     showCapture: false,
-    dist: [],
     recent: [],
     capture: null,
     expect: null,
@@ -614,18 +613,6 @@ Page({
       };
     });
 
-    var maxValue = 1;
-    data.poolDistribution.forEach(function (item) {
-      maxValue = Math.max(maxValue, item.value);
-    });
-    var dist = data.poolDistribution.map(function (item) {
-      return {
-        name: gameLib.poolLabel(item.name),
-        value: item.value,
-        percent: Math.max(8, Math.round(item.value / maxValue * 100))
-      };
-    });
-
     var recent = data.recentWishes.map(function (item) {
       return {
         id: item.id,
@@ -638,15 +625,15 @@ Page({
 
     var capture = null;
     if (game === 'genshin') {
-      var losses = data.captureLossCount || 0;
+      var count = data.captureLossCount || 0;
       var status = data.captureGuaranteed
-        ? '已连歪 ' + losses + ' 次：下次五星必定触发捕获明光'
-        : (losses === 0
+        ? '明光计数已满：下一次小保底必定为当期 UP'
+        : (count === 0
           ? '当前小保底：下次五星 50% 为当期 UP'
-          : '已连歪 ' + losses + ' 次：下次五星 UP 概率约 ' + (data.captureNextUpRate || 50) + '%');
+          : '明光计数 ' + count + '：下次小保底 UP 概率约 ' + (data.captureNextUpRate || 50) + '%');
       capture = {
-        losses: losses,
-        percent: Math.min(100, Math.round(losses / 3 * 100)),
+        losses: count,
+        percent: Math.min(100, Math.round(count / 3 * 100)),
         remaining: data.captureRemaining || 0,
         status: status,
         characterFive: data.characterFiveStarWishes || 0,
@@ -662,7 +649,6 @@ Page({
       pools: pools,
       pityPools: filterPools(pools, chartPool),
       showCapture: !!capture && (chartPool === 'all' || chartPool === g.charPool),
-      dist: dist,
       recent: recent,
       capture: capture,
       expect: buildExpectation(data, game, expectPrefs(game)),

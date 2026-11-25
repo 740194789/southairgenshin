@@ -841,24 +841,6 @@
             + '</div>';
     }
 
-    function poolBars(list) {
-        if (!list || !list.length) {
-            return emptyHtml('还没有抽卡记录');
-        }
-        var max = 1;
-        list.forEach(function (item) {
-            max = Math.max(max, item.value);
-        });
-        return '<div class="bars">' + list.map(function (item) {
-            var width = Math.max(8, Math.round(item.value / max * 100));
-            return '<div class="bar-row">'
-                + '<span>' + esc(item.name) + '</span>'
-                + '<div class="bar-track"><div class="bar-fill" style="width:' + width + '%"></div></div>'
-                + '<span class="bar-count">' + item.value + '</span>'
-                + '</div>';
-        }).join('') + '</div>';
-    }
-
     function avatarHtml(item) {
         if (!item) {
             return '';
@@ -898,28 +880,28 @@
         if (state.game !== 'genshin') {
             return '';
         }
-        var losses = data.captureLossCount || 0;
-        var percent = Math.min(100, Math.round(losses / 3 * 100));
+        var count = data.captureLossCount || 0;
+        var percent = Math.min(100, Math.round(count / 3 * 100));
         var remaining = data.captureRemaining || 0;
         var rate = data.captureNextUpRate || 50;
         var status = data.captureGuaranteed
-            ? '已连歪 ' + losses + ' 次：下次五星必定触发捕获明光'
-            : (losses === 0
+            ? '明光计数已满：下一次小保底必定为当期 UP'
+            : (count === 0
                 ? '当前小保底：下次五星 50% 为当期 UP'
-                : '已连歪 ' + losses + ' 次：下次五星 UP 概率约 ' + rate + '%');
+                : '明光计数 ' + count + '：下次小保底 UP 概率约 ' + rate + '%');
 
         return '<section class="panel capture-panel">'
             + '<h3>捕获明光<span class="pool-tag">角色活动 · 原神</span></h3>'
             + '<div class="pity-bar"><span style="width:' + percent + '%"></span></div>'
             + '<div class="pity-line">'
-            + '<span>连歪次数 <strong>' + losses + ' / 3</strong></span>'
+            + '<span>明光计数 <strong>' + count + ' / 3</strong></span>'
             + '<span>距必定捕获还差 <strong>' + remaining + ' 次</strong></span>'
             + '</div>'
             + '<p class="pity-note">' + esc(status) + '</p>'
             + '<p class="pity-note">角色池五星 ' + data.characterFiveStarWishes + ' 次，UP '
             + data.characterUpWishes + ' 次（UP 率 ' + data.characterUpRate + '%）</p>'
-            + '<p class="pity-note">规则：小保底基础 50%，含捕获明光综合 55%；连续 3 次歪后，'
-            + '下次五星必定 UP（连歪 1 / 2 次按 55% / 75% 估算）。</p>'
+            + '<p class="pity-note">规则：歪一次计数 +1、没歪 -1；计数到 3 后下一次小保底必定 UP，'
+            + '触发后计数重置为 1（含捕获明光综合 UP 率约 55%）。</p>'
             + '</section>';
     }
 
@@ -2110,10 +2092,10 @@
         var charSamples = Number(data.characterUpSamples) || 0;
         var weaponSamples = Number(data.weaponUpSamples) || 0;
         var captureCard = state.game === 'genshin'
-            ? statCard('捕获明光触发', data.captureTriggeredCount || 0, '录入时勾选触发次数')
+            ? statCard('捕获明光触发', data.captureTriggeredCount || 0, '按角色卡池记录自动判定')
             : '';
 
-        return '<section class="panel luck-panel">'
+        return '<section class="panel luck-panel" id="stats-luck-panel">'
             + '<h3>抽卡统计<span class="pool-tag">角色活动 · ' + esc(g.weaponPool) + '</span></h3>'
             + '<div class="stat-grid">'
             + statCard('一共抽过', fmt(data.totalPulls || 0) + ' 抽',
@@ -2192,7 +2174,7 @@
 
     /** 卡池筛选按钮已上移到「保底分析」顶部，图表跟随同一筛选。 */
     function pullPanelHtml() {
-        return '<section class="panel pull-panel">'
+        return '<section class="panel pull-panel" id="stats-pull-panel">'
             + '<h3>五星抽数<span class="pool-tag">每次五星用了多少抽</span>'
             + '<button class="btn btn-text pull-toggle" type="button" id="pull-toggle">显示真实抽数</button></h3>'
             + '<p class="pull-summary" id="pull-summary"></p>'
@@ -2250,7 +2232,22 @@
         renderPullChart(false);
     }
 
-    /** 保底分析的统一卡池筛选：同时刷新保底面板与五星抽数图表。 */
+    /**
+     * 保底分析按卡池筛选显隐：选「全部」时看抽卡统计，选具体卡池时看五星抽数。
+     */
+    function applyStatsScope(pool) {
+        var all = !pool || pool === PULL_POOL_ALL;
+        var luck = $('#stats-luck-panel');
+        var pull = $('#stats-pull-panel');
+        if (luck) {
+            luck.hidden = !all;
+        }
+        if (pull) {
+            pull.hidden = all;
+        }
+    }
+
+    /** 保底分析的统一卡池筛选：同时刷新保底面板、五星抽数与模块显隐。 */
     function bindStatsPoolFilter(data) {
         var bar = $('#stats-pool-filter');
         if (!bar) {
@@ -2277,6 +2274,7 @@
                 wrap.hidden = !html;
             }
             renderPullChart(cache.pullReal);
+            applyStatsScope(pool);
         });
     }
 
@@ -2348,8 +2346,6 @@
                 + pityHtml + '</div>'
                 + luckPanelHtml(data)
                 + pullPanelHtml()
-                + '<section class="panel"><h3>卡池分布<span class="pool-tag">各卡池抽数占比</span></h3>'
-                + poolBars(data.poolDistribution) + '</section>'
                 + '</div>'
 
                 + statsSection('expect', tab)
@@ -2368,6 +2364,7 @@
             bindExpectation(data);
             bindCalendar(data);
             bindStatsDelegates();
+            applyStatsScope(activePool);
         }).catch(function (err) {
             if (state.token) {
                 el.innerHTML = errorHtml(err);

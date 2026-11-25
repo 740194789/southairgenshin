@@ -2,6 +2,7 @@ package com.southair.genshin.module.stats;
 
 import com.southair.genshin.common.GameType;
 import com.southair.genshin.module.resource.ResourceService;
+import com.southair.genshin.module.wish.CapturingRadiance;
 import com.southair.genshin.module.wish.WishPitySnapshot;
 import com.southair.genshin.module.wish.WishPitySnapshotRepository;
 import com.southair.genshin.module.wish.WishRecord;
@@ -298,12 +299,12 @@ public class StatsService {
     }
 
     /**
-     * 原神「捕获明光」：角色活动池连续未中 UP 的五星会累积进度，
-     * 连续 3 次歪后下一次五星必定为当期 UP。
+     * 原神「捕获明光」：角色活动池 50/50 计数，歪了 +1、没歪 -1，
+     * 计数到 3 后下一次 50/50 必定为当期 UP，触发后计数重置为 1。
      *
-     * <p>歪后紧跟的 UP 属于大保底，不打断连歪计数；只有自然 UP 才清零。</p>
+     * <p>歪后紧跟的大保底 UP 不属于 50/50，跳过计数。</p>
      *
-     * <p>官方公布：小保底基础 50%，含捕获明光综合 55%；连歪 1/2 次的
+     * <p>官方公布：小保底基础 50%，含捕获明光综合 55%；计数 1/2 时的
      * 55% / 75% 为社区通行估算值。</p>
      */
     private void applyCapturingRadiance(OverviewVO vo, Long userId, String game) {
@@ -312,45 +313,19 @@ public class StatsService {
                         userId, game, "角色活动", 5));
         fives.sort(WishRecord::compareChronologically);
 
-        int losses = 0;
+        CapturingRadiance.Result radiance = CapturingRadiance.compute(fives);
+        int counter = radiance.getCounter();
         long upCount = 0;
-        boolean lastWasLoss = false;
         for (WishRecord record : fives) {
-            boolean up = Boolean.TRUE.equals(record.getIsUp());
-            if (up) {
+            if (Boolean.TRUE.equals(record.getIsUp())) {
                 upCount++;
-                if (lastWasLoss) {
-                    // 歪后紧跟 UP：普通大保底保留连歪计数；连歪已达 3 次时
-                    // 这次即捕获明光触发，计数清零
-                    if (losses >= 3) {
-                        losses = 0;
-                    }
-                } else {
-                    // 自然 UP（50/50 直接命中），连歪清零
-                    losses = 0;
-                }
-                lastWasLoss = false;
-            } else {
-                losses++;
-                lastWasLoss = true;
             }
         }
 
-        int rate;
-        if (losses >= 3) {
-            rate = 100;
-        } else if (losses == 2) {
-            rate = 75;
-        } else if (losses == 1) {
-            rate = 55;
-        } else {
-            rate = 50;
-        }
-
-        vo.setCaptureLossCount(losses);
-        vo.setCaptureNextUpRate(rate);
-        vo.setCaptureRemaining(Math.max(0, 3 - losses));
-        vo.setCaptureGuaranteed(losses >= 3);
+        vo.setCaptureLossCount(counter);
+        vo.setCaptureNextUpRate(radiance.getNextUpRate());
+        vo.setCaptureRemaining(Math.max(0, CapturingRadiance.MAX_COUNTER - counter));
+        vo.setCaptureGuaranteed(counter >= CapturingRadiance.MAX_COUNTER);
         vo.setCharacterFiveStarWishes(fives.size());
         vo.setCharacterUpWishes(upCount);
         vo.setCharacterUpRate(fives.isEmpty() ? 0D : round(upCount * 100D / fives.size()));

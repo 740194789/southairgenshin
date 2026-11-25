@@ -661,6 +661,11 @@ body.game-starrail {
     display: none;
 }
 
+.luck-panel[hidden],
+.pull-panel[hidden] {
+    display: none;
+}
+
 .stats-section > .panel + .panel {
     margin-top: 14px;
 }

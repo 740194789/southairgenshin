@@ -728,51 +728,104 @@ function overview(game) {
 }
 
 /**
- * 原神「捕获明光」：角色活动池连续未中 UP 的五星累积进度，连续 3 次歪后下一次必定 UP。
+ * 原神「捕获明光」：角色活动池 50/50 计数，歪了 +1、没歪 -1；
+ * 计数到 3 后下一次 50/50 必定 UP，触发后计数重置为 1。
+ * 歪后紧跟的大保底 UP 不参与计数。
  */
 function captureInfo(asc) {
   var fives = asc.filter(function (record) {
     return record.pool === '角色活动' && record.rarity === 5;
   });
-  var losses = 0;
+  var counter = 0;
   var upCount = 0;
-  var lastWasLoss = false;
+  var pendingGuarantee = false;
 
   fives.forEach(function (record) {
     var up = record.isUp === true;
     if (up) {
       upCount++;
-      if (lastWasLoss) {
-        if (losses >= 3) {
-          losses = 0;
-        }
-      } else {
-        losses = 0;
+    }
+    if (pendingGuarantee) {
+      // 大保底：必定 UP，不参与 50/50 计数（数据异常按歪兜底）
+      if (!up) {
+        counter = Math.min(3, counter + 1);
       }
-      lastWasLoss = false;
+      pendingGuarantee = !up;
+      return;
+    }
+    if (up) {
+      if (counter >= 3) {
+        // 捕获明光触发，计数重置为 1
+        counter = 1;
+      } else {
+        counter = Math.max(0, counter - 1);
+      }
     } else {
-      losses++;
-      lastWasLoss = true;
+      counter = Math.min(3, counter + 1);
+      pendingGuarantee = true;
     }
   });
 
   var rate;
-  if (losses >= 3) {
+  if (counter >= 3) {
     rate = 100;
-  } else if (losses === 2) {
+  } else if (counter === 2) {
     rate = 75;
-  } else if (losses === 1) {
+  } else if (counter === 1) {
     rate = 55;
   } else {
     rate = 50;
   }
 
   return {
-    losses: losses,
+    losses: counter,
     rate: rate,
     fives: fives.length,
     upCount: upCount
   };
+}
+
+/**
+ * 导入后按角色活动池五星序列自动判定捕获明光，写回 captureTriggered。
+ * 与网页端 / 后端口径一致，返回是否有记录被修改。
+ */
+function recomputeCapture(game, list) {
+  if (game !== 'genshin') {
+    return false;
+  }
+  var fives = (list || []).filter(function (record) {
+    return record && record.pool === '角色活动' && record.rarity === 5;
+  }).sort(ascCompare);
+  var counter = 0;
+  var pendingGuarantee = false;
+  var changed = false;
+
+  fives.forEach(function (record) {
+    var up = record.isUp === true;
+    var capture = false;
+    if (pendingGuarantee) {
+      if (!up) {
+        counter = Math.min(3, counter + 1);
+      }
+      pendingGuarantee = !up;
+    } else if (up) {
+      if (counter >= 3) {
+        capture = true;
+        counter = 1;
+      } else {
+        counter = Math.max(0, counter - 1);
+      }
+    } else {
+      counter = Math.min(3, counter + 1);
+      pendingGuarantee = true;
+    }
+    if (record.captureTriggered !== capture) {
+      record.captureTriggered = capture;
+      changed = true;
+    }
+  });
+
+  return changed;
 }
 
 /* ---------------- 导入 / 导出 ---------------- */
@@ -875,6 +928,7 @@ function importRecords(game, records, mode, dryRun) {
   });
 
   if (!dryRun) {
+    recomputeCapture(game, list);
     saveWishes(game, list);
   }
   return {
