@@ -57,11 +57,27 @@ public final class CapturingRadiance {
      * @param fives 已筛选为角色活动池五星、并按出货时间升序排列的记录
      */
     public static Result compute(List<WishRecord> fives) {
+        return compute(fives, false);
+    }
+
+    /**
+     * @param fives      已筛选为角色活动池五星、并按出货时间升序排列的记录
+     * @param honorMarks 为 true 时，已标记 captureTriggered 的记录视为本条的 50/50
+     *                   触发了捕获明光（用户手动修正优先），用于统计页展示
+     */
+    public static Result compute(List<WishRecord> fives, boolean honorMarks) {
         List<Boolean> triggered = new ArrayList<>(fives.size());
         int counter = 0;
         boolean pendingGuarantee = false;
         for (WishRecord record : fives) {
             boolean up = Boolean.TRUE.equals(record.getIsUp());
+            if (honorMarks && Boolean.TRUE.equals(record.getCaptureTriggered())) {
+                // 已标记触发：计数视为重置为 1，并从下一条继续累计
+                triggered.add(true);
+                counter = 1;
+                pendingGuarantee = false;
+                continue;
+            }
             boolean capture = false;
             if (pendingGuarantee) {
                 // 大保底：必定 UP，不参与 50/50 计数（数据异常按歪兜底）

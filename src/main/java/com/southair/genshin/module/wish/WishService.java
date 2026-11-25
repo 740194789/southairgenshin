@@ -25,7 +25,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.UUID;
 
 @Service
@@ -397,9 +396,9 @@ public class WishService {
         CapturingRadiance.Result radiance = CapturingRadiance.compute(fives);
         for (int i = 0; i < fives.size(); i++) {
             WishRecord record = fives.get(i);
-            boolean triggered = radiance.isTriggered(i);
-            if (!Objects.equals(record.getCaptureTriggered(), triggered)) {
-                record.setCaptureTriggered(triggered);
+            // 只补写自动判定出的触发；已手动标记的记录保留，避免被导入覆盖
+            if (radiance.isTriggered(i) && !Boolean.TRUE.equals(record.getCaptureTriggered())) {
+                record.setCaptureTriggered(Boolean.TRUE);
                 repository.save(record);
             }
         }

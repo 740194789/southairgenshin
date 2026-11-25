@@ -313,7 +313,7 @@ public class StatsService {
                         userId, game, "角色活动", 5));
         fives.sort(WishRecord::compareChronologically);
 
-        CapturingRadiance.Result radiance = CapturingRadiance.compute(fives);
+        CapturingRadiance.Result radiance = CapturingRadiance.compute(fives, true);
         int counter = radiance.getCounter();
         long upCount = 0;
         for (WishRecord record : fives) {

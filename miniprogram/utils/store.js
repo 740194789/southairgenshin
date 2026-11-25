@@ -745,6 +745,12 @@ function captureInfo(asc) {
     if (up) {
       upCount++;
     }
+    if (record.captureTriggered === true) {
+      // 已标记触发（含手动修正）：计数视为重置为 1，并从下一条继续累计
+      counter = 1;
+      pendingGuarantee = false;
+      return;
+    }
     if (pendingGuarantee) {
       // 大保底：必定 UP，不参与 50/50 计数（数据异常按歪兜底）
       if (!up) {
@@ -819,8 +825,8 @@ function recomputeCapture(game, list) {
       counter = Math.min(3, counter + 1);
       pendingGuarantee = true;
     }
-    if (record.captureTriggered !== capture) {
-      record.captureTriggered = capture;
+    if (capture && record.captureTriggered !== true) {
+      record.captureTriggered = true;
       changed = true;
     }
   });
