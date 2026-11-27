@@ -9,15 +9,21 @@
     <game-switch game="{{game}}" bind:change="onSwitchGame" />
   </view>
 
-  <view class="section-head">
-    <view>
-      <view class="section-title">账号资源</view>
-      <view class="section-sub">{{g.fullName}} · 资源与抽数换算</view>
+  <view class="page-head">
+    <view class="page-head-main">
+      <view class="eyebrow">Resources</view>
+      <view class="page-head-title">账号资源</view>
+      <view class="page-head-sub">{{g.fullName}} · 资源总览与抽数换算 · 每日自动累加</view>
     </view>
-    <view class="head-actions">
+    <view class="head-actions page-head-actions">
       <view class="btn btn-outline btn-sm" bindtap="openAiEntry">AI 录入</view>
       <view class="btn btn-outline btn-sm" bindtap="openEdit">编辑资源</view>
     </view>
+  </view>
+
+  <view class="group-head">
+    <view class="group-title">资源存量</view>
+    <view class="group-hint">各货币实时余额</view>
   </view>
 
   <view class="stat-grid">
@@ -46,6 +52,11 @@
       <view class="stat-value">{{res.genesisCrystalsText}}</view>
       <view class="stat-extra">可兑换 {{g.currency}}</view>
     </view>
+  </view>
+
+  <view class="group-head" wx:if="{{game === 'genshin'}}">
+    <view class="group-title">养成规划</view>
+    <view class="group-hint">经验素材与养成经验</view>
   </view>
 
   <view class="resource-tools" wx:if="{{game === 'genshin'}}">

@@ -9,13 +9,13 @@
     <game-switch game="{{game}}" bind:change="onSwitchGame" />
   </view>
 
-  <view class="hero">
-    <view class="hero-main">
-      <view class="hero-sub">Collection</view>
-      <view class="hero-title">收藏图鉴</view>
-      <view class="hero-desc">已收集 <text class="strong">{{characterCount}}</text> 名角色 · <text class="strong">{{weaponCount}}</text> 把五星武器 / 光锥</view>
+  <view class="page-head">
+    <view class="page-head-main">
+      <view class="eyebrow">Collection</view>
+      <view class="page-head-title">收藏图鉴</view>
+      <view class="page-head-sub">已收集 <text class="strong">{{characterCount}}</text> 名角色 · <text class="strong">{{weaponCount}}</text> 把五星武器 / 光锥</view>
     </view>
-    <view class="hero-actions">
+    <view class="head-actions page-head-actions">
       <view class="btn btn-outline btn-sm" bindtap="onRefreshCatalog">{{catalogUpdating ? '更新中…' : '刷新图鉴'}}</view>
       <view class="btn btn-outline btn-sm" bindtap="openAiEntry">AI 录入</view>
       <view class="btn btn-primary btn-sm" bindtap="openManual">补充已有</view>

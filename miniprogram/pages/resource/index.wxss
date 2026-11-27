@@ -55,10 +55,11 @@
 }
 
 .tool-btn.active {
-  color: #1b1a16;
-  background: linear-gradient(135deg, #f6eee2, #f07a81);
+  color: #fff7f3;
+  background: linear-gradient(135deg, #f07a81, #b9303c);
   border-color: transparent;
   font-weight: 600;
+  box-shadow: 0 6rpx 16rpx rgba(185, 48, 60, 0.24);
 }
 
 .stock-grid {

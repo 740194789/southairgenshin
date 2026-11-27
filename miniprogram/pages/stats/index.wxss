@@ -102,11 +102,11 @@
 }
 
 .stats-tab.active {
-  color: #14161f;
+  color: #fff7f3;
   font-weight: 600;
   border-color: transparent;
-  background: linear-gradient(135deg, #f6eee2, #f07a81);
-  box-shadow: 0 8rpx 20rpx rgba(240, 122, 129, 0.22);
+  background: linear-gradient(135deg, #f07a81, #b9303c);
+  box-shadow: 0 8rpx 20rpx rgba(185, 48, 60, 0.26);
 }
 
 .inline {

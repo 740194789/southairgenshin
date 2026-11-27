@@ -720,6 +720,12 @@
         return '<p class="empty">' + esc(text) + '</p>';
     }
 
+    /** 页面内的模块分组标题：统一各页面的层级与间距 */
+    function sectionHeadHtml(title, hint) {
+        return '<div class="section-head"><h3>' + esc(title) + '</h3>'
+            + (hint ? '<span>' + esc(hint) + '</span>' : '') + '</div>';
+    }
+
     function errorHtml(error) {
         return '<p class="empty">' + esc(error && error.message ? error.message : '加载失败') + '</p>'
             + '<div class="panel-actions error-retry">'
@@ -1944,8 +1950,11 @@
             var dailyPulls = Math.round(daily / (resource.primogemsPerPull || 160) * 10) / 10;
 
             el.innerHTML =
-                '<div class="page-head dash-head">'
-                + '<div><h2>账号资源</h2><p class="sub">' + esc(g.fullName) + ' · 资源与抽数换算</p></div>'
+                '<div class="page-head">'
+                + '<div><p class="eyebrow">Resources</p><h2>账号资源</h2>'
+                + '<p class="sub">' + esc(g.fullName) + ' · 资源总览与抽数换算 · 每日自动累加</p></div>'
+                + '<div class="head-actions"><span class="head-badge">1 抽 = '
+                + esc(fmt(resource.primogemsPerPull)) + ' ' + esc(g.currency) + '</span></div>'
                 + '</div>'
 
                 + '<section class="fortune">'
@@ -1983,6 +1992,7 @@
                 + '</aside>'
                 + '</section>'
 
+                + sectionHeadHtml('资源存量', '各货币实时余额')
                 + '<div class="inventory">'
                 + resourceTile('gem', g.currency, resource.primogems, '≈ ' + fmt(currencyPulls) + ' 抽')
                 + resourceTile('coin', g.credit, resource.mora, '游戏内通用货币')
@@ -1992,7 +2002,8 @@
                 + '</div>'
 
                 + (state.game === 'genshin'
-                    ? '<div class="resource-tools">'
+                    ? sectionHeadHtml('养成规划', '经验素材与养成经验换算')
+                        + '<div class="resource-tools">'
                         + '<button class="btn btn-text" id="resource-stock" type="button" aria-expanded="false">经验素材</button>'
                         + '<button class="btn btn-text" id="resource-exp" type="button" aria-expanded="false">养成经验</button>'
                         + '</div>'
@@ -2303,14 +2314,12 @@
             var pityHtml = statsPityContentHtml(data, activePool);
 
             el.innerHTML =
-                '<div class="hero">'
-                + '<div>'
-                + '<p class="hero-sub">' + esc(g.heroSub) + '</p>'
-                + '<h2>' + esc(name) + '</h2>'
-                + '<p class="hero-desc">当前合计可抽 <strong>' + fmt(resource.totalPulls)
-                + '</strong> 抽 · 总资产 ' + fmt(resource.totalPrimogems) + ' ' + esc(g.currency) + '</p>'
-                + '</div>'
-                + '<div class="hero-badge">五星出货率<br><strong>' + data.fiveStarRate + '%</strong></div>'
+                '<div class="page-head">'
+                + '<div><p class="eyebrow">Statistics</p><h2>数据分析</h2>'
+                + '<p class="sub">' + esc(name) + ' · 合计可抽 <strong>' + fmt(resource.totalPulls)
+                + '</strong> 抽 · 总资产 ' + fmt(resource.totalPrimogems) + ' ' + esc(g.currency) + '</p></div>'
+                + '<div class="head-actions"><span class="head-badge">五星出货率 <strong>'
+                + esc(data.fiveStarRate) + '%</strong></span></div>'
                 + '</div>'
 
                 + statsTabsHtml(tab)
@@ -2490,6 +2499,7 @@
             + '</div>'
             + '</div>'
             + '</div>'
+            + sectionHeadHtml('记录列表', '支持筛选、搜索与批量编辑')
             + '<div id="wish-list"><div class="loading">加载中…</div></div>'
             + '<div id="wish-pager" class="pager"></div>';
 
@@ -6447,9 +6457,11 @@
         var username = (state.user && state.user.username) || '';
         el.innerHTML =
             '<div class="page-head">'
-            + '<div><h2>设置</h2><p class="sub">数据备份与导入导出 · 换设备、长期备份从这里开始</p></div>'
+            + '<div><p class="eyebrow">Settings</p><h2>设置</h2>'
+            + '<p class="sub">数据备份与导入导出 · 换设备、长期备份从这里开始</p></div>'
             + '</div>'
 
+            + sectionHeadHtml('数据与备份', '全量备份与云端同步')
             + '<section class="panel">'
             + '<h3>全量备份 · 换设备</h3>'
             + '<p class="panel-desc">把原神与星穹铁道的全部抽卡记录、账号资源打包成一个 JSON 文件；'
@@ -6489,11 +6501,13 @@
             + '<span>打开设置页时自动同步（距上次超过 5 分钟才执行）</span></label>'
             + '</section>'
 
+            + sectionHeadHtml('游戏数据', '按游戏分别导出 / 导入 / 清空')
             + '<div class="panel-grid">'
             + gameDataPanelHtml('genshin')
             + gameDataPanelHtml('starrail')
             + '</div>'
 
+            + sectionHeadHtml('账号与个性化', '图鉴数据源、用户名与账号安全')
             + '<section class="panel">'
             + '<h3>图鉴数据源<span class="pool-tag">在线刷新 · 本机缓存</span></h3>'
             + '<p class="panel-desc">头像默认使用内置静态数据；联网时优先由浏览器直接获取 '

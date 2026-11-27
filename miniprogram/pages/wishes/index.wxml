@@ -9,10 +9,11 @@
     <game-switch game="{{game}}" bind:change="onSwitchGame" />
   </view>
 
-  <view class="section-head">
-    <view>
-      <view class="section-title">抽卡记录</view>
-      <view class="section-sub">五星出货记录 · 记录抽到五星用了多少抽 · 支持链接导入</view>
+  <view class="page-head">
+    <view class="page-head-main">
+      <view class="eyebrow">Wish Records</view>
+      <view class="page-head-title">抽卡记录</view>
+      <view class="page-head-sub">五星出货记录 · 记录抽到五星用了多少抽 · 支持链接导入</view>
     </view>
   </view>
 
@@ -43,6 +44,11 @@
     <view class="btn btn-outline btn-sm {{rows.length ? '' : 'disabled'}}" bindtap="openBatchEdit">批量编辑本页</view>
     <view class="btn btn-danger btn-sm {{selectedCount ? '' : 'disabled'}}" bindtap="deleteSelected">批量删除{{selectedCount ? '（' + selectedCount + '）' : ''}}</view>
     <view class="btn btn-outline btn-sm" bindtap="openLinkImport">链接导入</view>
+  </view>
+
+  <view class="group-head">
+    <view class="group-title">记录列表</view>
+    <view class="group-hint">支持筛选、搜索与批量编辑</view>
   </view>
 
   <block wx:if="{{rows.length}}">

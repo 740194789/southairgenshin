@@ -9,15 +9,15 @@
     <game-switch game="{{game}}" bind:change="onSwitchGame" />
   </view>
 
-  <view class="hero">
-    <view class="hero-main">
-      <view class="hero-sub">{{g.heroSub}}</view>
-      <view class="hero-title">{{g.fullName}}</view>
-      <view class="hero-desc">当前合计可抽 <text class="strong">{{stats.totalPullsText}}</text> 抽 · 总资产 {{stats.totalPrimogemsText}} {{g.currency}}</view>
+  <view class="page-head">
+    <view class="page-head-main">
+      <view class="eyebrow">Statistics</view>
+      <view class="page-head-title">数据分析</view>
+      <view class="page-head-sub">合计可抽 <text class="strong">{{stats.totalPullsText}}</text> 抽 · 总资产 {{stats.totalPrimogemsText}} {{g.currency}}</view>
     </view>
-    <view class="hero-badge">
-      <view class="hero-badge-label">五星出货率</view>
-      <view class="hero-badge-value">{{stats.fiveStarRate}}%</view>
+    <view class="head-badge">
+      <view class="head-badge-label">五星出货率</view>
+      <view class="head-badge-value">{{stats.fiveStarRate}}%</view>
     </view>
   </view>
 
