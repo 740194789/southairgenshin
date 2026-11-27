@@ -293,42 +293,36 @@
     /* 五星圣遗物 +0 强化到 +20 所需经验 */
     var FIVE_STAR_ARTIFACT_EXP = 270475;
 
-    /* 角色可选等级：90 级后为 95 / 100（需无主的命星，不再消耗经验） */
-    var CHAR_LEVELS = (function () {
-        var list = [];
-        for (var lv = 1; lv <= 90; lv += 1) {
-            list.push(lv);
-        }
-        list.push(95, 100);
-        return list;
-    })();
+    /* 角色经验书只计算 1–90 级，90 级以上突破不消耗经验书 */
+    /* 经验书只计算到 90 级，90 级以上突破不消耗经验书 */
+    var CHAR_MAX_LEVEL = 90;
 
-    function charLevelOptionsHtml(fromLevel, selected) {
-        return CHAR_LEVELS.filter(function (lv) {
-            return fromLevel === null || lv > fromLevel;
-        }).map(function (lv) {
-            return '<option value="' + lv + '"' + (lv === selected ? ' selected' : '') + '>'
-                + lv + '</option>';
-        }).join('');
-    }
-
-    /** 当前等级 → 目标等级：经验书经验 + 无主的命星数量 */
+    /** 当前等级 → 目标等级：所需经验书经验（仅 1–90 级） */
     function levelPlan(fromLevel, toLevel) {
-        var start = Math.max(1, Math.min(100, toInt(fromLevel)));
-        var end = Math.max(start, Math.min(100, toInt(toLevel)));
+        var start = Math.max(1, Math.min(CHAR_MAX_LEVEL, toInt(fromLevel)));
+        var end = Math.max(start, Math.min(CHAR_MAX_LEVEL, toInt(toLevel)));
         var exp = 0;
-        for (var lv = start; lv < Math.min(end, 90); lv += 1) {
+        for (var lv = start; lv < end; lv += 1) {
             exp += CHARACTER_EXP[lv - 1];
         }
-        var stars = 0;
-        if (end > 90) {
-            if (start >= 95) {
-                stars = end >= 100 ? 2 : 0;
-            } else {
-                stars = end >= 100 ? 3 : 1;
-            }
+        return { from: start, to: end, exp: exp };
+    }
+
+    /** 读取等级输入并校验：1–90，且目标等级不能低于当前等级 */
+    function readCharLevels(fromText, toText) {
+        var from = toInt(fromText);
+        var to = toInt(toText);
+        var hasFrom = String(fromText === null || fromText === undefined ? '' : fromText).trim() !== '';
+        var hasTo = String(toText === null || toText === undefined ? '' : toText).trim() !== '';
+        var error = '';
+        if (!hasFrom || !hasTo || from < 1 || to < 1) {
+            error = '请输入 1–90 的等级';
+        } else if (from > CHAR_MAX_LEVEL || to > CHAR_MAX_LEVEL) {
+            error = '不可超过90级';
+        } else if (to < from) {
+            error = '目标等级不能比初始等级低';
         }
-        return { from: start, to: end, exp: exp, stars: stars };
+        return { from: from, to: to, error: error };
     }
     var CHAR_ITEM_EXP = { heroWit: 20000, adventurerExp: 5000, wandererAdvice: 1000 };
     var ART_ITEM_EXP = { sanctifyingUnction: 2500, sanctifyingEssence: 10000 };
@@ -1720,11 +1714,11 @@
             + '<div class="exp-controls exp-add">'
             + '<label>角色 <button class="btn btn-outline btn-sm exp-pick" id="exp-char-pick" type="button">'
             + '<span id="exp-char-name-label">选择角色</span></button></label>'
-            + '<label>当前等级 <select id="exp-char-from">' + charLevelOptionsHtml(null, 1) + '</select></label>'
-            + '<label>目标等级 <select id="exp-char-to">' + charLevelOptionsHtml(1, 2) + '</select></label>'
+            + '<label>当前等级 <input id="exp-char-from" type="number" min="1" max="90" step="1" value="1" inputmode="numeric"/></label>'
+            + '<label>目标等级 <input id="exp-char-to" type="number" min="1" max="90" step="1" value="2" inputmode="numeric"/></label>'
             + '<button class="btn btn-outline btn-sm" id="exp-char-add" type="button">保留结果</button>'
             + '</div>'
-            + '<p class="exp-hint-line">90 级后需「无主的命星」：90 → 95 用 1 枚，90 → 100 共 3 枚；95 → 100 用 2 枚，不再消耗经验书。</p>'
+            + '<p class="exp-hint-line">等级范围 1–90；目标等级不能低于当前等级。</p>'
             + '<div class="exp-result" id="exp-char-result"></div>'
             + '<div class="exp-rows" id="exp-char-rows"></div>'
             + '<div class="exp-result exp-sum" id="exp-char-sum"></div>'
@@ -1795,33 +1789,18 @@
         var charRows = [];
         var selectedChar = '';
 
-        function syncToOptions() {
-            var from = toInt(charFrom.value);
-            var previous = toInt(charTo.value);
-            var levels = CHAR_LEVELS.filter(function (lv) {
-                return lv > from;
-            });
-            var keep = levels.indexOf(previous) >= 0 ? previous : (levels[0] || '');
-            charTo.innerHTML = levels.map(function (lv) {
-                return '<option value="' + lv + '"' + (lv === keep ? ' selected' : '') + '>'
-                    + lv + '</option>';
-            }).join('');
-        }
-
         function renderChar() {
             var needed = 0;
             charRows.forEach(function (row) {
                 var plan = levelPlan(row.from, row.to);
                 row.exp = plan.exp;
-                row.stars = plan.stars;
                 needed += plan.exp;
             });
 
             charRowsEl.innerHTML = charRows.map(function (row, index) {
                 return '<div class="exp-row"><span>' + esc(row.name || ('角色 ' + (index + 1)))
                     + ' · Lv ' + row.from + ' → <strong>Lv ' + row.to + '</strong>'
-                    + ' · 需 ' + fmt(row.exp) + ' 经验'
-                    + (row.stars ? ' · 无主的命星 ' + row.stars + ' 枚' : '') + '</span>'
+                    + ' · 需 ' + fmt(row.exp) + ' 经验</span>'
                     + '<button class="exp-row-del" type="button" data-index="' + index + '" aria-label="删除">×</button></div>';
             }).join('');
 
@@ -1837,11 +1816,19 @@
                 charSum.innerHTML = '';
             }
 
+            var levels = readCharLevels(charFrom.value, charTo.value);
+            if (levels.error) {
+                charOut.innerHTML = '<span class="exp-error">' + esc(levels.error) + '</span>';
+                if (flowerResult) {
+                    flowerResult.innerHTML = '';
+                }
+                return;
+            }
+
             var available = Math.max(0, charTotal - needed);
-            var plan = levelPlan(toInt(charFrom.value), toInt(charTo.value));
+            var plan = levelPlan(levels.from, levels.to);
             charOut.innerHTML = 'Lv ' + plan.from + ' → <strong>Lv ' + plan.to + '</strong>'
                 + ' · 需 ' + fmt(plan.exp) + ' 经验'
-                + (plan.stars ? ' · 无主的命星 ' + plan.stars + ' 枚' : '')
                 + (plan.exp > available
                     ? ' · 还差 ' + fmt(plan.exp - available)
                     : ' · 可用 ' + fmt(available) + '，足够');
@@ -1859,7 +1846,7 @@
                 + fmt(per.max) + ' 经验 · 20 树脂';
 
             if (plan.exp <= 0) {
-                flowerResult.innerHTML = '当前等级已越过 90 级，只消耗无主的命星，不需要打经验花';
+                flowerResult.innerHTML = '当前等级已达到目标等级，不需要打经验花';
             } else {
                 flowerResult.innerHTML = '当前选择：'
                     + expFlowerRunsText(expFlowerPlan(plan.exp - available, level));
@@ -1879,17 +1866,22 @@
         }
 
         function addChar() {
+            var levels = readCharLevels(charFrom.value, charTo.value);
+            if (levels.error) {
+                toast(levels.error);
+                return;
+            }
             charRows.push({
                 name: selectedChar,
-                from: toInt(charFrom.value),
-                to: toInt(charTo.value)
+                from: levels.from,
+                to: levels.to
             });
             selectedChar = '';
             if (charLabel) {
                 charLabel.textContent = '选择角色';
             }
             charFrom.value = '1';
-            syncToOptions();
+            charTo.value = '2';
             renderChar();
         }
 
@@ -1926,15 +1918,11 @@
                 + (rest > 0 ? '（距下一个还差 ' + fmt(FIVE_STAR_ARTIFACT_EXP - rest) + '）' : '');
         }
 
-        charFrom.addEventListener('change', function () {
-            syncToOptions();
-            renderChar();
-        });
-        charTo.addEventListener('change', renderChar);
+        charFrom.addEventListener('input', renderChar);
+        charTo.addEventListener('input', renderChar);
         if (flowerWl) {
             flowerWl.addEventListener('change', renderChar);
         }
-        syncToOptions();
         renderChar();
         renderArt();
     }

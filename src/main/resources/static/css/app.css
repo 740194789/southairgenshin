@@ -1368,6 +1368,11 @@ body.game-starrail {
     font-size: 14px;
 }
 
+.exp-error {
+    color: var(--danger);
+    font-size: 12px;
+}
+
 .exp-add {
     align-items: flex-end;
 }

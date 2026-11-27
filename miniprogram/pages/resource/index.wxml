@@ -81,24 +81,21 @@
       </view>
       <view class="form-row">
         <text class="form-label">当前等级</text>
-        <picker class="form-control" range="{{fromLevels}}" value="{{fromIndex}}" bindchange="onCharFrom">
-          <view class="picker-box">{{fromLevels[fromIndex]}}</view>
-        </picker>
+        <input class="form-control" type="number" min="1" max="90" value="{{charFrom}}" bindinput="onCharFromInput" placeholder="1–90"/>
       </view>
       <view class="form-row">
         <text class="form-label">目标等级</text>
-        <picker class="form-control" range="{{toLevels}}" value="{{toIndex}}" bindchange="onCharTo">
-          <view class="picker-box">{{toLevels[toIndex]}}</view>
-        </picker>
+        <input class="form-control" type="number" min="1" max="90" value="{{charTo}}" bindinput="onCharToInput" placeholder="1–90"/>
       </view>
+      <view class="exp-error" wx:if="{{levelError}}">{{levelError}}</view>
       <view class="exp-actions">
         <view class="btn btn-outline btn-sm" bindtap="onAddChar">保留结果</view>
       </view>
       <view class="exp-result">{{exp.charPreviewText}}</view>
-      <view class="exp-note">90 级后需「无主的命星」：90 → 95 用 1 枚，90 → 100 共 3 枚；95 → 100 用 2 枚，不再消耗经验书。</view>
+      <view class="exp-note">等级范围 1–90；目标等级不能低于当前等级。</view>
       <view class="exp-plan" wx:if="{{charPlanView.length}}">
         <view class="exp-plan-row" wx:for="{{charPlanView}}" wx:key="index">
-          <text>{{item.name}} · Lv {{item.fromLevel}} → Lv {{item.toLevel}} · 需 {{item.expText}}{{item.starText}}</text>
+          <text>{{item.name}} · Lv {{item.fromLevel}} → Lv {{item.toLevel}} · 需 {{item.expText}}</text>
           <view class="exp-row-del" data-index="{{index}}" bindtap="onRemoveChar">×</view>
         </view>
         <view class="exp-sum">已保留 {{charPlanView.length}} 个角色 · 合计需要 {{exp.planNeedText}} · {{exp.planDiffText}}</view>

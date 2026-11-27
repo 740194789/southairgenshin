@@ -26,39 +26,35 @@ var CHARACTER_EXP = [
 /* 五星圣遗物 +0 强化到 +20 所需经验 */
 var FIVE_STAR_ARTIFACT_EXP = 270475;
 
-/* 角色可选等级：90 级后为 95 / 100（需无主的命星，不再消耗经验） */
-var CHAR_LEVELS = (function () {
-  var list = [];
-  for (var lv = 1; lv <= 90; lv += 1) {
-    list.push(lv);
-  }
-  list.push(95, 100);
-  return list;
-})();
+/* 经验书只计算到 90 级，90 级以上突破不消耗经验书 */
+var CHAR_MAX_LEVEL = 90;
 
-function toLevelsFor(from) {
-  return CHAR_LEVELS.filter(function (lv) {
-    return lv > from;
-  });
-}
-
-/** 当前等级 → 目标等级：经验书经验 + 无主的命星数量 */
+/** 当前等级 → 目标等级：所需经验书经验（仅 1–90 级） */
 function levelPlan(fromLevel, toLevel) {
-  var start = Math.max(1, Math.min(100, toInt(fromLevel)));
-  var end = Math.max(start, Math.min(100, toInt(toLevel)));
+  var start = Math.max(1, Math.min(CHAR_MAX_LEVEL, toInt(fromLevel)));
+  var end = Math.max(start, Math.min(CHAR_MAX_LEVEL, toInt(toLevel)));
   var exp = 0;
-  for (var lv = start; lv < Math.min(end, 90); lv += 1) {
+  for (var lv = start; lv < end; lv += 1) {
     exp += CHARACTER_EXP[lv - 1];
   }
-  var stars = 0;
-  if (end > 90) {
-    if (start >= 95) {
-      stars = end >= 100 ? 2 : 0;
-    } else {
-      stars = end >= 100 ? 3 : 1;
-    }
+  return { from: start, to: end, exp: exp };
+}
+
+/** 读取等级输入并校验：1–90，且目标等级不能低于当前等级 */
+function readCharLevels(fromText, toText) {
+  var from = toInt(fromText);
+  var to = toInt(toText);
+  var hasFrom = String(fromText === null || fromText === undefined ? '' : fromText).trim() !== '';
+  var hasTo = String(toText === null || toText === undefined ? '' : toText).trim() !== '';
+  var error = '';
+  if (!hasFrom || !hasTo || from < 1 || to < 1) {
+    error = '请输入 1–90 的等级';
+  } else if (from > CHAR_MAX_LEVEL || to > CHAR_MAX_LEVEL) {
+    error = '不可超过90级';
+  } else if (to < from) {
+    error = '目标等级不能比初始等级低';
   }
-  return { from: start, to: end, exp: exp, stars: stars };
+  return { from: from, to: to, error: error };
 }
 
 var CHAR_ITEM_EXP = { heroWit: 20000, adventurerExp: 5000, wandererAdvice: 1000 };
@@ -148,10 +144,9 @@ Page({
     showStock: false,
     showExp: false,
     stockItems: [],
-    fromLevels: CHAR_LEVELS,
-    fromIndex: 0,
-    toLevels: toLevelsFor(1),
-    toIndex: 0,
+    charFrom: '1',
+    charTo: '2',
+    levelError: '',
     wlLevels: WL_LEVELS,
     wlIndex: 8,
     aiVisible: false,
@@ -241,14 +236,12 @@ Page({
         name: row.name || ('角色 ' + (index + 1)),
         fromLevel: step.from,
         toLevel: step.to,
-        expText: store.fmt(step.exp) + ' 经验',
-        starText: step.stars ? ' · 命星 ' + step.stars + ' 枚' : ''
+        expText: store.fmt(step.exp) + ' 经验'
       };
     });
 
-    var fromLevel = this.data.fromLevels[this.data.fromIndex];
-    var toLevel = this.data.toLevels[this.data.toIndex];
-    var preview = levelPlan(fromLevel, toLevel);
+    var levels = readCharLevels(this.data.charFrom, this.data.charTo);
+    var preview = levelPlan(levels.from, levels.to);
     var available = Math.max(0, charTotal - needed);
     var artCount = Math.floor(artTotal / FIVE_STAR_ARTIFACT_EXP);
     var artRest = artTotal % FIVE_STAR_ARTIFACT_EXP;
@@ -259,26 +252,30 @@ Page({
 
     this.setData({
       charPlanView: planView,
+      levelError: levels.error,
       exp: {
         charTotalText: store.fmt(charTotal),
         artTotalText: store.fmt(artTotal),
         flowerPerText: '每次 ' + per.books + ' ≈ ' + store.fmt(per.min) + '–'
           + store.fmt(per.max) + ' 经验 · 20 树脂',
-        flowerPreviewText: preview.exp <= 0
-          ? '当前等级已越过 90 级，只消耗无主的命星，不需要打经验花'
-          : '当前选择：' + expFlowerRunsText(expFlowerPlan(previewDeficit, wl)),
+        flowerPreviewText: levels.error
+          ? ''
+          : (preview.exp <= 0
+            ? '当前等级已达到目标等级，不需要打经验花'
+            : '当前选择：' + expFlowerRunsText(expFlowerPlan(previewDeficit, wl))),
         flowerSumText: planView.length
           ? '已保留 ' + planView.length + ' 个角色 · '
             + (deficit > 0
               ? '合计还差 ' + store.fmt(deficit) + ' 经验，' + expFlowerRunsText(expFlowerPlan(deficit, wl))
               : '经验书已足够（剩余 ' + store.fmt(charTotal - needed) + ' 经验）')
           : '',
-        charPreviewText: 'Lv ' + preview.from + ' → Lv ' + preview.to
-          + ' · 需 ' + store.fmt(preview.exp) + ' 经验'
-          + (preview.stars ? ' · 无主的命星 ' + preview.stars + ' 枚' : '')
-          + (preview.exp > available
-            ? ' · 还差 ' + store.fmt(preview.exp - available)
-            : ' · 可用 ' + store.fmt(available) + '，足够'),
+        charPreviewText: levels.error
+          ? ''
+          : ('Lv ' + preview.from + ' → Lv ' + preview.to
+            + ' · 需 ' + store.fmt(preview.exp) + ' 经验'
+            + (preview.exp > available
+              ? ' · 还差 ' + store.fmt(preview.exp - available)
+              : ' · 可用 ' + store.fmt(available) + '，足够')),
         planNeedText: planView.length
           ? store.fmt(needed) + ' 经验 · 可用 ' + store.fmt(charTotal)
           : '',
@@ -317,22 +314,13 @@ Page({
     });
   },
 
-  onCharFrom: function (event) {
-    var index = Number(event.detail.value) || 0;
-    var from = this.data.fromLevels[index];
-    var levels = toLevelsFor(from);
-    var previous = this.data.toLevels[this.data.toIndex];
-    var toIndex = levels.indexOf(previous);
-    this.setData({
-      fromIndex: index,
-      toLevels: levels,
-      toIndex: toIndex >= 0 ? toIndex : 0
-    });
+  onCharFromInput: function (event) {
+    this.setData({ charFrom: event.detail.value });
     this.applyExp();
   },
 
-  onCharTo: function (event) {
-    this.setData({ toIndex: Number(event.detail.value) || 0 });
+  onCharToInput: function (event) {
+    this.setData({ charTo: event.detail.value });
     this.applyExp();
   },
 
@@ -344,17 +332,21 @@ Page({
   },
 
   onAddChar: function () {
+    var levels = readCharLevels(this.data.charFrom, this.data.charTo);
+    if (levels.error) {
+      wx.showToast({ title: levels.error, icon: 'none' });
+      return;
+    }
     this._charPlan = this._charPlan || [];
     this._charPlan.push({
       name: this.data.selectedChar,
-      from: this.data.fromLevels[this.data.fromIndex],
-      to: this.data.toLevels[this.data.toIndex]
+      from: levels.from,
+      to: levels.to
     });
     this.setData({
       selectedChar: '',
-      fromIndex: 0,
-      toLevels: toLevelsFor(this.data.fromLevels[0]),
-      toIndex: 0
+      charFrom: '1',
+      charTo: '2'
     });
     this.applyExp();
   },
